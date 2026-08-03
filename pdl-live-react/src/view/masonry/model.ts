@@ -6,7 +6,6 @@ import {
   hasInput,
   hasMessage,
   hasParser,
-  hasScalarResult,
   hasModelUsage,
   hasResult,
   hasTimingInformation,
@@ -14,7 +13,6 @@ import {
   extractStructuredModelResponse,
   completionRate,
   ptcRatio,
-  type NonScalarPdlBlock,
 } from "../../helpers"
 
 import type Tile from "./Tile"
@@ -41,11 +39,13 @@ import { block_code_cleanup } from "../../pdl_code_cleanup"
 
 /** Remove objects from the Masonry model that aren't helpful to display */
 function removeFluff({ kind, block }: Tile) {
-  // re: empty, these house only defs, which are spliced in below via
-  // `withDefs()`
+  // re: empty, these house only defs, which are tiles in their own right
+  // re: aggregator, these declare a sink; their result is an opaque
+  // internal handle, not anything the user wrote or asked for
   return (
     kind !== "if" &&
     kind !== "empty" &&
+    kind !== "aggregator" &&
     (!hasResult(block) ||
       typeof block.pdl__result !== "string" ||
       block.pdl__result.trim().length > 0)
@@ -57,8 +57,12 @@ export default function computeModel(block: import("../../pdl_ast").PdlBlock) {
 
   const masonry: Tile[] = base
     // .concat(result(block))
-    .flatMap(({ id, block, children }) => {
-      if (children.length === 0 && hasTimingInformation(block)) {
+    .flatMap(({ id, def, block, children }) => {
+      // `defs` children are tiles in their own right, and don't stop
+      // the block that houses them from being one, too
+      const bodyChildren = children.filter((child) => child.def === undefined)
+
+      if (bodyChildren.length === 0 && hasTimingInformation(block)) {
         const { resultForDisplay, meta, lang } = isLLMBlock(block)
           ? extractStructuredModelResponse(block)
           : {
@@ -88,10 +92,10 @@ export default function computeModel(block: import("../../pdl_ast").PdlBlock) {
         const stability = hasStabilityMetrics(block)
           ? block.pdl__stability
           : ([] satisfies StabilityMetric[])
-        return withDefs(block, [
+        return [
           {
             id,
-            def: block.def,
+            def: def ?? block.def,
             kind: block.kind,
             lang,
             message: hasInput(block)
@@ -131,7 +135,7 @@ export default function computeModel(block: import("../../pdl_ast").PdlBlock) {
             end_nanos: block.pdl__timing.end_nanos,
             timezone: block.pdl__timing.timezone,
           },
-        ])
+        ] satisfies Tile[]
       }
 
       return []
@@ -152,28 +156,4 @@ export default function computeModel(block: import("../../pdl_ast").PdlBlock) {
   )
 
   return { base, masonry, numbering }
-}
-
-function withDefs(block: NonScalarPdlBlock, tiles: Tile[]) {
-  return [
-    ...(!block.defs
-      ? []
-      : Object.entries(block.defs).flatMap(([def, v]) =>
-          !v
-            ? []
-            : {
-                id:
-                  (block.pdl__id ?? "").replace(/\.?empty/g, "") + ".0.define",
-                kind: "",
-                def,
-                lang: hasParser(v)
-                  ? v.parser === "jsonl"
-                    ? "json"
-                    : (v.parser as Tile["lang"])
-                  : undefined,
-                content: hasScalarResult(v) ? v.pdl__result : "",
-              },
-        )),
-    ...tiles,
-  ]
 }

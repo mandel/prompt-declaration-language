@@ -25,6 +25,9 @@ type TimelineRow = {
 
   /** The original block model */
   block: PdlBlockWithTiming
+
+  /** If this block is one of its parent's `defs`, the name it is bound to */
+  def?: string
 }
 
 export type TimelineRowWithExtrema = TimelineRow & {
@@ -84,6 +87,7 @@ function squashProximateModelInputs(model: TimelineModel): TimelineModel {
 function computeModelIter(
   block: unknown | PdlBlock,
   parent?: TimelineRow,
+  def?: string,
 ): TimelineModel {
   if (!hasTimingInformation(block)) {
     return []
@@ -98,11 +102,12 @@ function computeModelIter(
         parent: parent || null,
         children: [], // filled in at the end
         block,
+        def,
       }
 
-  const childrenModel = childrenOf(block)
-    .filter(nonNullable)
-    .flatMap((child: PdlBlock) => computeModelIter(child, root))
+  const childrenModel = childrenWithDefsOf(block).flatMap((child) =>
+    computeModelIter(child.block, root, child.def),
+  )
 
   // Correct for anomalies in the trace where a child may have an
   // earlier end timestamp than its children. See
@@ -122,7 +127,45 @@ function computeModelIter(
   return [...(ignoreRoot ? [] : [root]), ...childrenModel].filter(nonNullable)
 }
 
-export function childrenOf(block: NonScalarPdlBlock) {
+/**
+ * A child block, tagged with the `defs` name it is bound to, if it
+ * came from its parent's `defs`.
+ */
+type TaggedChild = { block: PdlBlock; def?: string }
+
+/**
+ * The `defs` of a block. These execute before the block itself, and
+ * are children of it in every kind of block, not just `empty` ones.
+ */
+function defsOf(block: NonScalarPdlBlock): TaggedChild[] {
+  return Object.entries(block.defs ?? {})
+    .filter(([, block]) => nonNullable(block))
+    .map(([def, block]) => ({ block, def }))
+}
+
+/** The block executed in place of `block`, should it fail. */
+function fallbackOf(block: NonScalarPdlBlock): PdlBlock[] {
+  return block.fallback ? [block.fallback] : []
+}
+
+/** All children of `block`, each tagged with its `defs` name, if any */
+function childrenWithDefsOf(block: NonScalarPdlBlock): TaggedChild[] {
+  return [
+    ...defsOf(block),
+    ...bodyChildrenOf(block).map((block) => ({ block })),
+    ...fallbackOf(block).map((block) => ({ block })),
+  ]
+}
+
+export function childrenOf(block: NonScalarPdlBlock): PdlBlock[] {
+  return childrenWithDefsOf(block).map(({ block }) => block)
+}
+
+/**
+ * The children of `block` that come from its body, i.e. excluding the
+ * `defs` and `fallback` that every kind of block may have.
+ */
+function bodyChildrenOf(block: NonScalarPdlBlock): PdlBlock[] {
   return (
     match(block)
       .with({ kind: "model" }, (data) => [/*data.input,*/ data.pdl__result])
@@ -133,7 +176,10 @@ export function childrenOf(block: NonScalarPdlBlock) {
         data.if.pdl__result ? [data.then] : [data.else],
       )
       .with({ kind: "if" }, (data) => [data.then, data.else])
-      .with({ kind: "match" }, (data) => [data.with]) // TODO
+      // Only the branch that matched carries an executed block; the
+      // rest stay as unevaluated source, and are dropped for want of
+      // timing information.
+      .with({ kind: "match" }, (data) => data.with.map(({ then }) => then))
       .with({ kind: "read" }, (data) => [data.pdl__result])
       .with({ kind: "include" }, (data) => [
         data.pdl__trace ?? data.pdl__result,
@@ -146,13 +192,14 @@ export function childrenOf(block: NonScalarPdlBlock) {
       .with({ kind: "text" }, (data) => [data.text])
       .with({ kind: "lastOf" }, (data) => [data.lastOf])
       .with({ kind: "array" }, (data) => [data.array])
-      .with({ kind: "object" }, (data) => [data.object])
+      .with({ kind: "object" }, (data) =>
+        Array.isArray(data.object) ? data.object : Object.values(data.object),
+      )
       .with({ kind: "message" }, (data) => [data.content])
       .with({ kind: "repeat" }, (data) => [data.pdl__trace ?? data.repeat])
       .with({ kind: "map" }, (data) => [data.pdl__trace ?? data.map])
-      .with({ kind: "empty" }, (data) =>
-        data.defs ? Object.values(data.defs) : [],
-      )
+      // re: empty, it has no body; its `defs` are picked up by defsOf()
+      .with({ kind: "empty" }, () => [])
       .with({ kind: "factor" }, () => [])
       .with({ kind: "error" }, () => []) // TODO show errors in trace
       .with({ kind: P.nullish }, () => [])

@@ -385,96 +385,131 @@ the way to the print site and dropped. Rendering it as `text[2].model.input` req
 
 ---
 
-## 5. Design questions — for your decision before Phase 2
+## 5. Design decisions
 
-These are the points where I would have to guess, so I am not guessing.
+These were open questions at the end of Phase 0 recon. All seven were decided with the
+project owner on 2026-08-06; recorded here as the standing contract for Phases 1–3.
+Where a decision overrides one of the project's original hard constraints, that is
+called out explicitly.
 
-**5.1 Replace the regex line map with real YAML marks?**
-DROPs #1 and #2 are one decision. A `SafeLoader` subclass that records `start_mark`/
-`end_mark` per node gives exact line *and column* and kills E-EXPR-006, the flow-style
-collapse, and the same-key overwrite in one move — and is the only way to satisfy rubric
-item 1 (column + caret span). It changes `PdlLocationType`'s meaning, which the task says
-to escalate. It is contained (`pdl_parser.py` + `pdl_location_utils.py`), adds no
-dependency, and `get_line_map` can stay as a compatibility shim. **Recommendation: yes,
-and it should be the first Phase-3 work item since most other fixes stack on it.**
+**5.1 + 5.2 — Real YAML marks, and `table` removed from `PdlLocationType`. DECIDED: do
+both, no compatibility shim.**
+Replace the regex line map (DROP #2) with a `SafeLoader` subclass that records
+`start_mark`/`end_mark`, giving exact line **and column** for every node. Move the
+per-file line data into a source registry keyed by filename, consulted at render time.
+`PdlLocationType` becomes `(file, line, col, path)` with **no `table` field**.
 
-**5.2 Move `table` out of `PdlLocationType`?**
-`table` is per-file state living inside a per-node value; that is what makes DROP #6
-possible. The fix is a source registry (`file → line map`) consulted at render time, with
-`PdlLocationType` reduced to `(file, path)` — or `(file, line, col, path)` under 5.1.
-`PdlLocationType` is exported from `pdl.pdl_ast`, appears in `exec_program`'s public
-signature, and is serialised into trace JSON consumed by the viewer. **This is a public
-API change.** Options: (a) change it and bump; (b) keep `table` as a deprecated,
-optional field; (c) leave it and special-case `execute_call`. **Recommendation: (b)** —
-fixes the bug, keeps the SDK and trace format working.
+> **This is a breaking public API change**, accepted deliberately. Consequences that are
+> in scope and must be delivered, not worked around:
+> - `PdlLocationType` is exported from `pdl.pdl_ast` and appears in `exec_program`'s
+>   signature — the Python SDK surface changes.
+> - `PdlLocationType` is serialised into trace JSON, so the **trace format changes** and
+>   `pdl-live-react` needs a matching change plus a version bump.
+> - `tests/test_line_table.py` (~30 cases) and any golden files pinning `file:line`
+>   strings will need updating in lockstep.
+>
+> This resolves DROP #1, #2, #4 and #6 at the root, and is the only route to columns and
+> caret spans (rubric item 1). It is a prerequisite for E-EXPR-004 and E-EXPR-006.
 
-**5.3 Can E-SCHEMA-007 be fixed without restructuring `pdl-schema.json`?**
-You anticipated this one. I believe **yes**, without touching the schema. `BlockType` is a
-pydantic *discriminated* union — `pdl_ast.py:1601` uses `Discriminator(_block_tag)`. The
-discriminator function already knows how to pick a branch from the keys present. So
-`analyze_errors` can call it, name the intended block kind ("this looks like a `model`
-block"), and report against *that one branch* instead of dumping 24 `$ref`s. Where no
-branch matches, the right message is "no block kind matches these keys: `foo`; expected
-one of `model`, `code`, `text`, …" — a name list, not a schema dump. **No restructuring
-needed; confirm you agree before I commit the team to it.**
+**5.3 — Schema union errors fixed via the existing discriminator; `pdl-schema.json` is
+NOT restructured. DECIDED.**
+`BlockType` is a pydantic *discriminated* union: `pdl_ast.py:1463` defines `_block_tag`
+and `:1515` defines `_BLOCK_KIND_OF_FIELD`, which together pick a branch from the keys
+present. `analyze_errors` calls that to name the intended block kind ("this looks like a
+`model` block") and reports against **that one branch** instead of dumping 24 `$ref`s.
+Where no branch matches, the message is a *name list* — "no block kind matches these
+keys: `foo`; expected one of `model`, `code`, `text`, …" — never a schema dump. Fixes
+E-SCHEMA-006 and E-SCHEMA-007 with no change to the generated schema artifact.
 
-**5.4 Is the "Deprecated type syntax" warning in scope?**
-It is a user-visible diagnostic (E-TYPE-006) with no location, so by the stated
-definition it is in scope. But it fires on **successful** runs, so improving it changes
-success-path *stderr*. Your hard constraint says never change success-path output.
-**Which wins?** My reading: the constraint is about program semantics and stdout, and
-adding a location to a stderr warning is squarely the project's purpose. Confirm.
+**5.4 — The deprecated-type-syntax warning is IN scope. DECIDED.**
+The hard constraint "never change success-path output" is read as covering program
+**semantics and stdout**. Adding a location to, and de-duplicating, a *stderr* warning is
+squarely the project's purpose. E-TYPE-006 gets a file:line and a block path. The same
+rule applies to any other success-path stderr warning discovered later.
 
-**5.5 Should silent-acceptance cases become errors?**
-E-PARSE-003 (duplicate YAML key, last wins, exit 0) and E-RUNTIME-012 (`for:` over a
-string iterates characters, exit 0) are the worst *user* experiences in the inventory —
-no diagnostic at all — but fixing them changes semantics, which is forbidden. Options:
-warn on stderr and keep exit 0; error; or leave alone and document. **Recommendation:
-warn-only, since a warning is a diagnostic and not a semantic change.**
+**5.5 — Duplicate YAML keys and `for:` over a string become ERRORS. DECIDED.**
 
-**5.6 Structured diagnostics for the viewer and the Rust interpreter?**
-The React timeline drops error blocks entirely (E-GUI-002) and the Rust interpreter has
-no location concept (E-RUST-001). Both would benefit from an emitted machine-readable
-diagnostic record (id, severity, file, span, path, message, notes) alongside the human
-text — which would also make the Phase-1 golden files structural rather than
-string-diff. That is a bigger commitment than "improve messages". **Scope in, or defer?**
+> **This overrides the "never change program semantics" hard constraint**, knowingly.
+> Programs that today exit 0 will exit 1.
 
-**5.7 Is the Rust interpreter in scope at all?**
-It is a second implementation with 23 ad-hoc error strings and no location type. Bringing
-it to parity is a project in itself. **Recommendation: out of scope for now; note the
-divergence and revisit.**
+Blast radius was measured before deciding, not assumed: across **205 `.pdl` files** in
+this repository there are **0 duplicate-key sites**, and among **39 `for:` blocks** none
+binds a string literal. Nothing in-tree breaks. The residual risk is to user programs
+outside the repository — accepted, and it should be called out in release notes.
+Resolves E-PARSE-003 and E-RUNTIME-012, the two worst entries in the catalogue.
 
-**5.8 Exit codes.**
-Everything currently exits 1 — but for S0 cases that is Python's default for an uncaught
-exception, indistinguishable from a deliberate failure. Rubric item 5 asks for a "stable
-exit code". Do you want distinct codes per class (e.g. 2 = parse/schema, 1 = runtime), or
-is "always 1, never a traceback" the target? Distinct codes would be a **public
-behaviour change** for anyone scripting `pdl`. **Recommendation: keep 1, and treat
-"no traceback ever reaches the user" as the invariant.**
+**5.6 — Structured diagnostic records, with a renderer on top. DECIDED.**
+Every diagnostic becomes a record — `id`, `severity`, `file`, `span`, `block path`,
+`message`, `notes`, `suggestions` — and a renderer turns it into the human text. Three
+consequences that reshape the earlier plan:
+- **Phase 1 changes.** Golden files diff the **structured record** as well as the
+  rendered stderr, so rewording a message does not churn every golden.
+- Fixes E-GUI-002 (the viewer currently drops error blocks:
+  `view/timeline/model.ts:157`, `// TODO show errors in trace`).
+- Gives the Rust interpreter a concrete target to converge on if it is ever brought in.
+
+The trace contract is already being opened by 5.2, so this rides along on the same
+version bump rather than costing a second one.
+
+**5.7 — The Rust interpreter is OUT of scope. DECIDED.**
+`pdl-live-react/src-tauri/src/pdl/interpreter.rs` stays as-is: 23 ad-hoc `format!` error
+strings, no location type. Documented as a known second implementation at parity zero
+(E-RUST-001), to revisit once the Python side is done. No Rust role in the Phase-2 team,
+no Rust toolchain in the harness.
+
+**5.8 — Exit code stays `1`. DECIDED.**
+No per-class codes; no opt-in flag. The rubric's "stable exit code" requirement is
+satisfied by a stronger invariant instead:
+
+> **Invariant: no Python traceback ever reaches the user.** Every failure exits `1` with
+> a formatted diagnostic. The Phase-1 harness asserts this globally, for every corpus
+> entry, independently of the per-entry golden.
+
+This is the acceptance test for all 14 S0 traceback entries and costs nothing for anyone
+scripting `pdl`.
 
 ---
 
-## 6. Suggested Phase-3 priority order
+## 6. Phase-3 priority order
 
-From the rubric-baseline perspective, ordered by (severity × blast radius) and respecting
-dependencies:
+Revised to reflect §5. Ordered by (severity × blast radius), respecting dependencies.
 
-1. **E-CLI-001/002, E-PARSE-001/002/005** — catch at the boundary. Kills 5 × S0 in one
-   contained change to `pdl.py` + `pdl_parser.py`, and PyYAML hands us line+column free.
-2. **E-MODEL-001** — the off-thread traceback. S0, and it makes the whole E-MODEL class
-   reachable by the formatter.
-3. **E-CODE-002** — move `result = my_namespace.result` inside the `try`. One line,
-   closes issue #386, S0.
+**Item 0 is new and is a direct consequence of 5.1/5.2/5.6.** The structured-record
+type, the renderer, the source registry and the YAML-marks loader are one coherent
+foundation that every later item builds on. It does not fit "one error ID per commit"
+because it belongs to no single error ID. It should land first, on its own branch, as an
+explicitly-flagged public-API/trace-format change, with `tests/test_line_table.py` and
+the viewer updated in the same series.
+
+0. **Foundation** — diagnostic record + renderer (5.6); YAML-marks `SafeLoader` and
+   source registry, `PdlLocationType` → `(file, line, col, path)` (5.1/5.2); trace format
+   bump and the matching `pdl-live-react` change. Everything below assumes it.
+
+Then, independent of each other and parallelisable across worktrees:
+
+1. **E-CLI-001/002/003/005, E-PARSE-001/002/005** — catch at the boundary. Kills 5 × S0
+   in a contained change to `pdl.py` + `pdl_parser.py`; PyYAML's marks are already there.
+2. **E-MODEL-001** — the off-thread traceback in `pdl_llms.py:66`. S0, and it is what
+   makes the whole E-MODEL class reachable by the formatter at all.
+3. **E-CODE-002** — move `result = my_namespace.result` inside the `try` at
+   `pdl_interpreter.py:2657`. One line, closes issue #386, S0.
 4. **E-RUNTIME-001/002** — catch `OSError` around `include`/`import`. S0.
 5. **E-LINT-002/003/004** — the linter's false green and its tracebacks. S0.
-6. **E-RUNTIME-007** — the missing `f`-prefix. Two characters.
-7. **DROP #10** — render `loc.path` as a block path. No plumbing, satisfies half of
-   rubric item 1 everywhere at once.
-8. **§5.1 real YAML marks**, then **§5.2 source registry**, then **E-EXPR-004/006**
-   (which those two fix).
-9. **E-PARSER-001…006** — thread `loc` into `parse_result`; include the offending text.
-10. **E-SCHEMA-006/007** via §5.3, then **E-SCHEMA-002** ("did you mean") and
-    **E-EXPR-001** ("in scope here").
+6. **E-RUNTIME-007** — the missing `f`-prefix at `pdl_interpreter.py:1875` and `:1894`.
+   Two characters.
+7. **Block paths everywhere** (DROP #10) — `get_loc_string` renders only `file:line` and
+   discards `loc.path`. Under the foundation this is a renderer change, and it satisfies
+   half of rubric item 1 across all ~70 IDs at once.
 
-Items 1–6 are independent of each other and of the location rework, so they parallelise
-cleanly across worktrees. Items 7–10 serialise on the location work.
+Then, serialised on the foundation:
+
+8. **E-EXPR-004 and E-EXPR-006** — the cross-file wrong-line bug and the comment-shift
+   bug, both fixed by 5.1/5.2; this item is the regression tests proving it.
+9. **E-PARSER-001…006** — thread location into `parse_result` (six raise sites currently
+   passing `loc=None`), and include the offending text (issue #387).
+10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
+    **E-EXPR-001** ("in scope here").
+11. **E-PARSE-003 and E-RUNTIME-012** — the two semantic changes from 5.5. Deliberately
+    last: they are the only items that can break a working user program, so they land
+    after everything else is green and get their own release note.
+12. **E-TYPE-006** — locate and de-duplicate the deprecation warning (5.4).

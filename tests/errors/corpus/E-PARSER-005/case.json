@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSER-005",
+  "title": "invalid regex in a parser",
+  "severity": "S1",
+  "rubric": {
+    "location": 0,
+    "what": 2,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 2
+  },
+  "notes": "Gives the position inside the regex but no position in the .pdl file."
+}

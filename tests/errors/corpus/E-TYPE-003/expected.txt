@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:7 - Type errors during function call to ${ greet }:
+prog.pdl:7 - Missing required field: name

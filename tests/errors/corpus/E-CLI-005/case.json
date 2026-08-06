@@ -1,0 +1,20 @@
+{
+  "id": "E-CLI-005",
+  "title": "python -m pdl.pdl reports success on failure",
+  "severity": "S0",
+  "entry": "python-m-pdl",
+  "argv": [
+    "--stream",
+    "none",
+    "prog.pdl"
+  ],
+  "expect_exit": 0,
+  "rubric": {
+    "location": 1,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "src/pdl/pdl.py ends in a bare main() with no sys.exit, so the module entry point always exits 0. The diagnostic itself is fine; the exit code silently lies. CI that runs `python -m pdl.pdl` never fails."
+}

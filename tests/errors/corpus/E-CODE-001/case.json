@@ -1,0 +1,14 @@
+{
+  "id": "E-CODE-001",
+  "title": "Python exception inside a code block",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 1,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "prog.pdl:0, then a traceback deliberately formatted INTO the message by call_python. Its first frames are PDL's own (pdl_interpreter.py:2649) before the user's <code-block> line 1. Nothing crashed -- this leak is by construction."
+}

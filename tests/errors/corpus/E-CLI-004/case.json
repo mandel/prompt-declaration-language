@@ -1,0 +1,21 @@
+{
+  "id": "E-CLI-004",
+  "title": "malformed pdl_model_default_parameters",
+  "severity": "S0",
+  "argv": [
+    "--stream",
+    "none",
+    "-d",
+    "{pdl_model_default_parameters: [{\"*\": 3}]}",
+    "prog.pdl"
+  ],
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Uncaught ValueError from pdl_utils.validate_pdl_model_defaults. Message names the value and matcher."
+}

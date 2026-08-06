@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSER-001",
+  "title": "json parser on non-JSON (issue #387)",
+  "severity": "S1",
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "No file, no line -- every E-PARSER site raises with loc=None. Reports a Python TypeError for a parse failure and never shows the offending text."
+}

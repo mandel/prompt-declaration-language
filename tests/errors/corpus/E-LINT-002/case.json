@@ -1,0 +1,18 @@
+{
+  "id": "E-LINT-002",
+  "title": "pdl-lint dumps a traceback for a YAML error",
+  "severity": "S0",
+  "entry": "pdl-lint",
+  "argv": [
+    "prog.pdl"
+  ],
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Bare `except Exception: logger.exception(...)` in _lint_pdl_file."
+}

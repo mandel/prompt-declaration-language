@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-003",
+  "title": "missing required field",
+  "severity": "S3",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "Names the missing field. 'field' is schema vocabulary for what the user experiences as a function definition."
+}

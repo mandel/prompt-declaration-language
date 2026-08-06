@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-010",
+  "title": "several schema faults report in unstable order",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_unstable_order": true
+  },
+  "notes": "NEW, found while building the harness. analyze_errors iterates set differences, so the five diagnostics come out in an order that varies with PYTHONHASHSEED. Goldens are only stable because the harness pins the seed."
+}

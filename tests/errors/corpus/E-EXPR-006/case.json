@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-006",
+  "title": "comment lines shift every reported line",
+  "severity": "S1",
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Reports line 2; the error is on line 5. get_line_map counts comment lines as structure. Any file with comments -- i.e. any real file -- is affected."
+}

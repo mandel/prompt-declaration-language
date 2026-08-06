@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Attempted to parse ill-formed JSON: TypeError("'int' object is not subscriptable")

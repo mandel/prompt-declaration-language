@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-006",
+  "title": "analyzer produces nothing, useless fallback",
+  "severity": "S1",
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "'The file PDL prog.pdl does not respect the schema.' No line, no field, no reason. The worst message in the taxonomy: it tells the user only that they already knew."
+}

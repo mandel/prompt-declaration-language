@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:0 - Missing required field: function
+prog.pdl:0 - Missing required field: return
+prog.pdl:4 - Field not allowed: foo
+prog.pdl:2 - Field not allowed: texts
+prog.pdl:5 - Field not allowed: bar

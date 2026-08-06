@@ -1,0 +1,14 @@
+$ exit: 1
+
+--- stdout ---
+hi
+
+--- stderr ---
+prog.pdl:0 - Python Code error: Traceback (most recent call last):
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 2508, in process_call_code
+    result = call_python(code_s, execution_scope, state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 2657, in call_python
+    result = my_namespace.result
+             ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'types.SimpleNamespace' object has no attribute 'result'

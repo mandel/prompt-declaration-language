@@ -1,0 +1,21 @@
+{
+  "id": "E-CLI-003",
+  "title": "malformed inline YAML passed to -d",
+  "severity": "S0",
+  "argv": [
+    "--stream",
+    "none",
+    "-d",
+    "{a: ",
+    "prog.pdl"
+  ],
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Uncaught yaml.scanner.ScannerError. PyYAML's line/column refer to the -d string, unlabelled."
+}

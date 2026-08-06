@@ -14,6 +14,7 @@ from pdl.pdl_dumper import (
 )
 from pdl.pdl_parser import PDLParseError, parse_file, parse_str
 from pdl.pdl_utils import write_trace
+from tests.pdl_files import all_pdl_files
 
 
 def has_include(block: BlockType) -> bool:
@@ -50,7 +51,7 @@ def _check_dump(yaml_file_name: pathlib.Path) -> None:
 def test_dump() -> None:
     with ThreadPoolExecutor() as executor:
         # Consume the iterator so any exception raised in a worker propagates.
-        for _ in executor.map(_check_dump, pathlib.Path(".").glob("**/*.pdl")):
+        for _ in executor.map(_check_dump, all_pdl_files()):
             pass
 
 
@@ -92,7 +93,7 @@ def test_dump_exclude_internals() -> None:
     check = partial(_check_dump_exclude_internals, known_internals=known_internals)
     with ThreadPoolExecutor() as executor:
         # Consume the iterator so any exception raised in a worker propagates.
-        for _ in executor.map(check, pathlib.Path(".").glob("**/*.pdl")):
+        for _ in executor.map(check, all_pdl_files()):
             pass
 
 

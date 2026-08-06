@@ -1,0 +1,13 @@
+{
+  "id": "E-TYPE-002",
+  "title": "function argument type mismatch",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "Unusually good: points at the argument, names the function. Still a doubled prefix and a <class 'str'> repr."
+}

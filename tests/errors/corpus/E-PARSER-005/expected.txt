@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')

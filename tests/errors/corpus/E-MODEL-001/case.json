@@ -1,0 +1,17 @@
+{
+  "id": "E-MODEL-001",
+  "title": "unrecognised model provider",
+  "severity": "S0",
+  "env": {
+    "PDL_TEST_MODEL": "bad_request"
+  },
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Uncaught traceback: pdl_llms.py:66 raises on the event-loop thread and surfaces through a concurrent.futures callback, bypassing generate()'s handler entirely. The PDLRuntimeError is constructed WITH a location that the user never sees."
+}

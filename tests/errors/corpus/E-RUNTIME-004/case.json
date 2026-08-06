@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-004",
+  "title": "read of a missing file reports line 0",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "'prog.pdl:0'. Top-level blocks have an empty location path, and get_line returns 0 for it. Clean message otherwise."
+}

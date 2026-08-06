@@ -1,0 +1,17 @@
+{
+  "id": "E-MODEL-002",
+  "title": "model endpoint unreachable",
+  "severity": "S2",
+  "env": {
+    "PDL_TEST_MODEL": "connect_error"
+  },
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "httpx.RequestError branch. Names the method and URL, which is genuinely useful."
+}

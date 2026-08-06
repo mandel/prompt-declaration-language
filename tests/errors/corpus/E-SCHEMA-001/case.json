@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-001",
+  "title": "unknown field in a model block",
+  "severity": "S3",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Best-in-class today. Accurate line, PDL vocabulary. No column, no block path, no list of valid fields."
+}

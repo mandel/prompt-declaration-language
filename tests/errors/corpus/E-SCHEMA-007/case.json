@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-007",
+  "title": "dict fails every block union branch",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 0,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "700-character single-line dump of 24 raw JSON-Schema $refs. Decision 5.3 fixes this via the existing pydantic discriminator."
+}

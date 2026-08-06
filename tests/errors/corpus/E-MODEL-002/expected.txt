@@ -1,0 +1,32 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2 - model 'ollama/granite' encountered ConnectError('[Errno 111] Connection refused') trying to POST against http://localhost:11434/api/chat
+exception calling callback for <Future at 0xADDR state=finished raised PDLRuntimeError>
+Traceback (most recent call last):
+  File "<REPO>/src/pdl/pdl_llms.py", line 45, in async_generate_text
+    response = await acompletion(
+               ^^^^^^^^^^^^^^^^^^
+  File "<REPO>/tests/errors/sitecustomize_stub/sitecustomize.py", line <STUBLINE>, in _acompletion
+    raise httpx.ConnectError(
+httpx.ConnectError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<PYLIB>/concurrent/futures/_base.py", line 340, in _invoke_callbacks
+    callback(self)
+  File "<REPO>/src/pdl/pdl_llms.py", line 99, in update_end_nanos
+    result = future.result()[1]
+             ^^^^^^^^^^^^^^^
+  File "<PYLIB>/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "<PYLIB>/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "<REPO>/src/pdl/pdl_llms.py", line 58, in async_generate_text
+    raise PDLRuntimeError(
+pdl.pdl_ast.PDLRuntimeError: model 'ollama/granite' encountered ConnectError('[Errno 111] Connection refused') trying to POST against http://localhost:11434/api/chat

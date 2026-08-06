@@ -1,0 +1,14 @@
+{
+  "id": "E-RUNTIME-012",
+  "title": "for over a string iterates characters",
+  "severity": "S0",
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 0
+  },
+  "notes": "No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error."
+}

@@ -1,0 +1,19 @@
+{
+  "id": "E-LINT-004",
+  "title": "pdl-lint reports success for a file it never checked",
+  "severity": "S0",
+  "entry": "pdl-lint",
+  "argv": [
+    "{WORKDIR}/outside.pdl"
+  ],
+  "cwd": "proj",
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "A file outside the detected project root is skipped with the reason 'in ignore list' -- which is false -- and the run reports success. A build that lints the wrong path is green forever. should_ignore conflates two conditions."
+}

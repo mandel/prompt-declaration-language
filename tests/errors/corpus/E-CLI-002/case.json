@@ -1,0 +1,19 @@
+{
+  "id": "E-CLI-002",
+  "title": "PDL path is a directory",
+  "severity": "S0",
+  "argv": [
+    "--stream",
+    "none",
+    "sub"
+  ],
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Uncaught IsADirectoryError. No hint that a .pdl file was expected."
+}

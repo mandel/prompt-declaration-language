@@ -1,0 +1,9 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+boom
+
+prog.pdl:0 - Shell Code error: ValueError('command exited with non zero code: 7')

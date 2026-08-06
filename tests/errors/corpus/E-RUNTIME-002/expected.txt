@@ -1,0 +1,46 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Traceback (most recent call last):
+  File "<VENV>/bin/pdl", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "<REPO>/src/pdl/pdl.py", line 331, in main
+    exit_code = pdl_interpreter.generate(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 235, in generate
+    future_result, _, _, trace = process_prog(state, initial_scope, prog, loc)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 295, in process_prog
+    result, document, final_scope, trace = process_block(
+                                           ^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 324, in process_block
+    result, background, scope, trace = process_advanced_block_timed(
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 392, in process_advanced_block_timed
+    result, background, scope, trace = process_advanced_block(state, scope, block, loc)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 462, in process_advanced_block
+    result, background, new_scope, trace = process_advance_block_retry(
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 796, in process_advance_block_retry
+    raise exc from exc
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 684, in process_advance_block_retry
+    result, background, new_scope, trace = process_block_body_with_replay(
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 931, in process_block_body_with_replay
+    result, background, scope, trace = process_block_body(state, scope, block, loc)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 945, in process_block_body
+    return process_structured_block(state, scope, block, loc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 1455, in process_structured_block
+    result, background, scope, trace = process_import(state, scope, block, loc)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line 2865, in process_import
+    with open(file, "r", encoding="utf-8") as pdl_fp:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'nosuch.pdl'

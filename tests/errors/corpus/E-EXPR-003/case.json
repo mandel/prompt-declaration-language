@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-003",
+  "title": "attribute missing on an object",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "'dict object' has no attribute 'x' -- Jinja vocabulary, and 'attribute' for a subscript the user wrote as ['x']."
+}

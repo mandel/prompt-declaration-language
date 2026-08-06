@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSE-001",
+  "title": "unterminated quoted scalar",
+  "severity": "S0",
+  "rubric": {
+    "location": 1,
+    "what": 0,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "13-frame traceback. PyYAML computes the correct line AND column and names the file '<unicode string>'. All of it is thrown away by not catching the exception."
+}

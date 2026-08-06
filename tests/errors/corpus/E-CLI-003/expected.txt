@@ -1,0 +1,53 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Traceback (most recent call last):
+  File "<VENV>/bin/pdl", line 6, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "<REPO>/src/pdl/pdl.py", line 294, in main
+    initial_scope = initial_scope | yaml.safe_load(args.data)
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/__init__.py", line 125, in safe_load
+    return load(stream, SafeLoader)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/__init__.py", line 81, in load
+    return loader.get_single_data()
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/constructor.py", line 49, in get_single_data
+    node = self.get_single_node()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/composer.py", line 36, in get_single_node
+    document = self.compose_document()
+               ^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/composer.py", line 55, in compose_document
+    node = self.compose_node(None, None)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/composer.py", line 84, in compose_node
+    node = self.compose_mapping_node(anchor)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/composer.py", line 133, in compose_mapping_node
+    item_value = self.compose_node(node, item_key)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/composer.py", line 64, in compose_node
+    if self.check_event(AliasEvent):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/parser.py", line 98, in check_event
+    self.current_event = self.state()
+                         ^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/parser.py", line 574, in parse_flow_mapping_value
+    return self.parse_flow_node()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/parser.py", line 268, in parse_flow_node
+    return self.parse_node()
+           ^^^^^^^^^^^^^^^^^
+  File "<VENV><SITE>/yaml/parser.py", line 369, in parse_node
+    raise ParserError("while parsing a %s node" % node, start_mark,
+yaml.parser.ParserError: while parsing a flow node
+expected the node content, but found '<stream end>'
+  in "<unicode string>", line 1, column 5:
+    {a:
+        ^

@@ -1,0 +1,13 @@
+{
+  "id": "E-TYPE-001",
+  "title": "block result violates its spec",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "Two lines, each carrying its own file:line prefix for one logical diagnostic. Second line leaks a Python type repr."
+}

@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:5 - Error during the evaluation of Hello ${ nope }: 'nope' is undefined

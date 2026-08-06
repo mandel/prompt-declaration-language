@@ -1,0 +1,9 @@
+$ exit: 0
+
+--- stdout ---
+ - ℹ️  SKIPPING <WORKDIR>/outside.pdl (in ignore list)
+----------------------------------------------------------------------------------------------------
+🎉  All files linted successfully 🎉
+
+--- stderr ---
+⚠️  No PDL linter configuration file found or section usable in <WORKDIR>/proj. Using default configuration.

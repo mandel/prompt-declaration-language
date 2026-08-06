@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-002",
+  "title": "Jinja syntax error",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "TemplateSyntaxError carries .lineno/.source; only str(exc) is interpolated."
+}

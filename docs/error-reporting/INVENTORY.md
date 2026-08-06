@@ -1,6 +1,11 @@
 # PDL Error Reporting — Phase 0 Inventory
 
-Status: **recon only**. No behaviour has been changed.
+Status: **recon complete; Phase 1 harness built.** No behaviour has been changed.
+Every taxonomy entry with a corpus reproducer is now pinned by a golden transcript under
+`tests/errors/corpus/`, scored against [`RUBRIC.md`](RUBRIC.md), and tabulated in
+[`BASELINE.md`](BASELINE.md). Phase 1 corrected one Phase-0 misreading (DROP #9) and
+added two entries that only surfaced once reproducers were run: **E-CLI-005** and
+**E-SCHEMA-010**.
 
 Provenance of the quoted messages: rows marked **[obs]** were captured by running the
 current tree (commit `92ba118f6`, `prompt-declaration-language 0.1.dev50+g92ba118f6`)
@@ -26,7 +31,7 @@ invoked as `pdl --stream none <prog>.pdl`, stdout and stderr captured separately
 | `pdl_location_utils.py` | `get_line_map:73`, `get_loc_string:94`, `get_line:102` | The entire location model. See §3. |
 | `pdl_ast.py` | `:1631-1682` | Exception hierarchy: `PDLException` → `PDLRuntimeError` → {`PDLRuntimeExpressionError`, `PDLRuntimeParserError`}; `PDLException` → `PDLRuntimeProcessBlocksError`. Carry `message`, `loc`, `pdl__trace`, `fallback`, `source_exception`. No rendering logic. |
 | `pdl_interpreter.py` | **56 raise sites**; `generate:243-254` is the only formatter | `generate` prints `get_loc_string(exc.loc) + exc.message` to stderr and returns 1. Everything not derived from `PDLException` escapes as a traceback. |
-| `pdl_llms.py` | `:57-70` | LiteLLM errors. Raised **on the event-loop thread inside a coroutine**; surfaces through a `concurrent.futures` callback, so it never reaches `generate`'s handler. |
+| `pdl_llms.py` | `:57-70`, `:99` | LiteLLM errors. `generate` prints these correctly; the defect is that `update_end_nanos` (`:99`) re-raises the same exception from an unguarded `concurrent.futures` done-callback, so every model failure is reported twice — once as a diagnostic, once as a traceback. |
 | `pdl_openai.py` | `:130`, `:138` | Same message shapes as `pdl_llms.py`. |
 | `pdl_granite_io.py` | `:107` | `Error during processor (...) execution: <repr>`. |
 | `pdl_context.py` | `:156` | `TypeError(f"'{type(context)}' object is not a valid context")` — leaks into model-call messages (issue #383). |
@@ -75,6 +80,7 @@ caret, or a block path.** That is uniform, so it is not repeated per row.
 | E-CLI-002 [obs] | `pdl .` (directory) | `IsADirectoryError: [Errno 21] Is a directory: '.'` + traceback | none | **S0** |
 | E-CLI-003 [obs] | `pdl -d '{a: '` (malformed inline YAML) | raw `yaml.scanner.ScannerError` traceback | none | **S0** |
 | E-CLI-004 [obs] | malformed `pdl_model_default_parameters` in `-f` file | `ValueError: invalid defaults ... for model matcher ...` or bare `AssertionError` | none | **S0** |
+| E-CLI-005 [obs] | any failure under `python -m pdl.pdl` | the diagnostic is correct, but the process **exits 0**. `src/pdl/pdl.py` ends in a bare `main()` with no `sys.exit`, so the module entry point always reports success; only the setuptools console script wraps it. CI invoking `python -m pdl.pdl` can never fail | file:line | **S0** |
 
 ### E-PARSE — YAML level
 
@@ -105,6 +111,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 | E-SCHEMA-007 [obs] | dict fails every union branch (`- foo: bar` in a `text`) | `union_wall.pdl:3 - {'foo': 'bar'} should be of type: {'oneOf': [{'$ref': '#/$defs/ExpressionBlock'}, ... 24 refs ...]}` — a **1-line, 700-char dump of raw JSON Schema** | file:line | **S1** |
 | E-SCHEMA-008 [obs] | same, for `contribute` | `contrib_bad.pdl:3 - {'result': 1, 'context': 2} should be of type: {'anyOf': [{'$ref': '#/$defs/ContributeTarget'}, ...]}` | file:line | **S1** |
 | E-SCHEMA-009 [src] | list/object shape mismatch | `<value> should be a list` / `should be an object` / `should not be a list` | file:line | S2 |
+| E-SCHEMA-010 [obs] | a program with several schema faults | the same diagnostics, **in an order that changes between processes**. `analyze_errors` builds its list by iterating `set` differences (`pdl_schema_error_analyzer.py:139`, `:145`), so message order depends on `PYTHONHASHSEED`. Verified across six seeds | file:line | **S1** |
 
 ### E-EXPR — Jinja expression evaluation
 
@@ -173,8 +180,8 @@ with no file at all.
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
-| E-MODEL-001 [obs] | unknown provider | **uncaught traceback** ending in `pdl.pdl_ast.PDLRuntimeError: Error during 'not_a_provider/nope' model call: litellm.BadRequestError: ...` — raised on the event-loop thread in `pdl_llms.py:66`, surfaced via a `concurrent.futures` callback, bypassing `generate` entirely | none | **S0** |
-| E-MODEL-002 [src] | network failure | `model '<id>' encountered <repr(exc)> trying to <METHOD> against <URL>` | `block.pdl__location` | S2 |
+| E-MODEL-001 [obs] | unknown provider | `prog.pdl:2 - Error during '<id>' model call: litellm.BadRequestError: ...` — **correct, located, and then followed by a two-part traceback**: `exception calling callback for <Future ...>` plus ~20 frames. `generate` does handle it; the duplicate arrives separately from a `concurrent.futures` done-callback in `pdl_llms.py:99` | file:line, then buried | **S0** |
+| E-MODEL-002 [obs] | network failure | `prog.pdl:2 - model '<id>' encountered ConnectError(...) trying to POST against <URL>` — genuinely informative, then the same duplicated traceback as E-MODEL-001 | file:line, then buried | **S0** |
 | E-MODEL-003 [src] | OpenAI backend failure | `Error during '<id>' model call: <repr>` | `block.pdl__location` | S2 |
 | E-MODEL-004 [src] | granite-io processor failure | `Error during processor (<p>) execution: <repr>` | `block.pdl__location` | S2 |
 | E-MODEL-005 [obs] | malformed `input:` message (**issue #383**) | `i383.pdl:2 - Error during '<id>' model call: TypeError("'<class 'str'>' object is not a valid context")` — blames the *model call*; the real fault is a message with no `content`, which PDL could detect **before** dialling out | file:line (of the model block, not the bad message) | **S1** |
@@ -230,7 +237,8 @@ every `process_*` function (41 `append()` call sites, plus a `loc` parameter on 
             ├── execute_call   → **mixes callee file+path with caller table**   ← DROP #6 (bug)
             ├── _process_expr  → attaches field-level loc; Jinja's own offset discarded ← DROP #7
             ├── parse_result   → raises with loc=None                           ← DROP #8
-            └── model backends → raise off-thread, bypassing the printer        ← DROP #9
+            └── model backends → printed correctly, then duplicated as a
+                                 traceback by a futures callback            ← DROP #9
                     │
    get_loc_string(loc) ──► "file:line - "   — `path` is **never rendered**      ← DROP #10
 ```
@@ -315,11 +323,15 @@ start column).
 E-PARSER class has *no file name at all*. The fix is mechanical: `parse_result` is called
 from sites that have `loc` in hand.
 
-**DROP #9 — model errors bypass the printer.** `pdl_llms.py:66` raises inside
-`async_generate_text`, executed on `state.event_loop` via `run_coroutine_threadsafe`. The
-exception is re-raised from a `concurrent.futures` done-callback, on a different stack
-from `generate`'s `try`. Result: a traceback, despite the `PDLRuntimeError` being
-correctly constructed *with* a location (E-MODEL-001).
+**DROP #9 — model errors are printed correctly and then dumped again as a traceback.**
+Corrected during Phase 1: my first reading of this path was wrong. `generate` *does*
+catch the `PDLRuntimeError` and print a properly located diagnostic. The damage is a
+*second*, duplicate report: `pdl_llms.py:66` raises inside `async_generate_text` on
+`state.event_loop`, and `update_end_nanos` (`pdl_llms.py:99`) calls `future.result()`
+from a `concurrent.futures` done-callback that has no handler, so Python prints
+`exception calling callback for <Future ...>` followed by ~20 frames. The user sees the
+right answer and then a crash report for the same event. Fixing this is about the
+callback, not the printer.
 
 **DROP #10 — `path` is computed and then never shown.** `get_loc_string`
 (`pdl_location_utils.py:94-99`) renders only `file:line`. `loc.path` — the exact block

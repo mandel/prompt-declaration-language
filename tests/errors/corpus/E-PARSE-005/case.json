@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSE-005",
+  "title": "non-UTF-8 bytes in source",
+  "severity": "S0",
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "UnicodeDecodeError traceback from parse_file:19. Byte offset given, line not."
+}

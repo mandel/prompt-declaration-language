@@ -1,0 +1,13 @@
+{
+  "id": "E-CODE-003",
+  "title": "shell command exits non-zero",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "Wrapped as 'prog.pdl:0 - Shell Code error: ValueError(...)'. The command's own stderr ('boom') is printed separately, above and unconnected to the diagnostic, so the two halves of the story arrive as two unrelated messages."
+}

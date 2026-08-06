@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+sub/imported.pdl:1 - Error during the evaluation of ${ kaboom }: 'kaboom' is undefined

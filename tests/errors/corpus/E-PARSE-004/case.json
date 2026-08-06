@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSE-004",
+  "title": "empty program file",
+  "severity": "S2",
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "Prints 'null' and exits 0. Arguably valid; more likely a truncated file."
+}

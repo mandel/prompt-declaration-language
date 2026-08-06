@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1 - Error during the evaluation of ${ {}['x'] }: 'dict object' has no attribute 'x'

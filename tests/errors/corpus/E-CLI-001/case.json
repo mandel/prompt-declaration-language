@@ -1,0 +1,19 @@
+{
+  "id": "E-CLI-001",
+  "title": "PDL file does not exist",
+  "severity": "S0",
+  "argv": [
+    "--stream",
+    "none",
+    "no_such_file.pdl"
+  ],
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "Uncaught FileNotFoundError from parse_file:19. The filename is the only usable content."
+}

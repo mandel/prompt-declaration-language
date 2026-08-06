@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+ - ❌  prog.pdl
+     PDLParseError: ['prog.pdl:5 - Field not allowed: parameterss']
+----------------------------------------------------------------------------------------------------
+😮  Linting failed for 1 file(s):
+ - prog.pdl
+
+--- stderr ---
+⚠️  No PDL linter configuration file found or section usable in <WORKDIR>. Using default configuration.

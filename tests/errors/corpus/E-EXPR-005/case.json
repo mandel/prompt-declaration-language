@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-005",
+  "title": "error inside a called function has no call stack",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Correct line inside the function body, but nothing says which call site reached it. With recursion or a shared helper this is the whole question."
+}

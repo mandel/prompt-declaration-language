@@ -1,0 +1,14 @@
+{
+  "id": "E-CODE-002",
+  "title": "code block never assigns result (issue #386)",
+  "severity": "S0",
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "REGRESSED since #386 was filed: was 'foo.pdl:0 - Code error: AttributeError(...)', now an uncaught traceback, because `result = my_namespace.result` sits outside the try at pdl_interpreter.py:2657. One-line fix."
+}

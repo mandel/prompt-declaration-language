@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-002",
+  "title": "near-miss field name (typo)",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "One character from 'description' and the message is identical to E-SCHEMA-001. No 'did you mean'. Highest-value Fix win in the taxonomy."
+}

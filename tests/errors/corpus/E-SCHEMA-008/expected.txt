@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3 - {'result': 1, 'context': 2} should be of type: {'anyOf': [{'$ref': '#/$defs/ContributeTarget'}, {'type': 'string'}, {'additionalProperties': {'$ref': '#/$defs/ContributeValue'}, 'type': 'object'}]}

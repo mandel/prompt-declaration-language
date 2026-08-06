@@ -1,0 +1,3 @@
+lang: command
+code: |
+  /bin/sh -c "echo boom >&2; exit 7"

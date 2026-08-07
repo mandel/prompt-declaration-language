@@ -1,5 +1,10 @@
+import sys
+
+import pytest
+
 from pdl.pdl import exec_dict, exec_str
 from pdl.pdl_context import SerializeMode
+from pdl.pdl_interpreter import PDLRuntimeError
 
 python_data = {
     "description": "Hello world showing call out to python code",
@@ -19,6 +24,112 @@ python_data = {
 def test_python():
     text = exec_dict(python_data)
     assert text == "Hello, Tracy!\n"
+
+
+def test_python_result_inherited_from_scope():
+    """A `result` already in scope is the block's value even if the code never
+    assigns one. The code block's namespace is seeded from the PDL scope, so
+    this has always worked and the missing-`result` diagnostic must not break
+    it."""
+    prog_str = """
+defs:
+  result:
+    data: 42
+lastOf:
+- lang: python
+  code: |
+    print('side effect')
+"""
+    assert exec_str(prog_str) == 42
+
+
+def test_python_missing_result_printed_value():
+    prog_str = """
+lang: python
+code: |
+  print('hi')
+"""
+    with pytest.raises(PDLRuntimeError) as exc:
+        exec_str(prog_str)
+    assert exc.value.message == (
+        "code block finished without assigning `result`\n"
+        "\n"
+        "  A `code:` block's value is whatever its code assigns to the variable\n"
+        "  `result`. This block assigned nothing.\n"
+        "\n"
+        "  note: `print(...)` writes to stdout; it does not set the block's value.\n"
+        "  help: assign the value instead of printing it:  result = 'hi'"
+    )
+
+
+def test_python_missing_result_one_assigned_name():
+    prog_str = """
+lang: python
+code: |
+  total = 1 + 2
+"""
+    with pytest.raises(PDLRuntimeError) as exc:
+        exec_str(prog_str)
+    assert "This block assigned `total`, but not `result`." in exc.value.message
+    assert exc.value.message.endswith("help: assign it to `result`:  result = total")
+
+
+def test_python_missing_result_near_miss():
+    prog_str = """
+lang: python
+code: |
+  resutl = 1
+  other = 2
+"""
+    with pytest.raises(PDLRuntimeError) as exc:
+        exec_str(prog_str)
+    assert "This block assigned `resutl`, but not `result`." in exc.value.message
+    assert exc.value.message.endswith("help: did you mean to name it `result`?")
+
+
+def test_python_missing_result_several_names_in_binding_order():
+    """The name list comes from ordered `dict` iteration, so it does not vary
+    with `PYTHONHASHSEED`, and the suggestion picks the last name bound."""
+    prog_str = """
+lang: python
+code: |
+  a = 1
+  b = 2
+  c = 3
+"""
+    with pytest.raises(PDLRuntimeError) as exc:
+        exec_str(prog_str)
+    assert "This block assigned `a`, `b`, `c`, but not `result`." in exc.value.message
+    assert exc.value.message.endswith(
+        "help: assign one of them to `result`:  result = c"
+    )
+
+
+def test_python_failing_block_does_not_grow_sys_path():
+    """`call_python` pushes the program's directory onto `sys.path`; the pop
+    used to be skipped whenever the block failed."""
+    before = list(sys.path)
+    with pytest.raises(PDLRuntimeError):
+        exec_str("lang: python\ncode: |\n  raise ValueError('boom')\n")
+    assert sys.path == before
+    with pytest.raises(PDLRuntimeError):
+        exec_str("lang: python\ncode: |\n  pass\n")
+    assert sys.path == before
+
+
+def test_python_missing_result_no_print():
+    prog_str = """
+lang: python
+code: |
+  import os
+  os.getcwd()
+"""
+    with pytest.raises(PDLRuntimeError) as exc:
+        exec_str(prog_str)
+    assert "note:" not in exc.value.message
+    assert exc.value.message.endswith(
+        "help: a code block must end by assigning its value, e.g. `result = ...`"
+    )
 
 
 def show_result_data(show):

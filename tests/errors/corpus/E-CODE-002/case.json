@@ -3,12 +3,11 @@
   "title": "code block never assigns result (issue #386)",
   "severity": "S0",
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 0,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "location": 1,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
   },
-  "notes": "REGRESSED since #386 was filed: was 'foo.pdl:0 - Code error: AttributeError(...)', now an uncaught traceback, because `result = my_namespace.result` sits outside the try at pdl_interpreter.py:2657. One-line fix."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-CODE-002.md). `call_python` reads `result` with `hasattr`/`getattr` and raises a module-private `_MissingResultError`, re-raised on the block's `code` key so the line is 2 rather than 0. The message names the `result` contract, reports what the code did bind, and computes the fix from the code's own AST -- here, the single top-level `print('hi')` becomes `result = 'hi'`. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered; both remaining points are foundation work (phase-3 items 0 and 7), not this error ID."
 }

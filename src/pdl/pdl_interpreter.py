@@ -1,12 +1,15 @@
 # pylint: disable=import-outside-toplevel
+import ast
 import builtins
 import csv
+import difflib
 import json
 import random
 import re
 import shlex
 import subprocess  # nosec
 import sys
+import textwrap
 import time
 import traceback
 import types
@@ -2515,6 +2518,19 @@ def process_call_code(
                         }
                     )
                 )
+            except _MissingResultError as exc:
+                # The code ran fine; it just never set the block's value. Point
+                # at the `code` key rather than at the block as a whole, and
+                # keep the `Python Code error:` prefix off a message that is
+                # about a PDL rule.
+                raise PDLRuntimeError(
+                    exc.message,
+                    loc=append(loc, "code"),
+                    trace=block.model_copy(
+                        update={"code": code_s, "pdl__defsite": block.pdl__id}
+                    ),
+                    source_exception=exc,
+                ) from exc
             except PDLRuntimeExpressionError as exc:
                 raise PDLRuntimeError(
                     f"Python Code error: {exc.message}",
@@ -2641,8 +2657,147 @@ def process_call_code(
 __PDL_SESSION = types.SimpleNamespace()
 
 
+class _MissingResultError(PDLRuntimeExpressionError):
+    """A Python `code:` block ran to completion without assigning `result`.
+
+    Module private on purpose: `call_python` has neither the block nor its
+    location, so it cannot raise a located error itself. `process_call_code`
+    catches this before the general `PDLRuntimeExpressionError` clause and
+    re-raises it as a `PDLRuntimeError` on the block's `code` key, without the
+    `Python Code error:` prefix -- that prefix says the code errored, and this
+    code did not.
+    """
+
+
+_MISSING_RESULT_MESSAGE = "code block finished without assigning `result`"
+
+_MISSING_RESULT_RULE = (
+    "A `code:` block's value is whatever its code assigns to the variable `result`."
+)
+
+_MISSING_RESULT_GENERIC_HELP = (
+    "a code block must end by assigning its value, e.g. `result = ...`"
+)
+
+_PRINT_NOTE = "`print(...)` writes to stdout; it does not set the block's value."
+
+_MISSING_RESULT_WIDTH = 76
+
+_MISSING_RESULT_MAX_NAMES = 5
+
+
+def _assigned_names(namespace: dict[str, Any], bound_before: set[str]) -> list[str]:
+    """The names a code block bound, in binding order.
+
+    Ordered `dict` iteration, never a `set` difference: the message must not
+    depend on `PYTHONHASHSEED`. Imported modules and private/dunder names are
+    dropped, as is anything the PDL scope already provided -- which means a name
+    that was in scope and got reassigned does not show up here.
+    """
+    return [
+        name
+        for name, value in namespace.items()
+        if name not in bound_before
+        and name != "__builtins__"
+        and not name.startswith("_")
+        and not isinstance(value, types.ModuleType)
+    ]
+
+
+def _print_expression(code: str) -> tuple[bool, str | None]:
+    """Whether the code mentions `print`, and what it printed.
+
+    The second element is the source of the argument of the block's only
+    top-level `print(<expr>)` call, when there is exactly one such call and it
+    takes a single positional argument. That is the case where the fix can be
+    spelled out; anything else only earns the generic advice.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:  # pragma: no cover - the code compiled a moment ago
+        return False, None
+    uses_print = any(
+        isinstance(node, ast.Name) and node.id == "print" for node in ast.walk(tree)
+    )
+    if not uses_print:
+        return False, None
+    calls = [
+        stmt.value
+        for stmt in tree.body
+        if isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name)
+        and stmt.value.func.id == "print"
+    ]
+    if len(calls) != 1:
+        return True, None
+    call = calls[0]
+    if len(call.args) != 1 or call.keywords or isinstance(call.args[0], ast.Starred):
+        return True, None
+    return True, ast.unparse(call.args[0])
+
+
+def _name_list(names: list[str]) -> str:
+    shown = ", ".join(f"`{name}`" for name in names[:_MISSING_RESULT_MAX_NAMES])
+    if len(names) > _MISSING_RESULT_MAX_NAMES:
+        shown += f", and {len(names) - _MISSING_RESULT_MAX_NAMES} more"
+    return shown
+
+
+def _missing_result_diagnostic(code: str, assigned: list[str]) -> str:
+    """The message body for a `code:` block that never assigned `result`.
+
+    One diagnostic, several renderings: the evidence sentence says what was
+    found, the `help:` line says what to do about it.
+    """
+    note: str | None = None
+    replacement: str | None = None
+    if len(assigned) == 0:
+        evidence = "This block assigned nothing."
+        uses_print, printed = _print_expression(code)
+        if uses_print:
+            note = _PRINT_NOTE
+        if printed is not None:
+            suggestion = "assign the value instead of printing it"
+            replacement = f"result = {printed}"
+        else:
+            suggestion = _MISSING_RESULT_GENERIC_HELP
+    elif len(assigned) == 1:
+        evidence = f"This block assigned `{assigned[0]}`, but not `result`."
+        suggestion = "assign it to `result`"
+        replacement = f"result = {assigned[0]}"
+    else:
+        near = difflib.get_close_matches("result", assigned, n=1, cutoff=0.6)
+        if near:
+            evidence = f"This block assigned `{near[0]}`, but not `result`."
+            suggestion = "did you mean to name it `result`?"
+        else:
+            evidence = f"This block assigned {_name_list(assigned)}, but not `result`."
+            suggestion = "assign one of them to `result`"
+            replacement = f"result = {assigned[-1]}"
+
+    lines = [_MISSING_RESULT_MESSAGE, ""]
+    lines += textwrap.wrap(
+        f"{_MISSING_RESULT_RULE} {evidence}",
+        width=_MISSING_RESULT_WIDTH,
+        initial_indent="  ",
+        subsequent_indent="  ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    lines.append("")
+    if note is not None:
+        lines.append(f"  note: {note}")
+    if replacement is None:
+        lines.append(f"  help: {suggestion}")
+    else:
+        lines.append(f"  help: {suggestion}:  {replacement}")
+    return "\n".join(lines)
+
+
 def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy[Any]:
     my_namespace = types.SimpleNamespace(PDL_SESSION=__PDL_SESSION, **scope)
+    bound_before = set(my_namespace.__dict__)
     sys.path.append(str(state.cwd))
     try:
         c = compile(code, "<code-block>", "exec")
@@ -2654,8 +2809,19 @@ def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy
     except Exception as exc:
         message = traceback.format_exc()
         raise PDLRuntimeExpressionError(message, source_exception=exc) from exc
-    result = my_namespace.result
-    sys.path.pop()
+    else:
+        # `hasattr`, not attribute access: a PDL variable named `result` that is
+        # already in scope was copied into the namespace above, and a block that
+        # inherits it that way keeps working.
+        if not hasattr(my_namespace, "result"):
+            raise _MissingResultError(
+                _missing_result_diagnostic(
+                    code, _assigned_names(my_namespace.__dict__, bound_before)
+                )
+            )
+        result = getattr(my_namespace, "result")
+    finally:
+        sys.path.pop()
     return PdlConst(result)
 
 

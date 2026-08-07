@@ -7,26 +7,26 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **44 corpus entries**, one per reproducible taxonomy class.
-- **190 / 660** rubric points (**29%**).
-- **15 entries leak a Python traceback** to the user.
+- **203 / 660** rubric points (**31%**).
+- **14 entries leak a Python traceback** to the user.
 - **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 24 | 132 | 0.55 |
-| What | 42 | 132 | 0.95 |
-| Why | 54 | 132 | 1.23 |
-| Fix | 9 | 132 | 0.20 |
-| Hygiene | 61 | 132 | 1.39 |
+| Location | 25 | 132 | 0.57 |
+| What | 45 | 132 | 1.02 |
+| Why | 57 | 132 | 1.30 |
+| Fix | 12 | 132 | 0.27 |
+| Hygiene | 64 | 132 | 1.45 |
 
 ## By error class
 
 | Class | Entries | Score | of | Mean / 15 |
 | --- | ---: | ---: | ---: | ---: |
 | E-CLI | 5 | 12 | 75 | 2.4 |
-| E-CODE | 3 | 11 | 45 | 3.7 |
+| E-CODE | 3 | 24 | 45 | 8.0 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 11 | 60 | 2.8 |
 | E-MODEL | 2 | 10 | 30 | 5.0 |
@@ -40,7 +40,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| `E-CODE-002` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | TB | code block never assigns result (issue #386) |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | for over a string iterates characters |
 | `E-CLI-001` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | PDL file does not exist |
@@ -84,6 +83,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-003` | S3 | 1 | 2 | 1 | 1 | 3 | **8** | `█████░░░░░` |  | missing required field |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
+| `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
 
 ## Notes per entry
 
@@ -106,7 +106,7 @@ src/pdl/pdl.py ends in a bare main() with no sys.exit, so the module entry point
 prog.pdl:0, then a traceback deliberately formatted INTO the message by call_python. Its first frames are PDL's own (pdl_interpreter.py:2649) before the user's <code-block> line 1. Nothing crashed -- this leak is by construction.
 
 **`E-CODE-002`** — code block never assigns result (issue #386)  
-REGRESSED since #386 was filed: was 'foo.pdl:0 - Code error: AttributeError(...)', now an uncaught traceback, because `result = my_namespace.result` sits outside the try at pdl_interpreter.py:2657. One-line fix.
+Fixed (spec docs/error-reporting/specs/E-CODE-002.md). `call_python` reads `result` with `hasattr`/`getattr` and raises a module-private `_MissingResultError`, re-raised on the block's `code` key so the line is 2 rather than 0. The message names the `result` contract, reports what the code did bind, and computes the fix from the code's own AST -- here, the single top-level `print('hi')` becomes `result = 'hi'`. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered; both remaining points are foundation work (phase-3 items 0 and 7), not this error ID.
 
 **`E-CODE-003`** — shell command exits non-zero  
 Wrapped as 'prog.pdl:0 - Shell Code error: ValueError(...)'. The command's own stderr ('boom') is printed separately, above and unconnected to the diagnostic, so the two halves of the story arrive as two unrelated messages.

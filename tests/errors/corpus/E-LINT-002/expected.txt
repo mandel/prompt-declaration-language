@@ -3,46 +3,46 @@ $ exit: 1
 --- stdout ---
  - ❌  prog.pdl
 Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_linter.py", line 371, in _lint_pdl_file
+  File "<REPO>/src/pdl/pdl_linter.py", line <LINE>, in _lint_pdl_file
     prog, _ = parse_pdl_file(file_path)
               ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line 21, in parse_file
+  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
     return parse_str(prog_str, file_name=str(pdl_file))
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line 30, in parse_str
+  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_str
     prog_dict = yaml.safe_load(pdl_str)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line 125, in safe_load
+  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in safe_load
     return load(stream, SafeLoader)
            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line 81, in load
+  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in load
     return loader.get_single_data()
            ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/constructor.py", line 49, in get_single_data
+  File "<VENV><SITE>/yaml/constructor.py", line <LINE>, in get_single_data
     node = self.get_single_node()
            ^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 36, in get_single_node
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in get_single_node
     document = self.compose_document()
                ^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 55, in compose_document
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_document
     node = self.compose_node(None, None)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 84, in compose_node
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
     node = self.compose_mapping_node(anchor)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 133, in compose_mapping_node
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_mapping_node
     item_value = self.compose_node(node, item_key)
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 82, in compose_node
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
     node = self.compose_sequence_node(anchor)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line 110, in compose_sequence_node
+  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_sequence_node
     while not self.check_event(SequenceEndEvent):
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line 98, in check_event
+  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in check_event
     self.current_event = self.state()
                          ^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line 392, in parse_block_sequence_entry
+  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in parse_block_sequence_entry
     raise ParserError("while parsing a block collection", self.marks[-1],
 yaml.parser.ParserError: while parsing a block collection
   in "<unicode string>", line 2, column 3:

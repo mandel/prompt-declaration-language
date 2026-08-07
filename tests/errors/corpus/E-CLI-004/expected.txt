@@ -5,13 +5,13 @@ $ exit: 1
 
 --- stderr ---
 Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line 6, in <module>
+  File "<VENV>/bin/pdl", line <LINE>, in <module>
     sys.exit(main())
              ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line 295, in main
+  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
     validate_scope(initial_scope)
-  File "<REPO>/src/pdl/pdl_utils.py", line 208, in validate_scope
+  File "<REPO>/src/pdl/pdl_utils.py", line <LINE>, in validate_scope
     validate_pdl_model_defaults(scope["pdl_model_default_parameters"])
-  File "<REPO>/src/pdl/pdl_utils.py", line 218, in validate_pdl_model_defaults
+  File "<REPO>/src/pdl/pdl_utils.py", line <LINE>, in validate_pdl_model_defaults
     raise ValueError(
 ValueError: invalid defaults 3 for model matcher *

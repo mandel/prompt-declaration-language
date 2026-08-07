@@ -213,13 +213,31 @@ _SUBSTITUTIONS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"\n ?Pass model as E\.g\..*?(?=\n\S|\n*\Z)", re.DOTALL),
         "\n<LITELLM PROVIDER HELP>",
     ),
-    # Traceback frames pointing into the harness's own model stub. The stub is
-    # test scaffolding, not part of the UX under measurement, so editing it must
-    # not churn goldens. Line numbers in *PDL's* frames are deliberately kept:
-    # they are evidence about where a diagnostic escaped.
+    # Line numbers inside traceback frames, from any file.
+    #
+    # These were kept at first, as evidence of where a diagnostic escaped. That
+    # was wrong: it made every edit to `pdl_interpreter.py` renumber the frames
+    # in every golden that still leaks a traceback through it, so fixing one
+    # error ID churned the goldens of seven unrelated ones. That breaks the
+    # one-error-ID-per-commit rule and buries the real UX delta in noise.
+    #
+    # The file and the function name are what carry the evidence, and both
+    # survive. The line number is incidental and changes constantly.
+    #
+    # Two deliberate exclusions:
+    #
+    # Only frames naming a real path (one containing `/`) are normalized.
+    # Pseudo-files keep their numbers, because `File "<code-block>", line 1`
+    # names the line of the *user's own code* that failed -- that is diagnostic
+    # content, it is stable, and a future fix that surfaces it better must show
+    # up in the golden rather than be hidden by this rule.
+    #
+    # Anchored on the `File "...", line N` frame form. PyYAML writes diagnostic
+    # content as `in "...", line N, column M`, the real location of the user's
+    # error, which must never be normalized.
     (
-        re.compile(r'(File "<REPO>/tests/errors/sitecustomize_stub/[^"]+", line )\d+'),
-        r"\1<STUBLINE>",
+        re.compile(r'(File "[^"]*/[^"]*", line )\d+'),
+        r"\1<LINE>",
     ),
 )
 

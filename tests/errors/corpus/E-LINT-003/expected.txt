@@ -3,11 +3,11 @@ $ exit: 1
 --- stdout ---
  - ❌  prog.pdl
 Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_linter.py", line 372, in _lint_pdl_file
+  File "<REPO>/src/pdl/pdl_linter.py", line <LINE>, in _lint_pdl_file
     _lint_python_code_blocks(prog.root)
-  File "<REPO>/src/pdl/pdl_linter.py", line 390, in _lint_python_code_blocks
+  File "<REPO>/src/pdl/pdl_linter.py", line <LINE>, in _lint_python_code_blocks
     ast.parse(code)
-  File "<PYLIB>/ast.py", line 50, in parse
+  File "<PYLIB>/ast.py", line <LINE>, in parse
     return compile(source, filename, mode, flags,
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "<unknown>", line 1

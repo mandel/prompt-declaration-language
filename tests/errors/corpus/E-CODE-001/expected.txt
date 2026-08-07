@@ -5,7 +5,7 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:0 - Python Code error: Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_interpreter.py", line 2649, in call_python
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in call_python
     exec(c, my_namespace.__dict__)  # nosec B102
     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "<code-block>", line 1, in <module>

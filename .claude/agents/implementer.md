@@ -64,8 +64,10 @@ change is wrong.
 `PdlLocationType`, `Block`, or any Pydantic model in `pdl_ast.py`:
 
 ```bash
-# REQUIRES Python >= 3.12 — 3.11 emits a different schema and CI will fail
-python -m src.pdl.pdl --schema > src/pdl/pdl-schema.json
+# REQUIRES Python >= 3.12 — 3.11 emits a different schema and CI will fail.
+# A 3.12 environment is provisioned at .venv312 for exactly this.
+.venv312/bin/python -m src.pdl.pdl --schema > src/pdl/pdl-schema.json
+.venv312/bin/python -m pytest tests/test_schema.py -q     # must pass
 cd pdl-live-react && npm run types
 ```
 

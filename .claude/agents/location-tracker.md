@@ -57,8 +57,11 @@ Deliver these together, on one branch, as an explicitly-flagged breaking change:
 `PdlLocationType` lives in the AST, so changing it means:
 
 ```bash
-# Regenerate the schema — REQUIRES Python >= 3.12, not 3.11
-python -m src.pdl.pdl --schema > src/pdl/pdl-schema.json
+# Regenerate the schema — REQUIRES Python >= 3.12, not 3.11.
+# A 3.12 environment is provisioned at .venv312 for exactly this; it has been
+# verified to reproduce the committed schema byte-for-byte on a clean tree.
+.venv312/bin/python -m src.pdl.pdl --schema > src/pdl/pdl-schema.json
+.venv312/bin/python -m pytest tests/test_schema.py -q     # must pass
 # Regenerate the viewer's types
 cd pdl-live-react && npm run types
 ```

@@ -15,9 +15,26 @@ Learn these before running anything, or you will report false regressions.
 **`tests/test_schema.py::test_saved_schema` fails on Python 3.11 by design.**
 Python 3.11 emits a different JSON Schema from 3.12+, and CI passes
 `--ignore=tests/test_schema.py` on the 3.11 matrix entry. The local `.venv` is
-3.11, so this failure is expected. It is *not* expected if the change touched
-`pdl_ast.py` and the author skipped regenerating the schema — distinguish those
-two cases by checking whether `src/pdl/pdl-schema.json` is in the diff.
+3.11, so this failure is expected there.
+
+**Do not wave it through — verify it.** A 3.12 environment exists at `.venv312`
+precisely so this check is real:
+
+```bash
+.venv312/bin/python -m pytest tests/test_schema.py -q     # must PASS
+```
+
+Confirmed green on a clean tree, and
+`.venv312/bin/python -m src.pdl.pdl --schema` reproduces the committed
+`src/pdl/pdl-schema.json` byte-for-byte. So if this fails under 3.12, the change
+touched an AST model and the author skipped the regeneration. That is a real
+finding, and the 3.11 failure must never be used to excuse it.
+
+If `.venv312` is missing, rebuild it — do not fall back to skipping:
+
+```bash
+python3.12 -m venv .venv312 && .venv312/bin/pip install -q -e ".[dev]"
+```
 
 **`pyright` reports ~98 `reportMissingImports` errors** because the `examples`
 extra is not installed in this environment. Baseline, not breakage. Count them:

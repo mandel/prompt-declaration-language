@@ -12,6 +12,7 @@ from pytest import CaptureFixture, MonkeyPatch
 from pdl import pdl
 from pdl.pdl_interpreter_state import ScopeType
 from pdl.pdl_parser import PDLParseError
+from tests.pdl_files import all_pdl_files
 
 EXAMPLES_RUN_CONFIG_FILE = os.getenv(
     "EXAMPLES_RUN_FILE", "tests/test_examples_run.yaml"
@@ -135,7 +136,7 @@ class ExamplesRun:
         self.update_results: bool = False
 
         # File manipulation
-        self.check = [str(f) for f in sorted(pathlib.Path(".").glob("**/*.pdl"))]
+        self.check = [str(f) for f in sorted(all_pdl_files())]
         self.skip: List[str] = []
         self.with_inputs: Dict[str, InputsType] = {}
         self.expected_parse_error: List[str] = []

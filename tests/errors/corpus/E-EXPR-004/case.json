@@ -9,5 +9,5 @@
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "Reports sub/imported.pdl:1; the expression is on line 4. execute_call builds the callee's location with the CALLER's line table (pdl_interpreter.py:2752). Location 0 because a confident wrong line is worse than none."
+  "notes": "Reports sub/imported.pdl:1; the expression is on line 4. `execute_call` (pdl_interpreter.py) builds the callee's location with the CALLER's line table. Location 0 because a confident wrong line is worse than none."
 }

@@ -13,5 +13,5 @@
     "hygiene": 0,
     "hygiene_traceback_expected": true
   },
-  "notes": "Uncaught traceback: pdl_llms.py:66 raises on the event-loop thread and surfaces through a concurrent.futures callback, bypassing generate()'s handler entirely. The PDLRuntimeError is constructed WITH a location that the user never sees."
+  "notes": "The diagnostic IS printed correctly and located; the defect is that it is then reported a second time as a traceback. `async_generate_text` (pdl_llms.py) raises on the event-loop thread, and `update_end_nanos` calls future.result() from an unguarded concurrent.futures done-callback, so Python prints 'exception calling callback' plus ~20 frames after the real message."
 }

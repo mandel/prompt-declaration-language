@@ -103,7 +103,7 @@ Uncaught ValueError from pdl_utils.validate_pdl_model_defaults. Message names th
 src/pdl/pdl.py ends in a bare main() with no sys.exit, so the module entry point always exits 0. The diagnostic itself is fine; the exit code silently lies. CI that runs `python -m pdl.pdl` never fails.
 
 **`E-CODE-001`** — Python exception inside a code block  
-prog.pdl:0, then a traceback deliberately formatted INTO the message by call_python. Its first frames are PDL's own (pdl_interpreter.py:2649) before the user's <code-block> line 1. Nothing crashed -- this leak is by construction.
+prog.pdl:0, then a traceback deliberately formatted INTO the message by `call_python` (pdl_interpreter.py). Its first frames are PDL's own, before the user's <code-block> line 1. Nothing crashed -- this leak is by construction. Should follow E-CODE-002's header shape once fixed; two neighbouring diagnostics in different styles is worse than one.
 
 **`E-CODE-002`** — code block never assigns result (issue #386)  
 Fixed (spec docs/error-reporting/specs/E-CODE-002.md). `call_python` reads `result` with `hasattr`/`getattr` and raises a module-private `_MissingResultError`, re-raised on the block's `code` key so the line is 2 rather than 0. The message names the `result` contract, reports what the code did bind, and computes the fix from the code's own AST -- here, the single top-level `print('hi')` becomes `result = 'hi'`. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered; both remaining points are foundation work (phase-3 items 0 and 7), not this error ID.
@@ -121,7 +121,7 @@ TemplateSyntaxError carries .lineno/.source; only str(exc) is interpolated.
 'dict object' has no attribute 'x' -- Jinja vocabulary, and 'attribute' for a subscript the user wrote as ['x'].
 
 **`E-EXPR-004`** — error inside an imported file reports the wrong line  
-Reports sub/imported.pdl:1; the expression is on line 4. execute_call builds the callee's location with the CALLER's line table (pdl_interpreter.py:2752). Location 0 because a confident wrong line is worse than none.
+Reports sub/imported.pdl:1; the expression is on line 4. `execute_call` (pdl_interpreter.py) builds the callee's location with the CALLER's line table. Location 0 because a confident wrong line is worse than none.
 
 **`E-EXPR-005`** — error inside a called function has no call stack  
 Correct line inside the function body, but nothing says which call site reached it. With recursion or a shared helper this is the whole question.
@@ -142,7 +142,7 @@ Traceback ends in File "<unknown>", line 1. The .pdl path appears only in the su
 A file outside the detected project root is skipped with the reason 'in ignore list' -- which is false -- and the run reports success. A build that lints the wrong path is green forever. should_ignore conflates two conditions.
 
 **`E-MODEL-001`** — unrecognised model provider  
-Uncaught traceback: pdl_llms.py:66 raises on the event-loop thread and surfaces through a concurrent.futures callback, bypassing generate()'s handler entirely. The PDLRuntimeError is constructed WITH a location that the user never sees.
+The diagnostic IS printed correctly and located; the defect is that it is then reported a second time as a traceback. `async_generate_text` (pdl_llms.py) raises on the event-loop thread, and `update_end_nanos` calls future.result() from an unguarded concurrent.futures done-callback, so Python prints 'exception calling callback' plus ~20 frames after the real message.
 
 **`E-MODEL-002`** — model endpoint unreachable  
 httpx.RequestError branch. Names the method and URL, which is genuinely useful.

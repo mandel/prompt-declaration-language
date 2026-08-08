@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-007",
+  "title": "contribute entry is a dict of the wrong size",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "The message ends '...but got {elem}' -- the literal six characters, not the value. `process_contribution` (pdl_interpreter.py) builds the string without an f-prefix at two sites, so the one piece of evidence the message promises is never substituted. Reachable through both branches: a dict with two keys, and a non-dict non-string element. An earlier probe missed it because the obvious malformed shape is rejected by the schema first (E-SCHEMA-008); reaching the runtime path needs a well-formed ContributeValue dict with the wrong number of keys."
+}

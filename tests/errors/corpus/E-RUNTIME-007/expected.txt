@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:4 - Contributions are expected to be strings or dictionaries of length 1 but got {elem}

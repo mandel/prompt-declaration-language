@@ -6,8 +6,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **44 corpus entries**, one per reproducible taxonomy class.
-- **203 / 660** rubric points (**31%**).
+- **45 corpus entries**, one per reproducible taxonomy class.
+- **208 / 675** rubric points (**31%**).
 - **14 entries leak a Python traceback** to the user.
 - **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
@@ -15,11 +15,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 25 | 132 | 0.57 |
-| What | 45 | 132 | 1.02 |
-| Why | 57 | 132 | 1.30 |
-| Fix | 12 | 132 | 0.27 |
-| Hygiene | 64 | 132 | 1.45 |
+| Location | 26 | 135 | 0.58 |
+| What | 47 | 135 | 1.04 |
+| Why | 58 | 135 | 1.29 |
+| Fix | 12 | 135 | 0.27 |
+| Hygiene | 65 | 135 | 1.44 |
 
 ## By error class
 
@@ -32,7 +32,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-MODEL | 2 | 10 | 30 | 5.0 |
 | E-PARSE | 5 | 9 | 75 | 1.8 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
-| E-RUNTIME | 5 | 18 | 75 | 3.6 |
+| E-RUNTIME | 6 | 23 | 90 | 3.8 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -65,6 +65,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-004` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | error inside an imported file reports the wrong line |
 | `E-EXPR-006` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | comment lines shift every reported line |
 | `E-LINT-001` | S1 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | pdl-lint reports a schema error as a list repr |
+| `E-RUNTIME-007` | S1 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute entry is a dict of the wrong size |
 | `E-CLI-005` | S0 | 1 | 1 | 2 | 0 | 2 | **6** | `████░░░░░░` |  | python -m pdl.pdl reports success on failure |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
 | `E-EXPR-001` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | undefined variable in an expression |
@@ -179,6 +180,9 @@ Same. Note the traceback shows 'nosuch.pdl' -- the .pdl suffix PDL appended -- w
 
 **`E-RUNTIME-006`** — for lists of unequal length  
 States the rule perfectly in PDL vocabulary, then shows neither which lists nor what lengths. Pure Why failure.
+
+**`E-RUNTIME-007`** — contribute entry is a dict of the wrong size  
+The message ends '...but got {elem}' -- the literal six characters, not the value. `process_contribution` (pdl_interpreter.py) builds the string without an f-prefix at two sites, so the one piece of evidence the message promises is never substituted. Reachable through both branches: a dict with two keys, and a non-dict non-string element. An earlier probe missed it because the obvious malformed shape is rejected by the schema first (E-SCHEMA-008); reaching the runtime path needs a well-formed ContributeValue dict with the wrong number of keys.
 
 **`E-RUNTIME-012`** — for over a string iterates characters  
 No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error.

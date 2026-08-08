@@ -1,7 +1,7 @@
 text:
   - "x"
 contribute:
-  - context:
-      value: [1]
-    result:
-      value: [2]
+  - stdout:
+      value: "to stdout"
+    stderr:
+      value: "to stderr"

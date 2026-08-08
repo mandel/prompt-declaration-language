@@ -7,7 +7,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **45 corpus entries**, one per reproducible taxonomy class.
-- **208 / 675** rubric points (**31%**).
+- **216 / 675** rubric points (**32%**).
 - **14 entries leak a Python traceback** to the user.
 - **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
@@ -16,10 +16,10 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
 | Location | 26 | 135 | 0.58 |
-| What | 47 | 135 | 1.04 |
-| Why | 58 | 135 | 1.29 |
-| Fix | 12 | 135 | 0.27 |
-| Hygiene | 65 | 135 | 1.44 |
+| What | 48 | 135 | 1.07 |
+| Why | 60 | 135 | 1.33 |
+| Fix | 15 | 135 | 0.33 |
+| Hygiene | 67 | 135 | 1.49 |
 
 ## By error class
 
@@ -32,7 +32,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-MODEL | 2 | 10 | 30 | 5.0 |
 | E-PARSE | 5 | 9 | 75 | 1.8 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
-| E-RUNTIME | 6 | 23 | 90 | 3.8 |
+| E-RUNTIME | 6 | 31 | 90 | 5.2 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -65,7 +65,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-004` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | error inside an imported file reports the wrong line |
 | `E-EXPR-006` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | comment lines shift every reported line |
 | `E-LINT-001` | S1 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | pdl-lint reports a schema error as a list repr |
-| `E-RUNTIME-007` | S1 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute entry is a dict of the wrong size |
 | `E-CLI-005` | S0 | 1 | 1 | 2 | 0 | 2 | **6** | `████░░░░░░` |  | python -m pdl.pdl reports success on failure |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
 | `E-EXPR-001` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | undefined variable in an expression |
@@ -85,6 +84,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
 | `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
+| `E-RUNTIME-007` | S1 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | contribute entry is a dict of the wrong size |
 
 ## Notes per entry
 
@@ -182,7 +182,7 @@ Same. Note the traceback shows 'nosuch.pdl' -- the .pdl suffix PDL appended -- w
 States the rule perfectly in PDL vocabulary, then shows neither which lists nor what lengths. Pure Why failure.
 
 **`E-RUNTIME-007`** — contribute entry is a dict of the wrong size  
-The message ends '...but got {elem}' -- the literal six characters, not the value. `process_contribution` (pdl_interpreter.py) builds the string without an f-prefix at two sites, so the one piece of evidence the message promises is never substituted. Reachable through both branches: a dict with two keys, and a non-dict non-string element. An earlier probe missed it because the obvious malformed shape is rejected by the schema first (E-SCHEMA-008); reaching the runtime path needs a well-formed ContributeValue dict with the wrong number of keys.
+Was: '...but got {elem}' -- the literal six characters, because `process_contribution` (pdl_interpreter.py) built the string without an f-prefix at two sites, so the one piece of evidence the message promised was never substituted. Adding the prefix alone was not enough: by that point the mapping's values are ContributeValue models, so the substitution produced a pydantic repr. The message now reports the keys the user actually wrote. Reproducer is the realistic mistake -- two list items written at one indent level collapse into a single mapping. Location stays 1: the line is right but there is no column and no block path, both foundation work.
 
 **`E-RUNTIME-012`** — for over a string iterates characters  
 No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error.

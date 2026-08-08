@@ -1860,6 +1860,68 @@ def process_contribute(
     return scope, trace
 
 
+_CONTRIBUTE_RULE = (
+    "A `contribute` entry is either `result` or `context`, or a mapping with a "
+    "single key naming where to contribute."
+)
+
+
+# Keyed on the exact type rather than tested with isinstance, so that `bool`
+# resolves to "a boolean" instead of being caught by its `int` base class.
+_PDL_TYPE_NAMES: dict[type, str] = {
+    bool: "a boolean",
+    int: "a number",
+    float: "a number",
+    str: "a string",
+    list: "a list",
+    dict: "a mapping",
+    type(None): "null",
+}
+
+
+def _pdl_type_name(value: Any) -> str:
+    """Name a value's type the way the PDL documentation does."""
+    return _PDL_TYPE_NAMES.get(type(value), f"a {type(value).__name__}")
+
+
+def _bad_contribution_message(elem: Any) -> str:
+    """Explain why a `contribute` entry is not usable.
+
+    Reports the keys the user wrote rather than the parsed value: by this point
+    a mapping's values are `ContributeValue` models, whose repr is PDL's
+    internals rather than anything the user typed.
+    """
+    keys = list(elem) if isinstance(elem, dict) else []
+    if not isinstance(elem, dict):
+        headline = (
+            f"contribute entry must be a string or a mapping, "
+            f"but got {_pdl_type_name(elem)}"
+        )
+        evidence = f"This one is {elem!r}."
+        suggestion = ""
+    elif not keys:
+        headline = "contribute entry is an empty mapping"
+        evidence = "A mapping entry needs exactly one key; this one has none."
+        suggestion = ""
+    else:
+        headline = f"contribute entry has {len(keys)} keys, expected exactly 1"
+        named = ", ".join(f"`{k}`" for k in keys)
+        evidence = f"This one maps {named}."
+        # Two list items written at one indent level collapse into a single
+        # mapping, which is the usual way to arrive here. Name the user's own
+        # keys: a generic example would point at the wrong shape, since
+        # `result` and `context` are spelled as bare strings, not mappings.
+        items = " then ".join(f"`- {k}:`" for k in keys)
+        suggestion = f"\n\n  help: give each key its own entry in the list: {items}"
+    body = textwrap.fill(
+        f"{_CONTRIBUTE_RULE} {evidence}",
+        width=76,
+        initial_indent="  ",
+        subsequent_indent="  ",
+    )
+    return f"{headline}\n\n{body}{suggestion}"
+
+
 def process_contribution(
     block: AdvancedBlockType,
     elem: ContributeElement,
@@ -1875,7 +1937,7 @@ def process_contribution(
             target = elem
         case dict():
             if len(elem) != 1:
-                msg = "Contributions are expected to be strings or dictionaries of length 1 but got {elem}"
+                msg = _bad_contribution_message(elem)
                 raise PDLRuntimeError(
                     msg,
                     loc=loc,
@@ -1894,7 +1956,7 @@ def process_contribution(
                 ) from exc
             elem = {target: ContributeValue(value=value_trace)}
         case _:
-            msg = "Contributions are expected to be strings or dictionaries of length 1 but got {elem}"
+            msg = _bad_contribution_message(elem)
             raise PDLRuntimeError(
                 msg,
                 loc=loc,

@@ -856,3 +856,73 @@ because PyYAML had already done the work.
 
 **One sentence a user takes away:** "It told me which of my two inputs was broken, pointed
 at the character, and said what to type instead."
+
+---
+
+## Addendum — verified exception-layout findings
+
+Added by the orchestrator after running the checks the Risk section called for.
+These correct the proposal above; implementation is held pending a human
+decision on the one genuine break.
+
+### The `OSError` proposal was worse than necessary
+
+`PDLSourceError(PDLParseError, OSError)` silently breaks `except
+FileNotFoundError`, as the Risk section noted. It is avoidable: inheriting the
+**specific** errno subclass works, and CPython accepts the layout.
+
+```python
+class PDLFileNotFoundError(PDLParseError, FileNotFoundError): ...
+class PDLIsADirectoryError(PDLParseError, IsADirectoryError): ...
+```
+
+Verified by construction and `isinstance`:
+
+| Shim | `FileNotFoundError` | `IsADirectoryError` | `OSError` | `PDLParseError` |
+| --- | --- | --- | --- | --- |
+| `PDLFileNotFoundError` | yes | no | yes | yes |
+| `PDLIsADirectoryError` | no | yes | yes | yes |
+
+Every existing SDK `except` clause keeps matching, and callers additionally gain
+`.message`. This is **purely additive** — no release note needed, and no
+stop-and-report, because nothing breaks. Cost is one small class per concrete
+errno rather than one shared class.
+
+### The YAML case is also zero-breakage
+
+`class PDLYamlError(PDLParseError, yaml.YAMLError)` — layout accepted,
+construction works, `except yaml.YAMLError` and `except PDLParseError` both
+match. Note it is **not** a `MarkedYAMLError`, so any caller narrow enough to
+catch that specifically would break; that is a far less common clause than
+`yaml.YAMLError`.
+
+### `UnicodeDecodeError` cannot be shimmed — this is the real decision
+
+The class layout is accepted, but construction is not: `UnicodeDecodeError`
+requires exactly five arguments, and neither a one-arg call nor
+`__new__` + explicit `__init__` satisfies it.
+
+```
+TypeError: function takes exactly 5 arguments (1 given)
+```
+
+So E-PARSE-005 cannot both carry a PDL message and remain catchable as
+`UnicodeDecodeError`. The options are genuinely exclusive:
+
+1. **Raise `PDLParseError`.** `except UnicodeDecodeError` around `exec_file`
+   stops matching. Rare in practice, and the diagnostic gain is the largest in
+   the group — a real line, column, excerpt and caret recomputed from
+   `read_bytes`. Needs a release note.
+2. **Re-raise the original after formatting at the CLI.** Zero breakage, but the
+   CLI and SDK paths diverge: a library caller receives none of the new
+   information.
+3. **Chain**: raise `PDLParseError from exc`. `isinstance` is unaffected by
+   chaining, so `except UnicodeDecodeError` still stops matching; only forensic
+   value is preserved.
+
+**Recommendation:** per-errno shims and the YAML shim for the other six entries,
+which break nothing and need no approval; option 1 for `UnicodeDecodeError`,
+with a release note, as the single documented SDK change in this item.
+
+**Status: not implemented.** The six non-breaking entries are unblocked; the
+decode entry awaits a decision.

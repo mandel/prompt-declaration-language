@@ -94,6 +94,23 @@ success-path change appears anywhere else, that is a rejection.
 change may add to these; removing or renaming one, or changing what is raised
 where, is a **stop-and-report** to the human — not something you wave through.
 
+**"Catchable" and "usable" are two different questions. Ask both.** This is the
+one that has actually bitten. A change wrapped file-read failures in subclasses
+that inherit the concrete errno type, so `except FileNotFoundError` still
+matched and an `__mro__`-based test passed — but `OSError.__init__` never ran,
+so `errno`, `strerror` and `filename` all read `None`, and `str(exc)` returned a
+Python list repr instead of prose. Every test in the tree passed.
+
+So when an exception type changes, check the *object* a caller receives, by
+running code:
+
+- the attributes callers read (`errno`, `filename`, `.message`, `.args`),
+- `str(exc)` and `repr(exc)` — a `message` that is a `list[str]` renders as a
+  bracketed, escaped list through the default `__str__`,
+- `__cause__`, if the original is worth reaching.
+
+An `isinstance` check alone is not evidence that a wrapper is transparent.
+
 `PdlLocationType` is the known exception: decision §5.2 changes it deliberately.
 Verify the consequences landed rather than blocking it — schema regenerated,
 `pdl_ast.d.ts` regenerated, viewer updated.

@@ -83,6 +83,15 @@ Concretely, for PDL:
   diagnostic as one block of text.
 - **Never widen a message into a wall.** The failure mode you are correcting in
   `E-SCHEMA-007` is a 700-character schema dump. More text is not better text.
+- **Every suggestion must be one you have checked.** A `help:` line that fails
+  when followed is worse than no suggestion, and this has gone wrong twice.
+  `E-RUNTIME-007` first proposed a split into `- context:` / `- result:`, which
+  does not work — those are spelled as bare strings, not mappings, so the reader
+  lands on a different error. `E-PARSE-001` first offered "or escape the quote as
+  `\"`", correct inside an already-quoted string but yielding a plain scalar
+  beginning with a backslash when applied to the line as it stands — trading a
+  parse error for a silently wrong value. If you cannot run it, say in the spec
+  exactly what must be executed to confirm it, and mark it unverified.
 
 ## Constraints you inherit
 

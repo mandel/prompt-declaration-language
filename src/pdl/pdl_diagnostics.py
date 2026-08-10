@@ -450,6 +450,10 @@ _UTF16_RULE = (
     "byte-order mark, so it cannot be read at all."
 )
 _UTF8_HELP = "re-save the file as UTF-8."
+_REPLACEMENT_NOTE = (
+    "each � in the excerpt above stands for one byte that is not valid "
+    "UTF-8; it is not a character in your file."
+)
 
 _UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
 """The two UTF-16 byte-order marks. Both begin with a byte that cannot start a
@@ -530,7 +534,14 @@ def undecodable_diagnostic(
         file=display,
         spans=[Span(line=line, col=col, label="here", primary=True)],
         source=raw.decode("utf-8", "replace"),
-        notes=[Note("rule", _UTF8_RULE)],
+        notes=[
+            Note("rule", _UTF8_RULE),
+            # Without this the excerpt is quietly dishonest: the reader has no
+            # way to tell a `U+FFFD` this renderer substituted from one their
+            # file really contains, and only the first bad byte is named in the
+            # headline even when a run of them failed.
+            Note("note", _REPLACEMENT_NOTE),
+        ],
         suggestions=[Suggestion(_UTF8_HELP)],
     )
 

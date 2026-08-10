@@ -608,8 +608,16 @@ Rubric: L3 W3 Y3 F2 H3 = 14/15
 reliably a file offset*. `parse_file` reads through a `TextIOWrapper`
 (`pdl_parser.py:19-20`), so `UnicodeDecodeError.object` is the decoder's current chunk
 and `.start` is an offset within that chunk. For this 15-byte file the chunk is the whole
-file and the number happens to be right; for a 50 KB file it would be confidently wrong,
-which the rubric scores below saying nothing.
+file and the number happens to be right.
+
+> **Corrected after measurement.** This paragraph originally continued "for a 50 KB
+> file it would be confidently wrong". That is false for *this* code path.
+> `parse_file` calls `read()` on a fresh handle and `TextIOWrapper.read()` decodes in
+> one piece, so the offset it reports is a true file offset -- verified at 78 KB, 2 MB
+> and 8.6 MB. Only line iteration, a partial read, or a `read()` after a prior read
+> produce a chunk-relative offset. The recompute below is still right, for the reason
+> that survives: the excerpt needs the raw bytes anyway, and a location should not rest
+> on an undocumented `TextIOWrapper` detail.
 
 So the offset is recomputed rather than trusted, and it is cheap:
 
@@ -733,7 +741,7 @@ Raise sites: `pdl_parser.py:19` (`open`), `:20` (`read`), `:30` (`yaml.safe_load
 | `origin` | which branch of `main` is executing; for E-CLI-004, a membership test on each merged dict at `pdl.py:289/292/294` | yes, one new local |
 | span line/col (E-PARSE-001/002) | `exc.problem_mark.line/.column` and `exc.context_mark.line/.column`, `yaml/error.py:4-12`; 0-based, `+1` for display exactly as `Mark.__str__` does at `:39-40` | **yes — computed today and discarded** |
 | span line/col (E-CLI-003) | same, over `yaml.safe_load(args.data)` | yes |
-| span line/col (E-PARSE-005) | recomputed from `Path.read_bytes()` on the failure path; `UnicodeDecodeError.start` is chunk-relative through `TextIOWrapper` and must not be used as-is | needs the re-read shown above |
+| span line/col (E-PARSE-005) | recomputed from `Path.read_bytes()` on the failure path. (`UnicodeDecodeError.start` is chunk-relative for line iteration and partial reads, but *not* for `parse_file`'s `read()` on a fresh handle -- see the correction above. The re-read is for the excerpt bytes and to stop the location depending on how `read()` chunks.) | needs the re-read shown above |
 | excerpt (program) | `pdl_str`, the parameter of `parse_str` at `:25`; equivalently `mark.buffer`, whole-program because a `str` was passed (`yaml/reader.py:72-75`) | yes |
 | excerpt (`-d`) | `args.data` | yes |
 | `problem` / `context` text | `MarkedYAMLError.problem`, `.context`, `yaml/error.py:50-56` | yes |

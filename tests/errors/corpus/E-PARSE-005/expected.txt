@@ -12,4 +12,6 @@ prog.pdl:1:8 - not valid UTF-8: byte 0xff cannot start a UTF-8 character
   A PDL program must be UTF-8 encoded text. This file is not, so it cannot be
   read at all.
 
+  note: each � in the excerpt above stands for one byte that is not valid
+        UTF-8; it is not a character in your file.
   help: re-save the file as UTF-8.

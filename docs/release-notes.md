@@ -32,9 +32,11 @@ same output on the success path.
 ### Two `except` clauses stop matching around `exec_file` (SDK)
 
 The exceptions raised while reading and parsing a program are now subclasses of
-`pdl.pdl_parser.PDLParseError`, so they carry `.message`, `.text` (the rendered
-diagnostic) and `.diagnostic` (the structured record). Almost every `except`
-clause you have already written keeps working, on purpose:
+`pdl.pdl_parser.PDLParseError`, so they carry `.text` (the rendered diagnostic)
+and `.diagnostic` (the structured record). Use `.text` for display: `.message`
+is also present but is a `list[str]`, so printing it gives a bracketed list.
+
+Almost every `except` clause you have already written keeps working, on purpose:
 `FileNotFoundError`, `IsADirectoryError`, `PermissionError`, `OSError` and
 `yaml.YAMLError` all still match, with `errno`, `strerror` and `filename`
 carried across unchanged.
@@ -65,7 +67,7 @@ The object you catch is still usable as the one it replaces. `PDLUnicodeDecodeEr
 carries `encoding`, `object`, `start`, `end` and `reason`, so
 `except UnicodeDecodeError as e: e.start` becomes
 `except PDLParseError as e: e.start` and nothing else changes — except that
-`start` and `end` are now offsets into the file rather than into whatever the
+`start` and `end` are now *guaranteed* to be offsets into the file rather than into whatever the
 decoder happened to be handed. `PDLYamlError` keeps PyYAML's own exception,
 marks included, on `__cause__`. `str(exc)` is the rendered diagnostic in both
 cases.

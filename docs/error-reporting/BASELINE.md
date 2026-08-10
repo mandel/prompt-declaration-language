@@ -6,20 +6,20 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **45 corpus entries**, one per reproducible taxonomy class.
-- **317 / 675** rubric points (**47%**).
-- **5 entries leak a Python traceback** to the user.
-- **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
+- **46 corpus entries**, one per reproducible taxonomy class.
+- **317 / 690** rubric points (**46%**).
+- **6 entries leak a Python traceback** to the user.
+- **5 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 43 | 135 | 0.96 |
-| What | 71 | 135 | 1.58 |
-| Why | 75 | 135 | 1.67 |
-| Fix | 35 | 135 | 0.78 |
-| Hygiene | 93 | 135 | 2.07 |
+| Location | 43 | 138 | 0.93 |
+| What | 71 | 138 | 1.54 |
+| Why | 75 | 138 | 1.63 |
+| Fix | 35 | 138 | 0.76 |
+| Hygiene | 93 | 138 | 2.02 |
 
 ## By error class
 
@@ -29,7 +29,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-CODE | 3 | 24 | 45 | 8.0 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 25 | 60 | 6.2 |
-| E-MODEL | 2 | 10 | 30 | 5.0 |
+| E-MODEL | 3 | 10 | 45 | 3.3 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
 | E-RUNTIME | 6 | 37 | 90 | 6.2 |
@@ -40,6 +40,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | TB | handled model failure still prints a traceback |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | for over a string iterates characters |
 | `E-RUNTIME-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | import names a missing file |
@@ -147,6 +148,9 @@ The diagnostic IS printed correctly and located; the defect is that it is then r
 
 **`E-MODEL-002`** — model endpoint unreachable  
 httpx.RequestError branch. Names the method and URL, which is genuinely useful. KNOWN FLAKE: the diagnostic is printed by generate() on the main thread while the duplicate traceback is printed by the futures callback on another, so their interleaving is a race. Measured 8/8 runs with the diagnostic first, which is what the golden records, but the other order does occur -- it was observed once during a regen. Fixing this entry removes the traceback and the race with it; until then a CI flake here is this, not a regression.
+
+**`E-MODEL-003`** — handled model failure still prints a traceback  
+placeholder
 
 **`E-PARSE-001`** — unterminated quoted scalar  
 Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Read the 15 narrowly: it is available because PyYAML computed both marks and kept the whole program in `mark.buffer`, and it is not the class average -- the generic branch of the same recognizer scores 12. The second caret is moved from `context_mark` to the unpaired quote by the one heuristic in the design (odd count of `"` or `'` after masking escapes, scanning from the context line to the problem line); when it does not fire the diagnostic degrades to the generic branch rather than guessing. No block path, because a document that did not parse has no blocks.

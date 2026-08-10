@@ -1,0 +1,18 @@
+{
+  "id": "E-MODEL-003",
+  "title": "handled model failure still prints a traceback",
+  "severity": "S0",
+  "env": {
+    "PDL_TEST_MODEL": "connect_error"
+  },
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "placeholder"
+}

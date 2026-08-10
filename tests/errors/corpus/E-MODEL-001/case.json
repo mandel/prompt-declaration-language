@@ -6,12 +6,11 @@
     "PDL_TEST_MODEL": "bad_request"
   },
   "rubric": {
-    "location": 0,
+    "location": 1,
     "what": 1,
     "why": 2,
     "fix": 1,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "hygiene": 3
   },
-  "notes": "The diagnostic IS printed correctly and located; the defect is that it is then reported a second time as a traceback. `async_generate_text` (pdl_llms.py) raises on the event-loop thread, and `update_end_nanos` calls future.result() from an unguarded concurrent.futures done-callback, so Python prints 'exception calling callback' plus ~20 frames after the real message. KNOWN FLAKE: the diagnostic is printed by generate() on the main thread while the duplicate traceback is printed by the futures callback on another, so their interleaving is a race. Measured 8/8 runs with the diagnostic first, which is what the golden records, but the other order does occur -- it was observed once during a regen. Fixing this entry removes the traceback and the race with it; until then a CI flake here is this, not a regression."
+  "notes": "The diagnostic is printed once, by generate() on the main thread, and located. The duplicate report -- 'exception calling callback for <Future ...>' plus ~20 frames -- was removed by guarding the futures done-callback now shared by pdl_llms.py and pdl_openai.py (pdl_scheduler.make_model_call_done_callback): a failed or cancelled future returns before any work and before any print, so the failed path has exactly one writer to stderr and the old main-thread/event-loop-thread interleaving cannot occur. Location moves 0 -> 1 because the burial is gone, not because the location improved; it is the same 'prog.pdl:2 - ' form E-MODEL-002 has always been scored 1 for. Hygiene 3 with one recorded dissent: 'litellm.BadRequestError:' is a Python exception class name reaching the user, and a scorer who counts that as leakage would score this entry H2 = 7/15. What and Fix stay at 1 deliberately -- raising them needs provider-name knowledge PDL does not have at this raise site, where model_id is an opaque string it passed through."
 }

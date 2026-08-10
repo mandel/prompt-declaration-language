@@ -7,19 +7,19 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **46 corpus entries**, one per reproducible taxonomy class.
-- **317 / 690** rubric points (**46%**).
-- **6 entries leak a Python traceback** to the user.
-- **5 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
+- **327 / 690** rubric points (**47%**).
+- **3 entries leak a Python traceback** to the user.
+- **5 S0 entries exit 0** — either a broken program that reports nothing, or a successful run whose S0 defect is what it prints anyway.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 43 | 138 | 0.93 |
+| Location | 44 | 138 | 0.96 |
 | What | 71 | 138 | 1.54 |
 | Why | 75 | 138 | 1.63 |
 | Fix | 35 | 138 | 0.76 |
-| Hygiene | 93 | 138 | 2.02 |
+| Hygiene | 102 | 138 | 2.22 |
 
 ## By error class
 
@@ -29,7 +29,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-CODE | 3 | 24 | 45 | 8.0 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 25 | 60 | 6.2 |
-| E-MODEL | 3 | 10 | 45 | 3.3 |
+| E-MODEL | 3 | 20 | 45 | 6.7 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
 | E-RUNTIME | 6 | 37 | 90 | 6.2 |
@@ -40,7 +40,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | TB | handled model failure still prints a traceback |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | for over a string iterates characters |
 | `E-RUNTIME-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | import names a missing file |
@@ -48,7 +47,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
 | `E-SCHEMA-006` | S1 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | analyzer produces nothing, useless fallback |
 | `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
-| `E-MODEL-001` | S0 | 0 | 1 | 2 | 1 | 0 | **4** | `███░░░░░░░` | TB | unrecognised model provider |
+| `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
 | `E-PARSER-001` | S1 | 0 | 1 | 1 | 0 | 2 | **4** | `███░░░░░░░` |  | json parser on non-JSON (issue #387) |
 | `E-SCHEMA-007` | S1 | 1 | 0 | 2 | 0 | 1 | **4** | `███░░░░░░░` |  | dict fails every block union branch |
 | `E-SCHEMA-008` | S1 | 1 | 0 | 2 | 0 | 1 | **4** | `███░░░░░░░` |  | contribute value fails its union |
@@ -63,7 +62,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-003` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | attribute missing on an object |
 | `E-EXPR-005` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | error inside a called function has no call stack |
 | `E-LINT-001` | S1 | 1 | 2 | 1 | 0 | 2 | **6** | `████░░░░░░` |  | pdl-lint reports a schema error as a list repr |
-| `E-MODEL-002` | S2 | 1 | 2 | 2 | 1 | 0 | **6** | `████░░░░░░` | TB | model endpoint unreachable |
 | `E-TYPE-003` | S2 | 1 | 1 | 1 | 1 | 2 | **6** | `████░░░░░░` |  | missing function argument |
 | `E-PARSER-005` | S1 | 0 | 2 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | invalid regex in a parser |
 | `E-RUNTIME-001` | S0 | 1 | 1 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | include names a missing file |
@@ -71,10 +69,12 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-002` | S2 | 1 | 2 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | near-miss field name (typo) |
 | `E-SCHEMA-004` | S2 | 1 | 1 | 2 | 0 | 3 | **7** | `█████░░░░░` |  | scalar type mismatch |
 | `E-TYPE-001` | S2 | 1 | 2 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | block result violates its spec |
+| `E-MODEL-001` | S0 | 1 | 1 | 2 | 1 | 3 | **8** | `█████░░░░░` |  | unrecognised model provider |
 | `E-RUNTIME-004` | S2 | 1 | 2 | 2 | 0 | 3 | **8** | `█████░░░░░` |  | read of a missing file reports line 0 |
 | `E-RUNTIME-006` | S2 | 1 | 3 | 0 | 1 | 3 | **8** | `█████░░░░░` |  | for lists of unequal length |
 | `E-SCHEMA-003` | S3 | 1 | 2 | 1 | 1 | 3 | **8** | `█████░░░░░` |  | missing required field |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
+| `E-MODEL-002` | S2 | 1 | 2 | 2 | 1 | 3 | **9** | `██████░░░░` |  | model endpoint unreachable |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
 | `E-CLI-001` | S0 | 1 | 3 | 3 | 1 | 3 | **11** | `███████░░░` |  | PDL file does not exist |
 | `E-CLI-002` | S0 | 1 | 3 | 3 | 2 | 3 | **12** | `████████░░` |  | PDL path is a directory |
@@ -144,13 +144,13 @@ Traceback ends in File "<unknown>", line 1. The .pdl path appears only in the su
 A file outside the detected project root is skipped with the reason 'in ignore list' -- which is false -- and the run reports success. A build that lints the wrong path is green forever. should_ignore conflates two conditions.
 
 **`E-MODEL-001`** — unrecognised model provider  
-The diagnostic IS printed correctly and located; the defect is that it is then reported a second time as a traceback. `async_generate_text` (pdl_llms.py) raises on the event-loop thread, and `update_end_nanos` calls future.result() from an unguarded concurrent.futures done-callback, so Python prints 'exception calling callback' plus ~20 frames after the real message. KNOWN FLAKE: the diagnostic is printed by generate() on the main thread while the duplicate traceback is printed by the futures callback on another, so their interleaving is a race. Measured 8/8 runs with the diagnostic first, which is what the golden records, but the other order does occur -- it was observed once during a regen. Fixing this entry removes the traceback and the race with it; until then a CI flake here is this, not a regression.
+The diagnostic is printed once, by generate() on the main thread, and located. The duplicate report -- 'exception calling callback for <Future ...>' plus ~20 frames -- was removed by guarding the futures done-callback now shared by pdl_llms.py and pdl_openai.py (pdl_scheduler.make_model_call_done_callback): a failed or cancelled future returns before any work and before any print, so the failed path has exactly one writer to stderr and the old main-thread/event-loop-thread interleaving cannot occur. Location moves 0 -> 1 because the burial is gone, not because the location improved; it is the same 'prog.pdl:2 - ' form E-MODEL-002 has always been scored 1 for. Hygiene 3 with one recorded dissent: 'litellm.BadRequestError:' is a Python exception class name reaching the user, and a scorer who counts that as leakage would score this entry H2 = 7/15. What and Fix stay at 1 deliberately -- raising them needs provider-name knowledge PDL does not have at this raise site, where model_id is an opaque string it passed through.
 
 **`E-MODEL-002`** — model endpoint unreachable  
-httpx.RequestError branch. Names the method and URL, which is genuinely useful. KNOWN FLAKE: the diagnostic is printed by generate() on the main thread while the duplicate traceback is printed by the futures callback on another, so their interleaving is a race. Measured 8/8 runs with the diagnostic first, which is what the golden records, but the other order does occur -- it was observed once during a regen. Fixing this entry removes the traceback and the race with it; until then a CI flake here is this, not a regression.
+httpx.RequestError branch. Names the method and the URL, which is the most useful thing in the whole E-MODEL class and is why What is 2 rather than 1. The duplicate report -- 'exception calling callback for <Future ...>' plus ~20 frames -- was removed by guarding the futures done-callback now shared by pdl_llms.py and pdl_openai.py (pdl_scheduler.make_model_call_done_callback): a failed or cancelled future returns before any work and before any print, so the failed path has exactly one writer to stderr and the old main-thread/event-loop-thread interleaving cannot occur.
 
 **`E-MODEL-003`** — handled model failure still prints a traceback  
-placeholder
+The one entry in the corpus whose correct output is no diagnostic at all. `fallback:` catches the model failure on the main thread, the program recovers, prints `recovered` and exits 0 -- and before the fix it also dumped 'exception calling callback for <Future ...>' plus ~20 frames from the futures done-callback, on a run that succeeded. So the duplicate report was not merely noise on a failing run: it was a traceback on a success path. Scored only on Hygiene, because there is nothing to locate, no rule to state, no value to show and no action to suggest; Location/What/Why/Fix are 0 by construction and cannot move, and Hygiene 3 is this entry's ceiling. It pins the contract the guard in pdl_scheduler.make_model_call_done_callback establishes: a model failure a program handles is silent. Anyone grepping stderr for evidence that a fallback fired will notice the change; that is intended.
 
 **`E-PARSE-001`** — unterminated quoted scalar  
 Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Read the 15 narrowly: it is available because PyYAML computed both marks and kept the whole program in `mark.buffer`, and it is not the class average -- the generic branch of the same recognizer scores 12. The second caret is moved from `context_mark` to the unpaired quote by the one heuristic in the design (odd count of `"` or `'` after masking escapes, scanning from the context line to the problem line); when it does not fire the diagnostic degrades to the generic branch rather than guessing. No block path, because a document that did not parse has no blocks.

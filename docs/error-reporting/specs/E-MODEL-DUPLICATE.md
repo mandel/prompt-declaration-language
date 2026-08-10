@@ -494,27 +494,32 @@ entry for it; if the reviewer wants one, `fallback:` over a failing model is a t
 program and would be a good addition to the corpus in this commit — it pins the
 "successful run is now silent" contract that this fix establishes.
 
-**Unverified, out of scope, and worth someone's ten minutes.** The corpus runs these
-entries with `--stream none` (`tests/errors/harness.py:51`). Under the CLI *default*
-(`--stream result`), `generate_client_response_single` forces `message.result()` at
-`pdl_interpreter.py:2491`, which is **inside** `process_call_model`'s `try`, whose
-`except Exception` at `:2285` re-wraps into `f"Error during '{model_id}' model call:
-{repr(exc)}"`. `PDLRuntimeError` derives from `PDLException(Exception)`
-(`pdl_ast.py:1631`, `:1675`), so nothing stops that clause from matching, and the default
-CLI path may therefore print a doubly-wrapped message where the golden shows a clean one.
-I could not run it. To confirm:
+**Measured, and it does not happen.** The corpus runs these entries with `--stream none`
+(`tests/errors/harness.py:51`), and this item worried that the CLI *default*
+(`--stream result`) might print a doubly-wrapped message, because
+`generate_client_response_single` forces `message.result()` at
+`pdl_interpreter.py:2491`, inside `process_call_model`'s `try`, whose `except Exception`
+at `:2285` re-wraps into `f"Error during '{model_id}' model call: {repr(exc)}"` — and
+`PDLRuntimeError` derives from `PDLException(Exception)` (`pdl_ast.py:1631`, `:1675`), so
+nothing type-wise stops that clause from matching.
+
+Both modes were run, with the corpus's own stub and scrubbed environment, before and
+after this fix. Each prints exactly one clean located line and exits 1, and the two lines
+differ only because the two modes call different LiteLLM entry points:
 
 ```
-cd <scratch dir with the E-MODEL-002 prog.pdl>
-PYTHONPATH=<repo>/tests/errors/sitecustomize_stub PDL_TEST_MODEL=connect_error pdl prog.pdl
-PYTHONPATH=<repo>/tests/errors/sitecustomize_stub PDL_TEST_MODEL=connect_error pdl --stream none prog.pdl
+$ pdl prog.pdl                # batch=0 -> generate_text_stream -> litellm.completion
+prog.pdl:2 - Error during 'ollama/granite' model call: RuntimeError('synchronous litellm.completion is not stubbed')
+$ pdl --stream none prog.pdl  # batch=1 -> generate_text -> litellm.acompletion
+prog.pdl:2 - model 'ollama/granite' encountered ConnectError('[Errno 111] Connection refused') trying to POST against http://localhost:11434/api/chat
 ```
 
-(check `harness.py:_entry_point` and its env scrubbing for the exact invocation before
-relying on the first line). If the two differ, that is a separate defect — a duplicated
-handler pair at `pdl_interpreter.py:2277-2292` mirroring `pdl_llms.py:55-70` — and it
-needs its own corpus entry, because today's goldens pin only the mode the harness uses.
-It does not block this fix and this fix does not change it either way.
+The double wrap cannot occur: the message a `PDLRuntimeError` would be wrapped *in*
+only exists on the async path, and the default streams instead, so no `Future` and no
+`PDLRuntimeError` reach `:2285` at all. Nothing to chase, and no second corpus entry is
+owed. (The stub deliberately does not implement the synchronous `completion`; that is why
+the default mode's text names a `RuntimeError` rather than the connection failure. It is
+still a single wrap, which is the point at issue.)
 
 ---
 

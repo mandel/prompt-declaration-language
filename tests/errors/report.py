@@ -72,8 +72,9 @@ def render(cases: list[Case]) -> str:
     )
     w(f"- **{tb} entries leak a Python traceback** to the user.")
     w(
-        f"- **{silent} entries fail silently** — a broken program that exits 0 "
-        "with no diagnostic at all."
+        f"- **{silent} S0 entries exit 0** — either a broken program that "
+        "reports nothing, or a successful run whose S0 defect is what it "
+        "prints anyway."
     )
     w("")
 

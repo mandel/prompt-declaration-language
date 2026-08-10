@@ -607,3 +607,50 @@ turns a decode failure into a diagnostic. Two siblings still raise a bare
   from the same treatment, but it is a second error ID, not this one.
 - `process_import` (`pdl_interpreter.py:3093`), which opens the imported file itself
   instead of calling `parse_file` — the same reason `E-RUNTIME-002` was left to item 4.
+
+### 7.3 The corpus tests `--stream none`, which is not the CLI default
+
+**Status: open. A coverage gap in the harness, not a defect in PDL.**
+
+Every corpus entry runs with `--stream none` (`tests/errors/harness.py`, the default
+`argv`). That was chosen so goldens would not carry streamed partial output. The
+consequence went unnoticed until E-MODEL-001: **`--stream none` and the CLI default are
+different code paths**, and for model calls they are different *functions*.
+
+`InterpreterState.batch` defaults to `1`. `pdl.py:main` sets `batch=0` when streaming:
+
+| invocation | `batch` | model path | on failure |
+| --- | --- | --- | --- |
+| `pdl prog.pdl` (default, `--stream result`) | 0 | `generate_text_stream` → `litellm.completion` | clean single diagnostic |
+| `pdl --stream none prog.pdl` | 1 | `generate_text` → `litellm.acompletion` | diagnostic **+ duplicate traceback** |
+| SDK `exec_file(...)` with no config | 1 | same as above | diagnostic **+ duplicate traceback** |
+
+Two things follow, both measured rather than reasoned:
+
+1. **For `E-MODEL-*`, the corpus pins a worse experience than a CLI user gets**, and the
+   entries are really covering the **SDK** default rather than the CLI one. That is
+   arguably the more important audience for these entries — an embedder cannot suppress
+   stderr noise from a failure PDL has already handled — but it is not what the entry
+   titles imply, and it is not what a reader of `BASELINE.md` would assume.
+2. **The streaming path has no error handling of its own.** `generate_text_stream`
+   (`pdl_llms.py`) wraps nothing in a `try`. It happens to produce a clean message today
+   because the failure surfaces elsewhere, but nothing pins that, and no corpus entry
+   exercises it.
+
+Options, none taken yet:
+
+- Add a `stream` axis to the harness so selected entries are run under both modes, and
+  give `E-MODEL-*` a streaming counterpart. Most faithful, and the only one that would
+  have caught this; costs a second golden per affected entry.
+- Switch the corpus default to `--stream result` to match what users run, and keep
+  `--stream none` for entries where streamed output would make the golden unstable.
+- Leave it and document the gap per entry.
+
+Recommendation: the first, restricted to `E-MODEL-*` and any future entry whose behaviour
+is known to differ by mode. Broad double-running would double the suite's runtime for no
+benefit on entries that never reach a model.
+
+**The general lesson, which outlives this entry:** a harness fixes an invocation, and
+every fixed invocation is a claim that the chosen one is representative. Where a flag
+selects a different code path rather than only different formatting, that claim is false
+and the corpus is measuring something other than what its titles say.

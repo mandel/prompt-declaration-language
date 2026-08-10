@@ -7,19 +7,19 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **45 corpus entries**, one per reproducible taxonomy class.
-- **304 / 675** rubric points (**45%**).
-- **6 entries leak a Python traceback** to the user.
+- **317 / 675** rubric points (**47%**).
+- **5 entries leak a Python traceback** to the user.
 - **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 40 | 135 | 0.89 |
-| What | 68 | 135 | 1.51 |
-| Why | 73 | 135 | 1.62 |
-| Fix | 33 | 135 | 0.73 |
-| Hygiene | 90 | 135 | 2.00 |
+| Location | 43 | 135 | 0.96 |
+| What | 71 | 135 | 1.58 |
+| Why | 75 | 135 | 1.67 |
+| Fix | 35 | 135 | 0.78 |
+| Hygiene | 93 | 135 | 2.07 |
 
 ## By error class
 
@@ -30,7 +30,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 25 | 60 | 6.2 |
 | E-MODEL | 2 | 10 | 30 | 5.0 |
-| E-PARSE | 5 | 33 | 75 | 6.6 |
+| E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
 | E-RUNTIME | 6 | 37 | 90 | 6.2 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
@@ -42,7 +42,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | for over a string iterates characters |
-| `E-PARSE-005` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | non-UTF-8 bytes in source |
 | `E-RUNTIME-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | import names a missing file |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
@@ -83,6 +82,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-RUNTIME-007` | S1 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | contribute entry is a dict of the wrong size |
 | `E-CLI-003` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | malformed inline YAML passed to -d |
 | `E-LINT-002` | S0 | 3 | 3 | 3 | 3 | 2 | **14** | `█████████░` |  | pdl-lint dumps a traceback for a YAML error |
+| `E-PARSE-005` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | non-UTF-8 bytes in source |
 | `E-PARSE-001` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | unterminated quoted scalar |
 | `E-PARSE-002` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | tab used for indentation |
 
@@ -161,7 +161,7 @@ No diagnostic at all. Last key wins, exit 0. Decision 5.5 makes this an error.
 Prints 'null' and exits 0. Arguably valid; more likely a truncated file.
 
 **`E-PARSE-005`** — non-UTF-8 bytes in source  
-UnicodeDecodeError traceback from parse_file:19. Byte offset given, line not.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md, decision INVENTORY.md 7.1). The position is recomputed from the file's bytes rather than taken from the codec: UnicodeDecodeError.start is an offset into whatever the decoder was handed, and the excerpt needs the bytes anyway. Decoding with errors=replace is what makes the column exact -- one U+FFFD per bad byte, every other character its own width -- so the caret lands under the byte that failed. Fix stays at 2 deliberately: the encoding the file actually is cannot be detected, so `re-save as UTF-8` is the most specific honest advice. The one detected case, a UTF-16 byte-order mark, says so instead. This is the single SDK break of the boundary work: `except UnicodeDecodeError` no longer matches (see docs/release-notes.md).
 
 **`E-PARSER-001`** — json parser on non-JSON (issue #387)  
 No file, no line -- every E-PARSER site raises with loc=None. Reports a Python TypeError for a parse failure and never shows the offending text.

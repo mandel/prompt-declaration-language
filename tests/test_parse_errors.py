@@ -6,6 +6,15 @@ is that every `except` clause an SDK caller already wrote must keep matching --
 and nothing else in the tree pins that. If `PDLFileNotFoundError` stopped being a
 `FileNotFoundError`, every other test here would still pass while
 `except FileNotFoundError: ...` around `exec_file` silently stopped firing.
+
+Matching the class is only half of it, and the other half broke once already:
+`except OSError as e: e.errno` found `None`, and `print(exc)` rendered a Python
+list. So each shim is pinned twice here -- once for the clause that catches it,
+once for the object the clause receives.
+
+One clause does *not* keep matching, deliberately: `except UnicodeDecodeError`.
+That break is decided in `docs/error-reporting/INVENTORY.md` 7.1, announced in
+`docs/release-notes.md`, and asserted below rather than merely described.
 """
 
 import errno
@@ -22,6 +31,7 @@ from pdl.pdl_parser import (
     PDLIsADirectoryError,
     PDLParseError,
     PDLPermissionError,
+    PDLUnicodeDecodeError,
     PDLYamlError,
     parse_file,
     parse_str,
@@ -62,6 +72,14 @@ def test_shims_keep_every_except_clause_matching():
     # would break, and it is a far rarer clause than `except yaml.YAMLError`.
     assert yaml.MarkedYAMLError not in PDLYamlError.__mro__
 
+    # The one clause that stops matching, and the reason it cannot be shimmed:
+    # `UnicodeDecodeError.__init__` takes exactly five arguments.
+    assert UnicodeDecodeError not in PDLUnicodeDecodeError.__mro__
+    assert PDLParseError in PDLUnicodeDecodeError.__mro__
+    with pytest.raises(TypeError):
+        # pylint: disable-next=pointless-exception-statement
+        UnicodeDecodeError("a diagnostic")  # type: ignore[call-arg]
+
 
 def test_missing_file_is_still_a_file_not_found_error(tmp_path):
     with pytest.raises(FileNotFoundError) as caught:
@@ -98,19 +116,125 @@ def test_exec_file_on_a_missing_file_still_raises_file_not_found(tmp_path):
         pytest.fail("exec_file did not raise FileNotFoundError")
 
 
-def test_undecodable_file_still_raises_unicode_decode_error(tmp_path):
-    """`UnicodeDecodeError` is held, deliberately.
+def test_undecodable_file_raises_a_parse_error_carrying_the_decode_data(tmp_path):
+    """The one deliberate SDK break, and the payload that makes it survivable.
 
-    Its constructor requires exactly five arguments, so it cannot be given a PDL
-    message and stay catchable as itself. Until that trade-off is decided by a
-    human, the decode error propagates exactly as it always has -- which is also
-    what keeps corpus entry E-PARSE-005 honest about still leaking a traceback.
+    `UnicodeDecodeError` cannot be shimmed: its constructor requires exactly
+    five arguments, so no subclass can carry a PDL message. INVENTORY.md 7.1
+    chose to raise `PDLUnicodeDecodeError` regardless, which means
+    `except UnicodeDecodeError` around `exec_file`/`parse_file` stops matching.
+
+    Matching the class is one question and using the caught object is another,
+    so both halves are pinned here: the clause that breaks, and the five
+    attributes a caller migrating off it reaches for. `start` and `end` are file
+    offsets, not the chunk-relative ones the raw exception reports.
     """
     program = tmp_path / "prog.pdl"
     program.write_bytes(b'text: "\xff\xfe bad"\n')
-    with pytest.raises(UnicodeDecodeError) as caught:
+
+    with pytest.raises(PDLParseError) as caught:
         parse_file(program)
-    assert not isinstance(caught.value, PDLParseError)
+    exc = caught.value
+    assert isinstance(exc, PDLUnicodeDecodeError)
+    # The break, stated as the caller wrote it. Asserted rather than described:
+    # a shim that quietly restored the match would make this file lie.
+    assert not isinstance(exc, UnicodeDecodeError)
+
+    assert exc.encoding == "utf-8"
+    assert exc.object == b'text: "\xff\xfe bad"\n'
+    assert (exc.start, exc.end) == (7, 8)
+    assert exc.reason == "invalid start byte"
+    assert exc.object[exc.start] == 0xFF
+    # The original is still reachable, chunk-relative offsets and all.
+    assert isinstance(exc.__cause__, UnicodeDecodeError)
+
+
+def test_undecodable_file_stringifies_as_a_located_diagnostic(tmp_path):
+    """`str()` is prose, not a list repr, and it points at the byte."""
+    program = tmp_path / "prog.pdl"
+    program.write_bytes(b'text: "\xff\xfe bad"\n')
+    with pytest.raises(PDLUnicodeDecodeError) as caught:
+        parse_file(program)
+    rendered = str(caught.value)
+    assert rendered == caught.value.text
+    assert not rendered.startswith("[")
+    assert rendered.startswith(
+        f"{program}:1:8 - not valid UTF-8: byte 0xff cannot start a UTF-8 character"
+    )
+    assert '1 | text: "�� bad"' in rendered
+    assert "  |        ^ here" in rendered
+    assert "re-save the file as UTF-8." in flat(rendered)
+
+
+def test_decode_position_is_a_file_offset_on_a_file_larger_than_a_read_chunk(tmp_path):
+    """Line, column and offset are recomputed from the bytes, not taken on trust.
+
+    `UnicodeDecodeError.start` is an offset into whatever the decoder was
+    handed, and through a `TextIOWrapper` that is not promised to be the whole
+    file: reading the *same* file line by line reports an offset thousands of
+    bytes short, and the line number it implies is wrong. `parse_file` happens
+    to call `read()`, which decodes in one piece today -- an implementation
+    detail of `TextIOWrapper`, not a contract, and not something a location
+    should rest on.
+
+    So this pins the property that matters and not the mechanism: on a file far
+    larger than any read chunk, the offset indexes the file, and the line
+    number counts from its first byte.
+    """
+    filler = "\n".join(f"# padding line {i}" for i in range(4000)).encode("utf-8")
+    program = tmp_path / "big.pdl"
+    program.write_bytes(filler + b'\ntext: "\xff bad"\n')
+
+    with pytest.raises(PDLUnicodeDecodeError) as caught:
+        parse_file(program)
+    exc = caught.value
+    assert exc.object == program.read_bytes()
+    assert exc.start == len(filler) + 8
+    assert exc.object[exc.start] == 0xFF
+    assert exc.text.startswith(f"{program}:4001:8 - not valid UTF-8")
+    assert '4001 | text: "� bad"' in exc.text
+
+    # The reading that would be wrong, so the assertions above cannot pass by
+    # accident: the codec's own offset depends on how much it was handed.
+    with pytest.raises(UnicodeDecodeError) as chunked:
+        with open(program, "r", encoding="utf-8") as handle:
+            for _ in handle:
+                pass
+    assert chunked.value.start < exc.start
+
+
+def test_utf16_file_is_named_as_utf16(tmp_path):
+    """The one detected encoding earns its own sentence, and no bogus excerpt.
+
+    A UTF-16 file has an undecodable byte at offset 0 and NUL bytes throughout;
+    an excerpt of it would be noise, so this branch names the file instead of
+    pointing inside it.
+    """
+    program = tmp_path / "prog.pdl"
+    program.write_bytes("text: hi\n".encode("utf-16"))
+    with pytest.raises(PDLUnicodeDecodeError) as caught:
+        parse_file(program)
+    text = flat(caught.value.text)
+    assert f"cannot read `{program}`: it is UTF-16, not UTF-8" in text
+    assert "begins with a UTF-16 byte-order mark" in text
+    assert "\x00" not in caught.value.text
+
+
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        (b"text: hi\nb\xe2(\xa1\n", "byte 0x28 cannot continue the UTF-8 character"),
+        (b"text: hi\nx\xe2\x82", "the file ends in the middle of a UTF-8 character"),
+    ],
+)
+def test_other_decode_failures_are_named_in_words(tmp_path, data, expected):
+    """The codec's `reason` strings are a closed set; none of them reaches the user."""
+    program = tmp_path / "prog.pdl"
+    program.write_bytes(data)
+    with pytest.raises(PDLUnicodeDecodeError) as caught:
+        parse_file(program)
+    assert expected in caught.value.text
+    assert "codec can't decode" not in caught.value.text
 
 
 def test_marks_carry_the_real_filename(tmp_path):

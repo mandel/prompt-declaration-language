@@ -528,14 +528,36 @@ Then, serialised on the foundation:
 
 ---
 
-## 7. Open decisions
+## 7. Decisions taken after §5
 
-Recorded so they survive between sessions. Everything in §5 is settled; these are not.
+Recorded so they survive between sessions. Everything in §5 was settled at the end of
+Phase 0; this section is for questions that only surfaced during implementation.
 
 ### 7.1 `E-PARSE-005` — what a non-UTF-8 `.pdl` file raises from the SDK
 
-**Status: blocked on a human decision. Six of the seven `E-BOUNDARY` entries were
-implemented without it.**
+**Status: DECIDED 2026-08-10 by the project owner — option 1, raise `PDLParseError`.**
+Implemented as `PDLUnicodeDecodeError(PDLLocatedParseError)`, which is *not* a
+`UnicodeDecodeError`; `except UnicodeDecodeError` around `exec_file` therefore stops
+matching. That is the single deliberate SDK break of the boundary work and it is
+announced in `docs/release-notes.md`, together with the one narrowing left over from the
+other six (`except yaml.MarkedYAMLError`, which `PDLYamlError` does not satisfy).
+
+Two conditions were attached to the choice and both are met. The decode payload is
+carried onto the new exception — `encoding`, `object`, `start`, `end`, `reason` — so a
+caller rewriting the clause to `except PDLParseError` finds the same attributes on the
+object it catches; `start` and `end` are improved to file offsets. And `str(exc)` is the
+rendered diagnostic rather than a list repr, inherited from `PDLLocatedParseError`.
+Both are pinned by tests in `tests/test_parse_errors.py`, because matching the class and
+using the caught object are two different questions.
+
+The reasoning below is preserved as the record of what was weighed. One clause of it was
+overstated and is corrected here: `UnicodeDecodeError.start` is chunk-relative in
+general, but `parse_file` calls `read()` on a fresh handle, and `TextIOWrapper.read()`
+decodes in one piece, so today's number *is* a file offset. Reading the same file line by
+line is what reports an offset thousands of bytes short. The position is recomputed from
+`Path.read_bytes()` anyway, for two reasons that survive the correction: a location must
+not rest on an undocumented implementation detail of `TextIOWrapper`, and the raw bytes
+are needed for the excerpt regardless.
 
 The other boundary entries keep every existing SDK `except` clause working, because a
 shim can inherit the concrete exception type:
@@ -567,9 +589,21 @@ So a decode failure cannot both carry a PDL message and remain catchable as
    `except UnicodeDecodeError` still stops matching; only forensic value is preserved.
 
 Recommendation: option 1 with a release note, as the single documented SDK change in the
-boundary work.
+boundary work. *Chosen; see the status line above.*
 
 Related and worth knowing when this is picked up: `UnicodeDecodeError.start` is
 **chunk-relative**, because `parse_file` reads through a `TextIOWrapper`. Today's
 reported byte offset is therefore not reliably a file offset, and a correct location has
-to be recomputed from the raw bytes on the failure path.
+to be recomputed from the raw bytes on the failure path. *Overstated for this code path
+— see the correction in the status above.*
+
+### 7.2 Non-UTF-8 inputs that are still uncovered
+
+Not decided, because nothing forced it yet. `parse_file` is now the only reader that
+turns a decode failure into a diagnostic. Two siblings still raise a bare
+`UnicodeDecodeError` and would each need their own corpus entry and golden:
+
+- `load_initial_scope` (`pdl.py:245-246`), the `-f` data file. One `except` clause away
+  from the same treatment, but it is a second error ID, not this one.
+- `process_import` (`pdl_interpreter.py:3093`), which opens the imported file itself
+  instead of calling `parse_file` — the same reason `E-RUNTIME-002` was left to item 4.

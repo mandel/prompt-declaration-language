@@ -4,18 +4,12 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    exit_code = pdl_interpreter.generate(
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in generate
-    prog, loc = parse_file(pdl_file)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
-    prog_str = pdl_fp.read()
-               ^^^^^^^^^^^^^
-  File "<frozen codecs>", line 322, in decode
-UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 7: invalid start byte
+prog.pdl:1:8 - not valid UTF-8: byte 0xff cannot start a UTF-8 character
+
+1 | text: "�� bad"
+  |        ^ here
+
+  A PDL program must be UTF-8 encoded text. This file is not, so it cannot be
+  read at all.
+
+  help: re-save the file as UTF-8.

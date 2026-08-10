@@ -11,6 +11,7 @@ from .pdl_diagnostics import (
     ORIGIN_PROGRAM,
     Diagnostic,
     source_read_diagnostic,
+    undecodable_diagnostic,
     yaml_diagnostic,
 )
 from .pdl_location_utils import get_line_map
@@ -37,9 +38,16 @@ class PDLParseError(PDLException):
 # `tests/test_parse_errors.py::test_shims_keep_every_except_clause_matching`
 # pins that, because nothing else does.
 #
-# Any *other* `OSError` is deliberately re-raised untouched (see `parse_file`),
-# as is `UnicodeDecodeError`, which cannot be shimmed at all: its constructor
-# requires exactly five arguments, so it cannot carry a PDL message.
+# Any *other* `OSError` is deliberately re-raised untouched (see `parse_file`).
+#
+# `UnicodeDecodeError` is the one exception to the shim rule, and the one
+# documented SDK break in this group: it cannot be subclassed usefully, because
+# its constructor requires exactly five arguments, so no shim can both carry a
+# PDL message and stay catchable as a `UnicodeDecodeError`. INVENTORY.md 7.1
+# decided to raise `PDLUnicodeDecodeError` anyway and take the break, because a
+# decode failure is the one entry here whose diagnostic gain -- a real line,
+# column, excerpt and caret -- is largest. The decode payload is carried across
+# so the caught object is still usable; see the class.
 
 
 class PDLLocatedParseError(PDLParseError):
@@ -99,6 +107,35 @@ class PDLPermissionError(  # pylint: disable=too-many-ancestors
     """
 
 
+class PDLUnicodeDecodeError(PDLLocatedParseError):
+    """The source file is not UTF-8. **Not** a `UnicodeDecodeError`.
+
+    It cannot be one: `UnicodeDecodeError.__init__` requires exactly five
+    arguments, so a subclass carrying a PDL message cannot be constructed at
+    all. `except UnicodeDecodeError` around `exec_file`/`parse_file` therefore
+    stops matching -- the single deliberate SDK break of the boundary work,
+    decided in `docs/error-reporting/INVENTORY.md` 7.1 and written up in
+    `docs/release-notes.md`.
+
+    Matching the class is only half of a migration, so the decode data is
+    carried across verbatim: `encoding`, `object`, `start`, `end` and `reason`
+    all read as they would on the exception this replaces, and
+    `except PDLParseError as e: e.start` is the mechanical rewrite. The one
+    difference is an improvement: whenever the file could be re-read,
+    `start`/`end` index the **file**, rather than whatever the decoder happened
+    to be handed (see `undecodable_source_error`). The exception the codec
+    itself raised stays reachable through `__cause__`.
+    """
+
+    def __init__(self, diagnostic: Diagnostic, exc: UnicodeDecodeError):
+        super().__init__(diagnostic)
+        self.encoding = exc.encoding
+        self.object = exc.object
+        self.start = exc.start
+        self.end = exc.end
+        self.reason = exc.reason
+
+
 class PDLYamlError(PDLLocatedParseError, yaml.YAMLError):
     """`yaml.safe_load` failed. Also a `yaml.YAMLError`, on purpose.
 
@@ -121,11 +158,12 @@ def parse_file(pdl_file: str | Path) -> tuple[Program, PdlLocationType]:
             prog_str = pdl_fp.read()
     except (FileNotFoundError, IsADirectoryError, PermissionError) as exc:
         raise source_read_error(Path(pdl_file), exc) from exc
-    # Everything else -- other `OSError`s and `UnicodeDecodeError` -- propagates
-    # unchanged. Narrowing a shim to each concrete errno is what makes this
-    # additive, and there is no honest way to extend that to an open set of
-    # errno classes without breaking `except <SpecificError>` for the ones not
-    # named above.
+    except UnicodeDecodeError as exc:
+        raise undecodable_source_error(Path(pdl_file), exc) from exc
+    # Every other `OSError` propagates unchanged. Narrowing a shim to each
+    # concrete errno is what makes those additive, and there is no honest way to
+    # extend that to an open set of errno classes without breaking
+    # `except <SpecificError>` for the ones not named above.
     return parse_str(prog_str, file_name=str(pdl_file))
 
 
@@ -151,6 +189,49 @@ def source_read_error(
             wrapped.filename2 = exc.filename2
             return wrapped
     raise exc  # pragma: no cover - `parse_file` catches only the three above
+
+
+def undecodable_source_error(
+    path: Path, exc: UnicodeDecodeError
+) -> PDLUnicodeDecodeError:
+    """Wrap a decode failure, recomputing its position from the raw bytes.
+
+    `exc.start` is an offset into whatever the decoder was handed, which
+    through a `TextIOWrapper` is not promised to be the whole file. `read()` on
+    a fresh handle decodes in one piece today, so the number happens to be a
+    file offset; reading the same file line by line reports an offset thousands
+    of bytes short. That is an implementation detail of `TextIOWrapper`, and a
+    reported line should not rest on one -- a location that is silently wrong is
+    worse than no location, and this is cheap to compute honestly.
+
+    So the file is read again as bytes and decoded again in one piece, which
+    raises the same failure with an offset that is a file offset by
+    construction, and which yields the bytes the excerpt is built from. That is
+    one extra read, on the failure path only. If the second read does not
+    reproduce the failure -- the file was deleted, or replaced between the two
+    reads -- the original exception is kept and no position is claimed.
+    """
+    payload = exc
+    raw: bytes | None
+    try:
+        raw = path.read_bytes()
+    except OSError:  # pragma: no cover - readable a moment ago, gone now
+        raw = None
+    if raw is not None:
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError as file_exc:
+            payload = file_exc
+        else:  # pragma: no cover - the file changed between the two reads
+            raw = None
+    diagnostic = undecodable_diagnostic(
+        str(path),
+        raw,
+        payload.start if raw is not None else None,
+        payload.end,
+        payload.reason,
+    )
+    return PDLUnicodeDecodeError(diagnostic, payload)
 
 
 def yaml_error(  # pylint: disable=too-many-arguments

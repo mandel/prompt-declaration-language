@@ -3,12 +3,11 @@
   "title": "non-UTF-8 bytes in source",
   "severity": "S0",
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 1,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
   },
-  "notes": "UnicodeDecodeError traceback from parse_file:19. Byte offset given, line not."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md, decision INVENTORY.md 7.1). The position is recomputed from the file's bytes rather than taken from the codec: UnicodeDecodeError.start is an offset into whatever the decoder was handed, and the excerpt needs the bytes anyway. Decoding with errors=replace is what makes the column exact -- one U+FFFD per bad byte, every other character its own width -- so the caret lands under the byte that failed. Fix stays at 2 deliberately: the encoding the file actually is cannot be detected, so `re-save as UTF-8` is the most specific honest advice. The one detected case, a UTF-16 byte-order mark, says so instead. This is the single SDK break of the boundary work: `except UnicodeDecodeError` no longer matches (see docs/release-notes.md)."
 }

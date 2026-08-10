@@ -438,6 +438,104 @@ def source_read_diagnostic(
 
 
 # --------------------------------------------------------------------------
+# Decoding a source file: E-PARSE-005
+# --------------------------------------------------------------------------
+
+_UTF8_RULE = (
+    "A PDL program must be UTF-8 encoded text. This file is not, so it cannot be "
+    "read at all."
+)
+_UTF16_RULE = (
+    "A PDL program must be UTF-8 encoded text. This file begins with a UTF-16 "
+    "byte-order mark, so it cannot be read at all."
+)
+_UTF8_HELP = "re-save the file as UTF-8."
+
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+"""The two UTF-16 byte-order marks. Both begin with a byte that cannot start a
+UTF-8 character, so this branch is reached before anything else in the file
+matters -- and it is the one encoding mistake common enough to earn its own
+sentence."""
+
+
+def _decode_headline(raw: bytes, start: int, end: int, reason: str) -> str:
+    """Name the offending byte in PDL's words, not the codec's.
+
+    ``reason`` comes from CPython's UTF-8 decoder and its values are a small
+    closed set. The byte at ``start`` is the *first* byte of the malformed
+    sequence, which is not the same as the byte the decoder choked on: for
+    ``invalid continuation byte`` the caret belongs on the character that starts
+    the sequence and the culprit is the byte at ``end``.
+    """
+    lead = raw[start] if start < len(raw) else None
+    match reason:
+        case "invalid start byte" if lead is not None:
+            return f"byte 0x{lead:02x} cannot start a UTF-8 character"
+        case "invalid continuation byte" if end < len(raw):
+            return (
+                f"byte 0x{raw[end]:02x} cannot continue the UTF-8 character "
+                "that starts here"
+            )
+        case "unexpected end of data":
+            return "the file ends in the middle of a UTF-8 character"
+        case _:
+            return f"byte 0x{lead:02x}: {reason}" if lead is not None else reason
+
+
+def undecodable_diagnostic(
+    display: str, raw: bytes | None, start: int | None, end: int, reason: str
+) -> Diagnostic:
+    """E-PARSE-005. The position is recomputed from the file's own bytes.
+
+    ``UnicodeDecodeError.start`` is an offset into whatever the decoder was
+    handed, which through a ``TextIOWrapper`` is not promised to be the whole
+    file. The caller re-reads the file and re-decodes it in one piece, so that
+    ``raw`` and ``start`` here are a file's bytes and an offset into them by
+    construction. Both are ``None`` when the re-read did not reproduce the
+    failure, in which case no position is claimed at all.
+
+    The prefix is decoded with ``errors="replace"`` so that the column is exact
+    rather than approximate: each undecodable byte becomes exactly one
+    ``U+FFFD`` and every decodable character keeps its width, so the character
+    columns of the excerpt and of the caret agree.
+    """
+    if raw is not None and raw[:2] in _UTF16_BOMS:
+        return Diagnostic(
+            code="E-PARSE-005",
+            message=f"cannot read `{display}`: it is UTF-16, not UTF-8",
+            file=display,
+            show_location=False,
+            notes=[Note("rule", _UTF16_RULE)],
+            suggestions=[Suggestion(_UTF8_HELP)],
+        )
+
+    if raw is None or start is None:
+        # The file was readable a moment ago and is not now, or its bytes have
+        # changed. Everything below would be a guess, so none of it is said.
+        return Diagnostic(
+            code="E-PARSE-005",
+            message=f"cannot read `{display}`: it is not valid UTF-8 ({reason})",
+            file=display,
+            show_location=False,
+            notes=[Note("rule", _UTF8_RULE)],
+            suggestions=[Suggestion(_UTF8_HELP)],
+        )
+
+    line_begin = raw.rfind(b"\n", 0, start) + 1
+    line = raw.count(b"\n", 0, start) + 1
+    col = len(raw[line_begin:start].decode("utf-8", "replace")) + 1
+    return Diagnostic(
+        code="E-PARSE-005",
+        message=f"not valid UTF-8: {_decode_headline(raw, start, end, reason)}",
+        file=display,
+        spans=[Span(line=line, col=col, label="here", primary=True)],
+        source=raw.decode("utf-8", "replace"),
+        notes=[Note("rule", _UTF8_RULE)],
+        suggestions=[Suggestion(_UTF8_HELP)],
+    )
+
+
+# --------------------------------------------------------------------------
 # YAML: E-PARSE-001, E-PARSE-002, E-CLI-003
 # --------------------------------------------------------------------------
 

@@ -395,6 +395,9 @@ When using Granite models, we use the following defaults for model parameters:
 
 For a complete list of issues see [here](https://github.com/IBM/prompt-declaration-language/issues).
 
+Changes that need an action from you, such as an exception type an SDK caller
+catches, are listed in the [Release Notes](release-notes.md).
+
 
 ## Contributing to the Project
 

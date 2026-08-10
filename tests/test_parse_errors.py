@@ -8,7 +8,9 @@ and nothing else in the tree pins that. If `PDLFileNotFoundError` stopped being 
 `except FileNotFoundError: ...` around `exec_file` silently stopped firing.
 """
 
+import errno
 import io
+from pathlib import Path
 
 import pytest
 import yaml
@@ -310,3 +312,38 @@ def test_well_formed_model_defaults_are_accepted():
 def test_text_renders_both_message_shapes():
     assert PDLParseError(["a", "b"]).text == "a\nb"
     assert PDLParseError("plain").text == "plain"
+
+
+def test_shims_preserve_the_oserror_payload(tmp_path: Path):
+    """`except OSError as e` must still find errno, strerror and filename.
+
+    Matching the class is not the whole contract. `OSError.__init__` never runs
+    with the original arguments when the shim is constructed, so without an
+    explicit copy these read `None` and a caller branching on `e.errno` changes
+    behaviour silently. `__mro__` checks do not catch that.
+    """
+    missing = tmp_path / "nope.pdl"
+    with pytest.raises(OSError) as caught:
+        exec_file(str(missing))
+    exc = caught.value
+    assert exc.errno == errno.ENOENT
+    assert exc.strerror == "No such file or directory"
+    assert exc.filename == str(missing)
+
+
+def test_shimmed_exceptions_stringify_as_prose(tmp_path: Path):
+    """`print(exc)` and `logging.exception` must not emit a list repr.
+
+    `PDLParseError.message` is a `list[str]`, so the inherited `__str__` renders
+    a bracketed, escaped list. That is the defect `.text` fixes at the CLI
+    sites; the library path reaches it through `str()` instead.
+    """
+    bad_yaml = tmp_path / "bad.pdl"
+    bad_yaml.write_text('text:\n  - "hello\n  - "world"\n', encoding="utf-8")
+    for path in (tmp_path / "nope.pdl", bad_yaml):
+        with pytest.raises(PDLParseError) as caught:
+            exec_file(str(path))
+        rendered = str(caught.value)
+        assert not rendered.startswith("["), rendered
+        assert "\\n" not in rendered, rendered
+        assert rendered == caught.value.text

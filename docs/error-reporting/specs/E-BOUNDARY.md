@@ -926,3 +926,58 @@ with a release note, as the single documented SDK change in this item.
 
 **Status: not implemented.** The six non-breaking entries are unblocked; the
 decode entry awaits a decision.
+
+---
+
+## Correction — the addendum's "purely additive" claim was wrong
+
+`regression-guard` failed the first implementation of this item and was right to.
+The addendum above concluded that per-errno shims were "purely additive — no
+release note needed, and no stop-and-report, because nothing breaks". Matching
+the class is necessary but not sufficient, and two things did break:
+
+1. **The `OSError` payload was dropped.** `OSError.__init__` never runs with the
+   original arguments when a shim is constructed, so `errno`, `strerror`,
+   `filename` and `filename2` all read `None`. A caller doing
+   `except OSError as e: log(e.filename)` or branching on `e.errno` around
+   `exec_file` silently got nothing. Fixed by copying the payload onto the shim
+   in `source_read_error`.
+2. **`str(exc)` rendered a Python list repr.** `PDLParseError.message` is a
+   `list[str]`, so the inherited `__str__` produced a bracketed, quoted,
+   `\n`-escaped list — the same defect `.text` was introduced to fix at the CLI
+   sites, left in place on the library path. An embedder calling `print(exc)` or
+   `logging.exception(...)` hit it directly. Fixed with a `__str__` on
+   `PDLLocatedParseError`.
+
+Neither was visible to any test: `test_shims_keep_every_except_clause_matching`
+checks `__mro__` only. Both are now pinned by
+`test_shims_preserve_the_oserror_payload` and
+`test_shimmed_exceptions_stringify_as_prose`.
+
+**The honest conclusion**, replacing the addendum's: the shims are additive *in
+type*, and after the two fixes above they are additive *in payload and rendering*
+too. One narrowing remains and belongs in a release note — `except
+yaml.MarkedYAMLError` around `exec_file` stops matching, because `PDLYamlError`
+derives from `yaml.YAMLError` rather than its marked subclass. That is rarer than
+`except yaml.YAMLError`, but it is real.
+
+The general lesson for the rest of the project: "does `except X` still match" is
+one question, and "is the caught object still a usable X" is a second one. Ask
+both.
+
+## Correction — why the last-resort handler is still missing
+
+The implementation notes recorded that a last-resort `except Exception` in `main`
+was skipped because it would swallow the `UnicodeDecodeError` that E-PARSE-005
+must keep leaking. That reasoning is wrong for the code that was actually
+written. It would hold for the spec's Tier 2, which wraps everything through the
+`generate(...)` call — but the implemented `try` covers only `load_initial_scope`
+and `validate_scope`, and `generate` sits outside it. A last-resort clause on
+that block could not have reached E-PARSE-005 at all.
+
+What its absence actually leaves is a Tier-2 input that is neither a
+`PDLException` nor a corpus entry still dumping a raw traceback — for example an
+empty `-f` file, which fails on `dict | None`. Unchanged from before this item,
+so not a regression, but decision §5.8 is not satisfied for that block and the
+reason it was deferred should be recorded accurately: it needs its own commit and
+its own corpus entries, not that it was impossible here.

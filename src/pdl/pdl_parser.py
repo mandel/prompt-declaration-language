@@ -49,16 +49,48 @@ class PDLLocatedParseError(PDLParseError):
         super().__init__([diagnostic.text])
         self.diagnostic = diagnostic
 
+    def __str__(self) -> str:
+        """Render the diagnostic, not the message list.
 
-class PDLFileNotFoundError(PDLLocatedParseError, FileNotFoundError):
+        `PDLParseError.message` is a `list[str]`, so the inherited `__str__`
+        gives a bracketed, quoted, backslash-escaped list repr. That is the same
+        defect `.text` exists to fix at the CLI sites, and an embedder calling
+        `print(exc)` or `logging.exception(...)` hits it just as squarely.
+        """
+        return self.diagnostic.text
+
+
+class PDLOSParseError(PDLLocatedParseError, OSError):
+    """Base for the errno shims: a located parse error that is also an `OSError`.
+
+    Exists so the shim table can be typed as carrying both halves. Without it,
+    the second element is a `type[PDLLocatedParseError]` and copying `errno`
+    onto it does not type-check, even though every member really is an
+    `OSError`.
+    """
+
+
+# The three shims below each report 8 ancestors against pylint's limit of 7.
+# That depth is the design, not an accident: `PDLException` -> `PDLParseError`
+# -> `PDLLocatedParseError` -> `PDLOSParseError` is the PDL half, and
+# `FileNotFoundError` -> `OSError` is the half that keeps `except
+# FileNotFoundError` matching. Neither half can be shortened without giving up
+# something the SDK contract depends on.
+class PDLFileNotFoundError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, FileNotFoundError
+):
     """`open` failed with ENOENT. Also a `FileNotFoundError`, on purpose."""
 
 
-class PDLIsADirectoryError(PDLLocatedParseError, IsADirectoryError):
+class PDLIsADirectoryError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, IsADirectoryError
+):
     """`open` failed with EISDIR. Also an `IsADirectoryError`, on purpose."""
 
 
-class PDLPermissionError(PDLLocatedParseError, PermissionError):
+class PDLPermissionError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, PermissionError
+):
     """`open` failed with EACCES. Also a `PermissionError`, on purpose.
 
     Needed for more than the obvious case: Windows raises `PermissionError` for
@@ -76,7 +108,7 @@ class PDLYamlError(PDLLocatedParseError, yaml.YAMLError):
     """
 
 
-SHIMMED_OS_ERRORS: tuple[tuple[type[OSError], type[PDLLocatedParseError]], ...] = (
+SHIMMED_OS_ERRORS: tuple[tuple[type[OSError], type[PDLOSParseError]], ...] = (
     (FileNotFoundError, PDLFileNotFoundError),
     (IsADirectoryError, PDLIsADirectoryError),
     (PermissionError, PDLPermissionError),
@@ -99,7 +131,7 @@ def parse_file(pdl_file: str | Path) -> tuple[Program, PdlLocationType]:
 
 def source_read_error(
     path: Path, exc: OSError, *, data_file: bool = False
-) -> PDLLocatedParseError:
+) -> PDLOSParseError:
     """Wrap a failed `open` in the shim matching its own errno."""
     diagnostic = source_read_diagnostic(path, exc, data_file=data_file)
     # The shim is chosen from the type of the exception actually raised, never
@@ -107,7 +139,17 @@ def source_read_error(
     # `PermissionError`, and it must stay catchable as one.
     for cls, shim in SHIMMED_OS_ERRORS:
         if isinstance(exc, cls):
-            return shim(diagnostic)
+            wrapped = shim(diagnostic)
+            # Keeping the class catchable is not enough: `except OSError as e`
+            # reaching for `e.errno`, `e.strerror` or `e.filename` would
+            # otherwise find `None`, because `OSError.__init__` never ran with
+            # the original arguments. Carry the payload across so the caught
+            # object is a drop-in for the one it replaces.
+            wrapped.errno = exc.errno
+            wrapped.strerror = exc.strerror
+            wrapped.filename = exc.filename
+            wrapped.filename2 = exc.filename2
+            return wrapped
     raise exc  # pragma: no cover - `parse_file` catches only the three above
 
 

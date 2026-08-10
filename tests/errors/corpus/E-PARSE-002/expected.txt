@@ -4,58 +4,11 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    exit_code = pdl_interpreter.generate(
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in generate
-    prog, loc = parse_file(pdl_file)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
-    return parse_str(prog_str, file_name=str(pdl_file))
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_str
-    prog_dict = yaml.safe_load(pdl_str)
-                ^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in safe_load
-    return load(stream, SafeLoader)
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in load
-    return loader.get_single_data()
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/constructor.py", line <LINE>, in get_single_data
-    node = self.get_single_node()
-           ^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in get_single_node
-    document = self.compose_document()
-               ^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_document
-    node = self.compose_node(None, None)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
-    node = self.compose_mapping_node(anchor)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_mapping_node
-    item_value = self.compose_node(node, item_key)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
-    if self.check_event(AliasEvent):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in check_event
-    self.current_event = self.state()
-                         ^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in parse_block_mapping_value
-    if not self.check_token(KeyToken, ValueToken, BlockEndToken):
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/scanner.py", line <LINE>, in check_token
-    self.fetch_more_tokens()
-  File "<VENV><SITE>/yaml/scanner.py", line <LINE>, in fetch_more_tokens
-    raise ScannerError("while scanning for the next token", None,
-yaml.scanner.ScannerError: while scanning for the next token
-found character '\t' that cannot start any token
-  in "<unicode string>", line 2, column 1:
-    	- hello
-    ^
+prog.pdl:2:1 - not valid YAML: tab character used for indentation
+
+2 |  - hello
+  | ^ tab character
+
+  YAML allows only spaces for indentation.
+
+  help: replace the leading tab on line 2 with spaces.

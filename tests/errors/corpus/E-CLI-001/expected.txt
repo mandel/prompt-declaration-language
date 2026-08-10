@@ -4,17 +4,9 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    exit_code = pdl_interpreter.generate(
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in generate
-    prog, loc = parse_file(pdl_file)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
-    with open(pdl_file, "r", encoding="utf-8") as pdl_fp:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-FileNotFoundError: [Errno 2] No such file or directory: 'no_such_file.pdl'
+cannot read `no_such_file.pdl`: no such file
+
+  `pdl` takes the path of a PDL program file. Nothing exists at that path, and
+  the current directory contains no `.pdl` files.
+
+  help: check the path, or run `pdl --help` for the expected arguments.

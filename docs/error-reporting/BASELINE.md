@@ -7,32 +7,32 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **45 corpus entries**, one per reproducible taxonomy class.
-- **216 / 675** rubric points (**32%**).
-- **14 entries leak a Python traceback** to the user.
+- **304 / 675** rubric points (**45%**).
+- **6 entries leak a Python traceback** to the user.
 - **4 entries fail silently** — a broken program that exits 0 with no diagnostic at all.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 26 | 135 | 0.58 |
-| What | 48 | 135 | 1.07 |
-| Why | 60 | 135 | 1.33 |
-| Fix | 15 | 135 | 0.33 |
-| Hygiene | 67 | 135 | 1.49 |
+| Location | 40 | 135 | 0.89 |
+| What | 68 | 135 | 1.51 |
+| Why | 73 | 135 | 1.62 |
+| Fix | 33 | 135 | 0.73 |
+| Hygiene | 90 | 135 | 2.00 |
 
 ## By error class
 
 | Class | Entries | Score | of | Mean / 15 |
 | --- | ---: | ---: | ---: | ---: |
-| E-CLI | 5 | 12 | 75 | 2.4 |
+| E-CLI | 5 | 56 | 75 | 11.2 |
 | E-CODE | 3 | 24 | 45 | 8.0 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
-| E-LINT | 4 | 11 | 60 | 2.8 |
+| E-LINT | 4 | 25 | 60 | 6.2 |
 | E-MODEL | 2 | 10 | 30 | 5.0 |
-| E-PARSE | 5 | 9 | 75 | 1.8 |
+| E-PARSE | 5 | 33 | 75 | 6.6 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
-| E-RUNTIME | 6 | 31 | 90 | 5.2 |
+| E-RUNTIME | 6 | 37 | 90 | 6.2 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -42,20 +42,12 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` |  | for over a string iterates characters |
-| `E-CLI-001` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | PDL file does not exist |
-| `E-CLI-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | PDL path is a directory |
-| `E-CLI-003` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | malformed inline YAML passed to -d |
-| `E-LINT-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | pdl-lint dumps a traceback for a YAML error |
 | `E-PARSE-005` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | non-UTF-8 bytes in source |
-| `E-RUNTIME-001` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | include names a missing file |
 | `E-RUNTIME-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | import names a missing file |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
 | `E-SCHEMA-006` | S1 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | analyzer produces nothing, useless fallback |
-| `E-CLI-004` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | malformed pdl_model_default_parameters |
 | `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
-| `E-PARSE-001` | S0 | 1 | 0 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | unterminated quoted scalar |
-| `E-PARSE-002` | S0 | 1 | 1 | 1 | 0 | 0 | **3** | `██░░░░░░░░` | TB | tab used for indentation |
 | `E-MODEL-001` | S0 | 0 | 1 | 2 | 1 | 0 | **4** | `███░░░░░░░` | TB | unrecognised model provider |
 | `E-PARSER-001` | S1 | 0 | 1 | 1 | 0 | 2 | **4** | `███░░░░░░░` |  | json parser on non-JSON (issue #387) |
 | `E-SCHEMA-007` | S1 | 1 | 0 | 2 | 0 | 1 | **4** | `███░░░░░░░` |  | dict fails every block union branch |
@@ -64,16 +56,17 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-CODE-001` | S1 | 1 | 1 | 2 | 0 | 1 | **5** | `███░░░░░░░` | TB | Python exception inside a code block |
 | `E-EXPR-004` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | error inside an imported file reports the wrong line |
 | `E-EXPR-006` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | comment lines shift every reported line |
-| `E-LINT-001` | S1 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | pdl-lint reports a schema error as a list repr |
 | `E-CLI-005` | S0 | 1 | 1 | 2 | 0 | 2 | **6** | `████░░░░░░` |  | python -m pdl.pdl reports success on failure |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
 | `E-EXPR-001` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | undefined variable in an expression |
 | `E-EXPR-002` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | Jinja syntax error |
 | `E-EXPR-003` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | attribute missing on an object |
 | `E-EXPR-005` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | error inside a called function has no call stack |
+| `E-LINT-001` | S1 | 1 | 2 | 1 | 0 | 2 | **6** | `████░░░░░░` |  | pdl-lint reports a schema error as a list repr |
 | `E-MODEL-002` | S2 | 1 | 2 | 2 | 1 | 0 | **6** | `████░░░░░░` | TB | model endpoint unreachable |
 | `E-TYPE-003` | S2 | 1 | 1 | 1 | 1 | 2 | **6** | `████░░░░░░` |  | missing function argument |
 | `E-PARSER-005` | S1 | 0 | 2 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | invalid regex in a parser |
+| `E-RUNTIME-001` | S0 | 1 | 1 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | include names a missing file |
 | `E-SCHEMA-001` | S3 | 1 | 2 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | unknown field in a model block |
 | `E-SCHEMA-002` | S2 | 1 | 2 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | near-miss field name (typo) |
 | `E-SCHEMA-004` | S2 | 1 | 1 | 2 | 0 | 3 | **7** | `█████░░░░░` |  | scalar type mismatch |
@@ -83,22 +76,29 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-003` | S3 | 1 | 2 | 1 | 1 | 3 | **8** | `█████░░░░░` |  | missing required field |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
+| `E-CLI-001` | S0 | 1 | 3 | 3 | 1 | 3 | **11** | `███████░░░` |  | PDL file does not exist |
+| `E-CLI-002` | S0 | 1 | 3 | 3 | 2 | 3 | **12** | `████████░░` |  | PDL path is a directory |
+| `E-CLI-004` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | malformed pdl_model_default_parameters |
 | `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
 | `E-RUNTIME-007` | S1 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | contribute entry is a dict of the wrong size |
+| `E-CLI-003` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | malformed inline YAML passed to -d |
+| `E-LINT-002` | S0 | 3 | 3 | 3 | 3 | 2 | **14** | `█████████░` |  | pdl-lint dumps a traceback for a YAML error |
+| `E-PARSE-001` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | unterminated quoted scalar |
+| `E-PARSE-002` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | tab used for indentation |
 
 ## Notes per entry
 
 **`E-CLI-001`** — PDL file does not exist  
-Uncaught FileNotFoundError from parse_file:19. The filename is the only usable content.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `parse_file` raises `PDLFileNotFoundError`, which is both a `PDLParseError` and a `FileNotFoundError`, so `generate` already prints it and every existing `except FileNotFoundError` around `exec_file` keeps matching. Location is capped at 1 and that is not a defect to fix later: the error is about the path itself, so there is no line, column or excerpt that could exist. Fix scores 1 on this branch because the work directory holds no other file; the near-miss branches (missing `.pdl` suffix, a close `difflib` match, a listing of the sibling `.pdl` files) score 3 and are exercised by tests/test_parse_errors.py.
 
 **`E-CLI-002`** — PDL path is a directory  
-Uncaught IsADirectoryError. No hint that a .pdl file was expected.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `PDLIsADirectoryError` is also an `IsADirectoryError`. Classification is on `Path.is_dir()` rather than errno, because Windows raises `PermissionError` for `open()` on a directory. `sub/` holds no `.pdl` file here, so the reply is the shape of the fix rather than a name; with one program inside it becomes `did you mean `pdl sub/main.pdl`?` and scores 3.
 
 **`E-CLI-003`** — malformed inline YAML passed to -d  
-Uncaught yaml.scanner.ScannerError. PyYAML's line/column refer to the -d string, unlabelled.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Two devices say which of the two inputs is broken, because either alone is missable: the origin token is the literal `--data`, which cannot be read as a filename, and the note says in words that the program was never read -- true, since `-d` is parsed before `generate`. Line, column, excerpt and caret all come from PyYAML's `problem_mark`, which was computed and discarded before.
 
 **`E-CLI-004`** — malformed pdl_model_default_parameters  
-Uncaught ValueError from pdl_utils.validate_pdl_model_defaults. Message names the value and matcher.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `validate_pdl_model_defaults` raises `PDLScopeError(PDLException, ValueError)` carrying the path, the pattern and the offending value; `main` names the origin from a membership test on each dict as it is merged, so `--data` is known rather than guessed. The two sibling shapes that produced a bare `AssertionError` (not a list, entry not a mapping) raise the same error. Location stays 1 until phase-3 item 0: the line and column of the value inside the `-d` string need a marks-recording loader, and the record already carries the path, so that upgrade is a rendering change.
 
 **`E-CLI-005`** — python -m pdl.pdl reports success on failure  
 src/pdl/pdl.py ends in a bare main() with no sys.exit, so the module entry point always exits 0. The diagnostic itself is fine; the exit code silently lies. CI that runs `python -m pdl.pdl` never fails.
@@ -131,10 +131,10 @@ Correct line inside the function body, but nothing says which call site reached 
 Reports line 2; the error is on line 5. get_line_map counts comment lines as structure. Any file with comments -- i.e. any real file -- is affected.
 
 **`E-LINT-001`** — pdl-lint reports a schema error as a list repr  
-PDLParseError: ['prog.pdl:5 - Field not allowed: parameterss'] -- a Python list repr in the console, because PDLParseError.message is a list[str].
+List repr gone: `_lint_pdl_file` logs `e.text` instead of `e.message`, so a `PDLParseError` whose message is a `list[str]` prints as prose. Everything else is unchanged and belongs to the E-LINT items: the exception class name is still printed, there is no column, no excerpt and no suggestion.
 
 **`E-LINT-002`** — pdl-lint dumps a traceback for a YAML error  
-Bare `except Exception: logger.exception(...)` in _lint_pdl_file.
+Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. Hygiene is 2, not 3: the `PDLYamlError:` class name is still printed and the multi-line diagnostic does not align with the linter's own five-space gutter. Both belong to the E-LINT items.
 
 **`E-LINT-003`** — pdl-lint never names the file for a Python syntax error  
 Traceback ends in File "<unknown>", line 1. The .pdl path appears only in the summary line, and the snippet's line number is relative to the code block.
@@ -149,10 +149,10 @@ The diagnostic IS printed correctly and located; the defect is that it is then r
 httpx.RequestError branch. Names the method and URL, which is genuinely useful.
 
 **`E-PARSE-001`** — unterminated quoted scalar  
-13-frame traceback. PyYAML computes the correct line AND column and names the file '<unicode string>'. All of it is thrown away by not catching the exception.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Read the 15 narrowly: it is available because PyYAML computed both marks and kept the whole program in `mark.buffer`, and it is not the class average -- the generic branch of the same recognizer scores 12. The second caret is moved from `context_mark` to the unpaired quote by the one heuristic in the design (odd count of `"` or `'` after masking escapes, scanning from the context line to the problem line); when it does not fire the diagnostic degrades to the generic branch rather than guessing. No block path, because a document that did not parse has no blocks.
 
 **`E-PARSE-002`** — tab used for indentation  
-Traceback. PyYAML's text is unusually good here ('found character \t that cannot start any token') and is buried.
+Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). PyYAML's own text was already good; all it needed was to not be the 58th line of a traceback. The tab is rendered as one space in the excerpt so the caret column equals the source column with no tab-stop arithmetic, which makes the tab invisible by construction -- hence the headline and the caret label both name it in words.
 
 **`E-PARSE-003`** — duplicate mapping key silently accepted  
 No diagnostic at all. Last key wins, exit 0. Decision 5.5 makes this an error.
@@ -170,7 +170,7 @@ No file, no line -- every E-PARSER site raises with loc=None. Reports a Python T
 Gives the position inside the regex but no position in the .pdl file.
 
 **`E-RUNTIME-001`** — include names a missing file  
-~20-frame traceback through the interpreter. The include site is never named.
+Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), the include site is `:0`, and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. Two stacked claim lines for one error keep hygiene at 2.
 
 **`E-RUNTIME-002`** — import names a missing file  
 Same. Note the traceback shows 'nosuch.pdl' -- the .pdl suffix PDL appended -- which does not match what the user wrote.

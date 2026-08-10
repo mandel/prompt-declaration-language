@@ -4,17 +4,9 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    exit_code = pdl_interpreter.generate(
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in generate
-    prog, loc = parse_file(pdl_file)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
-    with open(pdl_file, "r", encoding="utf-8") as pdl_fp:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-IsADirectoryError: [Errno 21] Is a directory: 'sub'
+cannot read `sub`: it is a directory, not a PDL program file
+
+  `pdl` takes the path of one PDL program file, usually with a `.pdl` suffix.
+  `sub` contains no `.pdl` files.
+
+  help: give the path of a program file, e.g. `pdl sub/main.pdl`.

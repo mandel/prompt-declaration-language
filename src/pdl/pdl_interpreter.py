@@ -244,7 +244,7 @@ def generate(
         if trace_file:
             write_trace(trace_file, trace)
     except PDLParseError as exc:
-        print("\n".join(exc.message), file=sys.stderr)
+        print(exc.text, file=sys.stderr)
         return 1
     except PDLRuntimeError as exc:
         if exc.loc is None:
@@ -3065,7 +3065,7 @@ def process_include(
         include_trace = block.model_copy(update={"pdl__trace": trace})
         return result, background, scope, include_trace
     except PDLParseError as exc:
-        message = f"Attempting to include invalid yaml: {str(file)}\n{exc.message}"
+        message = f"Attempting to include invalid yaml: {str(file)}\n{exc.text}"
         raise PDLRuntimeError(
             message,
             loc=loc,
@@ -3113,7 +3113,7 @@ def process_import(
         import_trace = block.model_copy(update={"pdl__trace": trace})
         return new_scope, DependentContext([]), scope, import_trace
     except PDLParseError as exc:
-        message = f"Attempting to import invalid yaml: {str(file)}\n{exc.message}"
+        message = f"Attempting to import invalid yaml: {str(file)}\n{exc.text}"
         raise PDLRuntimeError(
             message,
             loc=loc,

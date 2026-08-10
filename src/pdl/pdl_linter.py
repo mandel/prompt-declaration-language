@@ -374,7 +374,7 @@ def _lint_pdl_file(file_path: Path, config: LinterConfig) -> bool:
         return True
     except PDLParseError as e:
         logger.error(" - ❌  %s", file_path)
-        logger.error("     %s: %s", type(e).__name__, e.message)
+        logger.error("     %s: %s", type(e).__name__, e.text)
         return False
     except Exception:
         logger.exception(" - ❌  %s", file_path)

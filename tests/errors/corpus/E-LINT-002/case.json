@@ -7,12 +7,11 @@
     "prog.pdl"
   ],
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 1,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 2
   },
-  "notes": "Bare `except Exception: logger.exception(...)` in _lint_pdl_file."
+  "notes": "Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. Hygiene is 2, not 3: the `PDLYamlError:` class name is still printed and the multi-line diagnostic does not align with the linter's own five-space gutter. Both belong to the E-LINT items."
 }

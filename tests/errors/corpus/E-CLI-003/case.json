@@ -10,12 +10,11 @@
     "prog.pdl"
   ],
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 1,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
   },
-  "notes": "Uncaught yaml.scanner.ScannerError. PyYAML's line/column refer to the -d string, unlabelled."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Two devices say which of the two inputs is broken, because either alone is missable: the origin token is the literal `--data`, which cannot be read as a filename, and the note says in words that the program was never read -- true, since `-d` is parsed before `generate`. Line, column, excerpt and caret all come from PyYAML's `problem_mark`, which was computed and discarded before."
 }

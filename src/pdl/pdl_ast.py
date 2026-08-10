@@ -1633,6 +1633,44 @@ class PDLException(Exception):
         super().__init__(message)
         self.message = message
 
+    @property
+    def text(self) -> str:
+        """The message as text, whether it is one string or a list of them.
+
+        `PDLParseError.message` is a `list[str]`, one element per schema
+        complaint, while every other subclass carries a plain string. Sites that
+        interpolate `.message` directly therefore print a Python list repr for
+        one kind of error and prose for another (E-LINT-001). Reading `.text`
+        instead is correct for both.
+        """
+        if isinstance(self.message, (list, tuple)):
+            return "\n".join(str(m) for m in self.message)
+        return str(self.message)
+
+
+class PDLScopeError(PDLException, ValueError):
+    """A value supplied to the interpreter's initial scope is malformed.
+
+    Raised by `validate_scope`, which is re-exported from `pdl.pdl` and so is
+    informally public. Inheriting `ValueError` as well as `PDLException` keeps
+    every existing `except ValueError` around `validate_scope` matching; the
+    added fields are what let the CLI say *which* input supplied the value.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments
+        self,
+        message: str,
+        path: list[str] | None = None,
+        pattern: OptionalAny = None,
+        value: OptionalAny = None,
+        reason: str = "",
+    ):
+        super().__init__(message)
+        self.path = list(path or [])
+        self.pattern = pattern
+        self.value = value
+        self.reason = reason
+
 
 class PDLRuntimeError(PDLException):
     def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments

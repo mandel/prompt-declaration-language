@@ -4,50 +4,13 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    initial_scope = initial_scope | yaml.safe_load(args.data)
-                                    ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in safe_load
-    return load(stream, SafeLoader)
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/__init__.py", line <LINE>, in load
-    return loader.get_single_data()
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/constructor.py", line <LINE>, in get_single_data
-    node = self.get_single_node()
-           ^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in get_single_node
-    document = self.compose_document()
-               ^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_document
-    node = self.compose_node(None, None)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
-    node = self.compose_mapping_node(anchor)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_mapping_node
-    item_value = self.compose_node(node, item_key)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/composer.py", line <LINE>, in compose_node
-    if self.check_event(AliasEvent):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in check_event
-    self.current_event = self.state()
-                         ^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in parse_flow_mapping_value
-    return self.parse_flow_node()
-           ^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in parse_flow_node
-    return self.parse_node()
-           ^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/yaml/parser.py", line <LINE>, in parse_node
-    raise ParserError("while parsing a %s node" % node, start_mark,
-yaml.parser.ParserError: while parsing a flow node
-expected the node content, but found '<stream end>'
-  in "<unicode string>", line 1, column 5:
-    {a:
-        ^
+--data:1:5 - not valid YAML: expected a value, but the input ended
+
+1 | {a:
+  |     ^ a value is expected here
+
+  `--data` (`-d`) is read as a YAML mapping of variable names to values.
+
+  note: this is the command-line argument, not `prog.pdl`; the program was
+        never read.
+  help: give the key a value and close the brace, e.g. -d '{a: 1}'

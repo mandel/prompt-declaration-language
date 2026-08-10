@@ -11,7 +11,7 @@
     "what": 2,
     "why": 1,
     "fix": 0,
-    "hygiene": 1
+    "hygiene": 2
   },
-  "notes": "PDLParseError: ['prog.pdl:5 - Field not allowed: parameterss'] -- a Python list repr in the console, because PDLParseError.message is a list[str]."
+  "notes": "List repr gone: `_lint_pdl_file` logs `e.text` instead of `e.message`, so a `PDLParseError` whose message is a `list[str]` prints as prose. Everything else is unchanged and belongs to the E-LINT items: the exception class name is still printed, there is no column, no excerpt and no suggestion."
 }

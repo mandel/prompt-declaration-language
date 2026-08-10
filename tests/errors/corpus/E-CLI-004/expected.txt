@@ -4,14 +4,13 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    validate_scope(initial_scope)
-  File "<REPO>/src/pdl/pdl_utils.py", line <LINE>, in validate_scope
-    validate_pdl_model_defaults(scope["pdl_model_default_parameters"])
-  File "<REPO>/src/pdl/pdl_utils.py", line <LINE>, in validate_pdl_model_defaults
-    raise ValueError(
-ValueError: invalid defaults 3 for model matcher *
+--data - malformed `pdl_model_default_parameters`
+  in pdl_model_default_parameters[0]
+
+  Each entry maps a model-name pattern to a table of parameters. Here the
+  pattern `*` is mapped to `3`, which is not a table.
+
+  note: this value comes from the `--data` command-line argument, not from
+        `prog.pdl`.
+  help: wrap the parameters in a table, e.g.
+        -d '{pdl_model_default_parameters: [{"*": {temperature: 3}}]}'

@@ -8,12 +8,11 @@
     "no_such_file.pdl"
   ],
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 1,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "location": 1,
+    "what": 3,
+    "why": 3,
+    "fix": 1,
+    "hygiene": 3
   },
-  "notes": "Uncaught FileNotFoundError from parse_file:19. The filename is the only usable content."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `parse_file` raises `PDLFileNotFoundError`, which is both a `PDLParseError` and a `FileNotFoundError`, so `generate` already prints it and every existing `except FileNotFoundError` around `exec_file` keeps matching. Location is capped at 1 and that is not a defect to fix later: the error is about the path itself, so there is no line, column or excerpt that could exist. Fix scores 1 on this branch because the work directory holds no other file; the near-miss branches (missing `.pdl` suffix, a close `difflib` match, a listing of the sibling `.pdl` files) score 3 and are exercised by tests/test_parse_errors.py."
 }

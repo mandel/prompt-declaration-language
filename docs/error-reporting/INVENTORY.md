@@ -525,3 +525,51 @@ Then, serialised on the foundation:
     last: they are the only items that can break a working user program, so they land
     after everything else is green and get their own release note.
 12. **E-TYPE-006** — locate and de-duplicate the deprecation warning (5.4).
+
+---
+
+## 7. Open decisions
+
+Recorded so they survive between sessions. Everything in §5 is settled; these are not.
+
+### 7.1 `E-PARSE-005` — what a non-UTF-8 `.pdl` file raises from the SDK
+
+**Status: blocked on a human decision. Six of the seven `E-BOUNDARY` entries were
+implemented without it.**
+
+The other boundary entries keep every existing SDK `except` clause working, because a
+shim can inherit the concrete exception type:
+
+```python
+class PDLFileNotFoundError(PDLParseError, FileNotFoundError): ...   # verified
+class PDLIsADirectoryError(PDLParseError, IsADirectoryError): ...   # verified
+class PDLYamlError(PDLParseError, yaml.YAMLError): ...              # verified
+```
+
+`UnicodeDecodeError` cannot be treated the same way. The class layout is accepted, but
+construction is not — it requires exactly five arguments, and neither a one-arg call nor
+`__new__` followed by an explicit `__init__` satisfies it:
+
+```
+TypeError: function takes exactly 5 arguments (1 given)
+```
+
+So a decode failure cannot both carry a PDL message and remain catchable as
+`UnicodeDecodeError`. The options are mutually exclusive:
+
+1. **Raise `PDLParseError`.** `except UnicodeDecodeError` around `exec_file` stops
+   matching. Rare in practice, and it buys the largest diagnostic gain in the group: a
+   real line, column, source excerpt and caret, recomputed from `Path.read_bytes()`.
+   Needs a release note.
+2. **Format at the CLI, re-raise the original.** Zero breakage, but the CLI and SDK paths
+   diverge — a library caller receives none of the new information.
+3. **Chain** (`raise PDLParseError from exc`). `isinstance` is unaffected by chaining, so
+   `except UnicodeDecodeError` still stops matching; only forensic value is preserved.
+
+Recommendation: option 1 with a release note, as the single documented SDK change in the
+boundary work.
+
+Related and worth knowing when this is picked up: `UnicodeDecodeError.start` is
+**chunk-relative**, because `parse_file` reads through a `TextIOWrapper`. Today's
+reported byte offset is therefore not reliably a file offset, and a correct location has
+to be recomputed from the raw bytes on the failure path.

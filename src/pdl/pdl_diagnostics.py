@@ -381,8 +381,11 @@ def directory_diagnostic(path: Path, *, data_file: bool = False) -> Diagnostic:
         suggestion = Suggestion(f"name one of them, e.g. `pdl {inside[0]}`.")
     else:
         evidence = f"`{display}` contains no `.pdl` files."
+        # A placeholder, not a path inside `display`: the branch above already
+        # established there is no program there, so naming one would be a
+        # copy-pasteable command that cannot work.
         suggestion = Suggestion(
-            f"give the path of a program file, e.g. `pdl {path / 'main.pdl'}`."
+            "give the path of a program file, e.g. `pdl path/to/program.pdl`."
         )
     rule = (
         _DATA_FILE_RULE
@@ -551,11 +554,13 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
             found.context_label = (
                 f"this {name} opens a string that is never closed on this line"
             )
-            escaped = '\\"' if name == "double quote" else "\\'"
-            found.help_text = (
-                f"close the string on line {index + 1}, "
-                f"or escape the quote as {escaped}"
-            )
+            # Only the close-the-string advice. An "or escape it as \\\"" clause
+            # was dropped: it is right inside an already-quoted string, but a
+            # reader applying it to the line as it stands gets `- \"hello`,
+            # which YAML accepts as a plain scalar beginning with a backslash.
+            # That trades a parse error for a silently wrong value, which is
+            # worse than the error it replaces.
+            found.help_text = f"close the string on line {index + 1}"
             return found
         found.primary_label = "unexpected value"
         found.context_label = f"while parsing the {kind} that starts here"

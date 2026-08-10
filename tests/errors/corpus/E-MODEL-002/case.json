@@ -13,5 +13,5 @@
     "hygiene": 0,
     "hygiene_traceback_expected": true
   },
-  "notes": "httpx.RequestError branch. Names the method and URL, which is genuinely useful."
+  "notes": "httpx.RequestError branch. Names the method and URL, which is genuinely useful. KNOWN FLAKE: the diagnostic is printed by generate() on the main thread while the duplicate traceback is printed by the futures callback on another, so their interleaving is a race. Measured 8/8 runs with the diagnostic first, which is what the golden records, but the other order does occur -- it was observed once during a regen. Fixing this entry removes the traceback and the race with it; until then a CI flake here is this, not a regression."
 }

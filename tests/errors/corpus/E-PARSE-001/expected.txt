@@ -14,4 +14,4 @@ prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another v
   A PDL program is a YAML document: it must parse as YAML before any PDL rule
   is checked.
 
-  help: close the string on line 2, or escape the quote as \"
+  help: close the string on line 2

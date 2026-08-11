@@ -4,11 +4,10 @@
   "severity": "S1",
   "rubric": {
     "location": 1,
-    "what": 1,
-    "why": 2,
+    "what": 3,
+    "why": 3,
     "fix": 0,
-    "hygiene": 1,
-    "hygiene_traceback_expected": true
+    "hygiene": 3
   },
-  "notes": "prog.pdl:0, then a traceback deliberately formatted INTO the message by `call_python` (pdl_interpreter.py). Its first frames are PDL's own, before the user's <code-block> line 1. Nothing crashed -- this leak is by construction. Should follow E-CODE-002's header shape once fixed; two neighbouring diagnostics in different styles is worse than one."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-CODE-001.md). `call_python` renders its own diagnostic and raises a module-private `_CodeBlockRaised`, re-raised on the block's `code` key so the line is 2 rather than 0 and the `Python Code error:` category label is gone. The traceback is replaced by the frames whose filename is `<code-block>` -- the block's own code, including functions it defined -- printed with the source line the interpreter is holding (`linecache` cannot resolve `<code-block>`, which is why the old output showed no source) and a caret from CPython's position table. Fix scores 0 deliberately: there is nothing true and useful to say to someone who divided by zero, and the rubric ranks a vacuous `help:` below none; the NameError and ModuleNotFoundError branches of the same diagnostic do carry a checked suggestion and want corpus entries of their own. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered -- all three are foundation work (phase-3 items 0 and 7), which will also renumber the `code:N` gutter to file lines."
 }

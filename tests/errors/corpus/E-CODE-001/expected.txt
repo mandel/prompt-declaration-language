@@ -4,9 +4,11 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:0 - Python Code error: Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in call_python
-    exec(c, my_namespace.__dict__)  # nosec B102
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<code-block>", line 1, in <module>
-ZeroDivisionError: division by zero
+prog.pdl:2 - code block raised ZeroDivisionError: division by zero
+
+code:1 | result = 1/0
+       |          ^^^
+
+  Python code in a `code:` block must run to completion; an exception that
+  escapes it stops the program. Line numbers above are within the block's
+  code, not the PDL file.

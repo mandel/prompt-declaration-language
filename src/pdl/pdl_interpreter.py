@@ -2607,6 +2607,20 @@ def process_call_code(
                     ),
                     source_exception=exc,
                 ) from exc
+            except _CodeBlockRaised as exc:
+                # The diagnostic is already rendered -- `call_python` is the only
+                # place the frames and the block's own source both exist. Point
+                # at the `code` key rather than at the block as a whole, and keep
+                # the `Python Code error:` category label off a message that
+                # already says what happened.
+                raise PDLRuntimeError(
+                    exc.message,
+                    loc=append(loc, "code"),
+                    trace=block.model_copy(
+                        update={"code": code_s, "pdl__defsite": block.pdl__id}
+                    ),
+                    source_exception=exc,
+                ) from exc
             except PDLRuntimeExpressionError as exc:
                 raise PDLRuntimeError(
                     f"Python Code error: {exc.message}",
@@ -2619,8 +2633,12 @@ def process_call_code(
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
+                # Near-unreachable now that `call_python` renders its own
+                # diagnostic: only a failure building the background context
+                # above lands here. `repr`, not `traceback.format_exc()`, so this
+                # is not a second latent traceback leak in the same `match` arm.
                 raise PDLRuntimeError(
-                    f"Python Code error: {traceback.format_exc()}",
+                    f"Python Code error: {exc!r}",
                     loc=loc,
                     trace=block.model_copy(
                         update={"code": code_s, "pdl__defsite": block.pdl__id}
@@ -2871,6 +2889,396 @@ def _missing_result_diagnostic(code: str, assigned: list[str]) -> str:
     return "\n".join(lines)
 
 
+class _CodeBlockRaised(PDLRuntimeExpressionError):
+    """A Python `code:` block let an exception escape.
+
+    Module private for the same reason as `_MissingResultError`: `call_python`
+    holds the evidence (the code and the traceback) but neither the block nor
+    its location, so it cannot raise a located error itself. `process_call_code`
+    catches this before the general `PDLRuntimeExpressionError` clause and
+    re-raises it on the block's `code` key, without the `Python Code error:`
+    prefix -- the message already says what happened, and the prefix is a
+    category label rather than a rule.
+    """
+
+
+_CODE_BLOCK_FILENAME = "<code-block>"
+
+_RAISED_RULE = (
+    "Python code in a `code:` block must run to completion; an exception that "
+    "escapes it stops the program."
+)
+
+# Only true when something was printed with a `code:N` gutter above it. The
+# sentence goes away entirely once file lines are available (phase-3 item 0).
+_RAISED_GUTTER_CAVEAT = (
+    "Line numbers above are within the block's code, not the PDL file."
+)
+
+_MODULE_ENV_NOTE = (
+    "a `code:` block runs in the same Python environment as `pdl` itself, with "
+    "the program's directory on `sys.path`."
+)
+
+_SCOPE_NAMES_NOTE = "PDL variables in scope are usable by name"
+
+_RAISED_WIDTH = 76
+
+# The exception's own text is wrapped a little wider than the prose: it is
+# often a single unbreakable sentence from a library.
+_RAISED_DETAIL_WIDTH = 78
+
+# How much of `str(exc)` fits on the header line before it moves to a paragraph
+# of its own. A fixed budget rather than a measured fit: the header is completed
+# by `get_loc_string` at print time, so its final length is not known here.
+_RAISED_DETAIL_CLIP = 60
+
+_RAISED_MAX_DETAIL_LINES = 5
+
+# A `RecursionError` must print five lines, not a thousand.
+_RAISED_MAX_FRAMES = 3
+
+_NEAR_MISS_CUTOFF = 0.7
+
+# Seeded by the interpreter rather than by the user: `process_prog` adds
+# `stdlib` and `call_python` adds `PDL_SESSION`. Everything else the interpreter
+# injects -- `empty_scope`'s entries, `pdl_usage`, and the CLI's
+# `pdl_model_default_parameters` -- lives under the reserved `pdl_` prefix.
+_PDL_INTERNAL_NAMES = ("stdlib", "PDL_SESSION")
+
+_PDL_RESERVED_PREFIX = "pdl_"
+
+
+def _user_scope_names(scope: ScopeType) -> list[str]:
+    """The PDL variables a `code:` block can refer to by name.
+
+    The namespace is seeded from the block's scope, so every name here really is
+    visible in the code. The interpreter's own entries are excluded rather than
+    listed back at the user as if they had written them. Ordered iteration,
+    never a `set`, so the list does not move with `PYTHONHASHSEED`.
+    """
+    hidden = set(empty_scope) | set(_PDL_INTERNAL_NAMES)
+    return [
+        name
+        for name in scope
+        if name not in hidden
+        and not name.startswith("_")
+        and not name.startswith(_PDL_RESERVED_PREFIX)
+    ]
+
+
+def _char_column(line: str, offset: int | None) -> int | None:
+    """A `FrameSummary` column as a character offset into `line`.
+
+    `colno`/`end_colno` are UTF-8 *byte* offsets, so a caret placed at one of
+    them lands to the right of its token on any line containing non-ASCII text.
+    CPython's own `traceback` module converts the same way.
+    """
+    if offset is None:
+        return None
+    return len(line.encode("utf-8")[:offset].decode("utf-8", "replace"))
+
+
+def _code_line(code: str, lineno: int | None) -> str:
+    """One line of the block's own source.
+
+    `linecache` cannot resolve `<code-block>`, which is why a traceback prints
+    those frames bare. The interpreter is holding the string, so it can.
+    """
+    lines = code.splitlines()
+    if lineno is None or not 1 <= lineno <= len(lines):
+        return ""
+    return lines[lineno - 1]
+
+
+def _block_frames(exc: BaseException) -> list[traceback.FrameSummary]:
+    """The traceback frames running the block's own code, outermost first.
+
+    `compile(code, "<code-block>", "exec")` stamps that filename on every frame
+    executing the block's source, including frames inside functions the block
+    itself defined, so the filter is mechanical and needs no heuristic: keep
+    `<code-block>`, drop everything else. That drops PDL's own `exec` frame and
+    any library the code called into -- neither is text the user can edit.
+    """
+    return [
+        frame
+        for frame in traceback.extract_tb(exc.__traceback__)
+        if frame.filename == _CODE_BLOCK_FILENAME
+    ]
+
+
+def _caret_line(source: str, start: int | None, end: int | None, label: str) -> str:
+    """The `^^^` under `source`, or the empty string when there is no column.
+
+    Columns are absent under `-X no_debug_ranges` / `PYTHONNODEBUGRANGES=1`; the
+    diagnostic stays valid without them, so the caret is optional and the frame's
+    function name falls back to a line of its own.
+    """
+    if start is None or start > len(source):
+        return f"|{label}" if label else ""
+    stop = len(source) if end is None or end <= start else min(end, len(source))
+    return "| " + " " * start + "^" * max(stop - start, 1) + label
+
+
+def _gutter(rows: list[tuple[str, str, int | None, int | None, str]]) -> list[str]:
+    """Render `code:N | <source>` rows with their caret lines.
+
+    The `code:` prefix is load-bearing: a bare `1 |` would read as line 1 of the
+    PDL file, which is a confidently-stated wrong location.
+    """
+    width = max((len(label) for label, _, _, _, _ in rows), default=0)
+    lines: list[str] = []
+    for label, source, start, end, note in rows:
+        if not label:
+            lines.append(f"{'':<{width}} {source}")
+            continue
+        lines.append(f"{label:<{width}} | {source}".rstrip())
+        caret = _caret_line(source, start, end, note)
+        if caret:
+            lines.append(f"{'':<{width}} {caret}".rstrip())
+    return lines
+
+
+def _frame_rows(
+    frames: list[traceback.FrameSummary], code: str
+) -> list[tuple[str, str, int | None, int | None, str]]:
+    """Gutter rows for the block's frames, Python's order: outermost first.
+
+    Beyond `_RAISED_MAX_FRAMES` it is the outermost frame, a count, and the
+    innermost one.
+    """
+    shown = frames
+    elided = 0
+    if len(frames) > _RAISED_MAX_FRAMES:
+        shown = [frames[0], frames[-1]]
+        elided = len(frames) - 2
+    rows: list[tuple[str, str, int | None, int | None, str]] = []
+    for index, frame in enumerate(shown):
+        if elided and index == 1:
+            rows.append(("", f"... {elided} more frames", None, None, ""))
+        source = _code_line(code, frame.lineno)
+        end_lineno = getattr(frame, "end_lineno", frame.lineno)
+        start = _char_column(source, getattr(frame, "colno", None))
+        end = (
+            _char_column(source, getattr(frame, "end_colno", None))
+            if end_lineno == frame.lineno
+            else None
+        )
+        label = "" if frame.name == "<module>" else f" in {frame.name}"
+        rows.append((f"code:{frame.lineno}", source, start, end, label))
+    return rows
+
+
+def _syntax_error_rows(
+    exc: SyntaxError, code: str
+) -> list[tuple[str, str, int | None, int | None, str]]:
+    """Gutter rows for a `compile` failure, which has no `<code-block>` frame.
+
+    Unlike a `FrameSummary` column, `SyntaxError.offset` is a 1-based *character*
+    offset into `exc.text`.
+    """
+    if exc.lineno is None:
+        return []
+    source = (exc.text or _code_line(code, exc.lineno)).rstrip("\n")
+    start = None if exc.offset is None else max(exc.offset - 1, 0)
+    end_offset = getattr(exc, "end_offset", None)
+    end = None if end_offset is None else max(end_offset - 1, 0)
+    return [(f"code:{exc.lineno}", source, start, end, "")]
+
+
+def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
+    """The `<Type>: <detail>` for the header, and the full text when it did not fit.
+
+    The header carries the string a user greps for. A multi-line or overlong
+    message moves to a paragraph of its own instead, so that a 2000-character
+    exception from inside user code cannot become a wall in either position.
+    """
+    name = type(exc).__name__
+    text = str(exc)
+    first = text.split("\n", 1)[0]
+    if not text:
+        return name, None
+    if first != text or len(first) > _RAISED_DETAIL_CLIP:
+        return name, f"{name}: {text}"
+    return f"{name}: {first}", None
+
+
+def _wrap(text: str, subsequent: str = "  ", width: int = _RAISED_WIDTH) -> list[str]:
+    """Wrap one paragraph into the two-space-indented body block."""
+    return textwrap.wrap(
+        text,
+        width=width,
+        initial_indent="  ",
+        subsequent_indent=subsequent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+
+
+def _detail_paragraph(text: str) -> list[str]:
+    """The exception's own text, when it did not fit on the header line.
+
+    Bounded in both directions. `textwrap` will not split a word, so a single
+    unbroken 400-character token comes back as one 400-character line and has to
+    be clipped by hand; the paragraph as a whole is capped at five lines. A
+    message from inside user code must not become a wall in either direction.
+    """
+    lines: list[str] = []
+    for paragraph in text.split("\n"):
+        lines += _wrap(paragraph, width=_RAISED_DETAIL_WIDTH) or [""]
+    lines = [
+        (
+            line
+            if len(line) <= _RAISED_DETAIL_WIDTH
+            else line[:_RAISED_DETAIL_WIDTH] + "..."
+        )
+        for line in lines
+    ]
+    if len(lines) > _RAISED_MAX_DETAIL_LINES:
+        hidden = len(lines) - _RAISED_MAX_DETAIL_LINES
+        lines = lines[:_RAISED_MAX_DETAIL_LINES] + [f"  ... ({hidden} more lines)"]
+    return lines
+
+
+def _clip(text: str) -> str:
+    first = text.split("\n", 1)[0]
+    if len(first) > _RAISED_DETAIL_CLIP:
+        return first[:_RAISED_DETAIL_CLIP].rstrip() + "..."
+    return first
+
+
+def _raised_inside_note(exc: BaseException) -> str | None:
+    """Where the exception came from, when it was not the block's own code.
+
+    Frames in libraries the user imported are dropped from the gutter -- they
+    are not text the user can edit and the chain is unbounded -- but dropping
+    them silently would leave `result = json.loads("{")` looking like the
+    raising line when it is not. Basename only: no absolute paths, and the
+    message stays machine-independent.
+    """
+    frames = traceback.extract_tb(exc.__traceback__)
+    if not frames or frames[-1].filename == _CODE_BLOCK_FILENAME:
+        return None
+    if not any(frame.filename == _CODE_BLOCK_FILENAME for frame in frames):
+        return None
+    innermost = frames[-1]
+    name = innermost.filename
+    if name.startswith("<") and name.endswith(">"):
+        # `<frozen importlib._bootstrap>` and friends: plumbing, not a file.
+        return None
+    if Path(name).parent == Path(__file__).parent:
+        # PDL's own package, reached by calling a PDL function from the code.
+        return None
+    return (
+        f"raised inside `{Path(name).name}`, line {innermost.lineno}, "
+        f"in `{innermost.name}`, which this block called."
+    )
+
+
+def _caused_by_note(exc: BaseException) -> str | None:
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
+    if cause is None:
+        return None
+    text = str(cause).split("\n", 1)[0]
+    if text and text in str(exc):
+        # A wrapper that re-raised its cause's own message verbatim. Saying it a
+        # second time adds nothing.
+        return None
+    label = f"{type(cause).__name__}: {_clip(text)}" if text else type(cause).__name__
+    return f"caused by `{label}`"
+
+
+def _raised_advice(
+    exc: BaseException, scope_names: list[str], assigned: list[str]
+) -> tuple[list[str], str | None]:
+    """The `note:`/`help:` lines for the branches where a suggestion is checkable.
+
+    Everything else stays silent. There is nothing true and useful to say to
+    someone who divided by zero, and a vacuous suggestion scores below none.
+    """
+    name = getattr(exc, "name", None)
+    if isinstance(exc, ModuleNotFoundError) and name:
+        return [_MODULE_ENV_NOTE], f"install `{name}` in that environment."
+    if isinstance(exc, NameError) and not isinstance(exc, UnboundLocalError) and name:
+        # Computed here rather than taken from CPython's own `Did you mean:`
+        # suffix, whose heuristics move between versions; the golden must not.
+        candidates = list(assigned)
+        candidates += [n for n in scope_names if n not in candidates]
+        candidates += [
+            n for n in dir(builtins) if not n.startswith("_") and n not in candidates
+        ]
+        near = difflib.get_close_matches(
+            name, candidates, n=1, cutoff=_NEAR_MISS_CUTOFF
+        )
+        if near:
+            return [], f"did you mean `{near[0]}`?"
+        notes = []
+        if scope_names:
+            notes.append(f"{_SCOPE_NAMES_NOTE}: {_name_list(scope_names)}.")
+        # `def:`/`defs:` adds to the scope. Never `scope:`, which *replaces* the
+        # block's execution scope and would silently drop everything else the
+        # code relies on.
+        return notes, f"define `{name}` in the code, or define it earlier with `def:`."
+    return [], None
+
+
+def _raised_diagnostic(
+    exc: Exception,
+    code: str,
+    namespace: dict[str, Any],
+    bound_before: set[str],
+    scope: ScopeType,
+) -> str:
+    """The message body for a `code:` block that raised.
+
+    One diagnostic, several renderings: the header verb, the evidence and the
+    `help:` are computed; the rule paragraph is constant.
+    """
+    frames = _block_frames(exc)
+    detail: str | None = None
+    if isinstance(exc, SyntaxError) and not frames:
+        headline = f"code block has a syntax error: {exc.msg}"
+        rows = _syntax_error_rows(exc, code)
+        notes: list[str] = []
+        suggestion: str | None = None
+    else:
+        summary, detail = _exception_summary(exc)
+        headline = f"code block raised {summary}"
+        rows = _frame_rows(frames, code)
+        notes, suggestion = _raised_advice(
+            exc,
+            _user_scope_names(scope),
+            _assigned_names(namespace, bound_before),
+        )
+
+    gutter = _gutter(rows)
+    lines = [headline, ""]
+    if gutter:
+        lines += gutter + [""]
+    if detail is not None:
+        lines += _detail_paragraph(detail) + [""]
+    rule = _RAISED_RULE
+    if gutter:
+        rule += f" {_RAISED_GUTTER_CAVEAT}"
+    lines += _wrap(rule)
+
+    inside = _raised_inside_note(exc)
+    if inside is not None:
+        notes.append(inside)
+    caused = _caused_by_note(exc)
+    if caused is not None:
+        notes.append(caused)
+    if notes or suggestion is not None:
+        lines.append("")
+    for note in notes:
+        lines += _wrap(f"note: {note}", subsequent=" " * 8)
+    if suggestion is not None:
+        lines += _wrap(f"help: {suggestion}", subsequent=" " * 8)
+    return "\n".join(lines)
+
+
 def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy[Any]:
     my_namespace = types.SimpleNamespace(PDL_SESSION=__PDL_SESSION, **scope)
     bound_before = set(my_namespace.__dict__)
@@ -2883,8 +3291,10 @@ def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy
     except KeyboardInterrupt as exc:
         raise exc from exc
     except Exception as exc:
-        message = traceback.format_exc()
-        raise PDLRuntimeExpressionError(message, source_exception=exc) from exc
+        raise _CodeBlockRaised(
+            _raised_diagnostic(exc, code, my_namespace.__dict__, bound_before, scope),
+            source_exception=exc,
+        ) from exc
     else:
         # `hasattr`, not attribute access: a PDL variable named `result` that is
         # already in scope was copied into the namespace above, and a block that

@@ -7,8 +7,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **46 corpus entries**, one per reproducible taxonomy class.
-- **338 / 690** rubric points (**49%**).
-- **2 entries leak a Python traceback** to the user.
+- **343 / 690** rubric points (**50%**).
+- **1 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
 ## Per-dimension totals
@@ -16,17 +16,17 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
 | Location | 46 | 138 | 1.00 |
-| What | 74 | 138 | 1.61 |
-| Why | 77 | 138 | 1.67 |
+| What | 76 | 138 | 1.65 |
+| Why | 78 | 138 | 1.70 |
 | Fix | 36 | 138 | 0.78 |
-| Hygiene | 105 | 138 | 2.28 |
+| Hygiene | 107 | 138 | 2.33 |
 
 ## By error class
 
 | Class | Entries | Score | of | Mean / 15 |
 | --- | ---: | ---: | ---: | ---: |
 | E-CLI | 5 | 56 | 75 | 11.2 |
-| E-CODE | 3 | 24 | 45 | 8.0 |
+| E-CODE | 3 | 29 | 45 | 9.7 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 25 | 60 | 6.2 |
 | E-MODEL | 3 | 20 | 45 | 6.7 |
@@ -51,7 +51,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-007` | S1 | 1 | 0 | 2 | 0 | 1 | **4** | `███░░░░░░░` |  | dict fails every block union branch |
 | `E-SCHEMA-008` | S1 | 1 | 0 | 2 | 0 | 1 | **4** | `███░░░░░░░` |  | contribute value fails its union |
 | `E-SCHEMA-010` | S1 | 1 | 2 | 1 | 0 | 0 | **4** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
-| `E-CODE-001` | S1 | 1 | 1 | 2 | 0 | 1 | **5** | `███░░░░░░░` | TB | Python exception inside a code block |
 | `E-EXPR-004` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | error inside an imported file reports the wrong line |
 | `E-EXPR-006` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | comment lines shift every reported line |
 | `E-CLI-005` | S0 | 1 | 1 | 2 | 0 | 2 | **6** | `████░░░░░░` |  | python -m pdl.pdl reports success on failure |
@@ -74,6 +73,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-003` | S3 | 1 | 2 | 1 | 1 | 3 | **8** | `█████░░░░░` |  | missing required field |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-MODEL-002` | S2 | 1 | 2 | 2 | 1 | 3 | **9** | `██████░░░░` |  | model endpoint unreachable |
+| `E-CODE-001` | S1 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Python exception inside a code block |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
 | `E-CLI-001` | S0 | 1 | 3 | 3 | 1 | 3 | **11** | `███████░░░` |  | PDL file does not exist |
 | `E-CLI-002` | S0 | 1 | 3 | 3 | 2 | 3 | **12** | `████████░░` |  | PDL path is a directory |
@@ -105,7 +105,7 @@ Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `validate_pdl_model_defau
 src/pdl/pdl.py ends in a bare main() with no sys.exit, so the module entry point always exits 0. The diagnostic itself is fine; the exit code silently lies. CI that runs `python -m pdl.pdl` never fails.
 
 **`E-CODE-001`** — Python exception inside a code block  
-prog.pdl:0, then a traceback deliberately formatted INTO the message by `call_python` (pdl_interpreter.py). Its first frames are PDL's own, before the user's <code-block> line 1. Nothing crashed -- this leak is by construction. Should follow E-CODE-002's header shape once fixed; two neighbouring diagnostics in different styles is worse than one.
+Fixed (spec docs/error-reporting/specs/E-CODE-001.md). `call_python` renders its own diagnostic and raises a module-private `_CodeBlockRaised`, re-raised on the block's `code` key so the line is 2 rather than 0 and the `Python Code error:` category label is gone. The traceback is replaced by the frames whose filename is `<code-block>` -- the block's own code, including functions it defined -- printed with the source line the interpreter is holding (`linecache` cannot resolve `<code-block>`, which is why the old output showed no source) and a caret from CPython's position table. Fix scores 0 deliberately: there is nothing true and useful to say to someone who divided by zero, and the rubric ranks a vacuous `help:` below none; the NameError and ModuleNotFoundError branches of the same diagnostic do carry a checked suggestion and want corpus entries of their own. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered -- all three are foundation work (phase-3 items 0 and 7), which will also renumber the `code:N` gutter to file lines.
 
 **`E-CODE-002`** — code block never assigns result (issue #386)  
 Fixed (spec docs/error-reporting/specs/E-CODE-002.md). `call_python` reads `result` with `hasattr`/`getattr` and raises a module-private `_MissingResultError`, re-raised on the block's `code` key so the line is 2 rather than 0. The message names the `result` contract, reports what the code did bind, and computes the fix from the code's own AST -- here, the single top-level `print('hi')` becomes `result = 'hi'`. Location still scores 1: the line is the enclosing `code:` key, there is no column, and the block path is not rendered; both remaining points are foundation work (phase-3 items 0 and 7), not this error ID.

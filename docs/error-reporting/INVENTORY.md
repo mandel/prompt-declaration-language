@@ -706,14 +706,21 @@ anything.
 
 Recorded rather than fixed, except where noted. None blocks anything.
 
-**`E-CODE-004` — a `code:` block can end the program with any exit code, silently.**
-Verified: a block containing `import sys; sys.exit(42)` exits the whole `pdl` process
-with **42**, prints nothing, and the blocks after it never run. `SystemExit` does not
-derive from `Exception`, so neither `call_python` nor `generate` catches it. This breaks
-decision §5.8's "exit code stays 1" invariant outright, and it is invisible to the
-`hygiene_silent_failure` flag because the exit code is not 0 either. Needs a taxonomy row,
-a corpus entry, and a decision: catching `SystemExit` changes what a `code:` block can do,
-which is semantics, not diagnostics.
+**`sys.exit()` in a `code:` block is INTENDED — decided 2026-08-11, not a defect.**
+A block containing `import sys; sys.exit(42)` exits the whole `pdl` process with **42**,
+prints nothing, and the blocks after it never run. `SystemExit` does not derive from
+`Exception`, so nothing catches it.
+
+This was first recorded here as a new S0 on the grounds that it broke decision §5.8's
+"exit code stays 1". **That framing was wrong and is corrected.** §5.8 constrains the exit
+code of a *failure*; a program deliberately choosing its own exit code is not a failure,
+and PDL exiting with the code the user asked for is the behaviour the project owner
+wants. No taxonomy row, no corpus entry, no change.
+
+Recorded so it is not "fixed" later: a future reader meeting a `code:` block that exits
+silently with a non-zero status will recognise it as a defect unless told otherwise. It
+is not. The only thing arguably owed is a line in the tutorial's code-block section, which
+today documents the `result` contract but says nothing about a block ending the process.
 
 **Fixed here: the near-miss branch could suggest an import cycle.** The gate predicted it
 and a run confirmed it — a nested `import: prg` inside `lib/a.pdl` produced

@@ -654,3 +654,45 @@ benefit on entries that never reach a model.
 every fixed invocation is a claim that the chosen one is representative. Where a flag
 selects a different code path rather than only different formatting, that claim is false
 and the corpus is measuring something other than what its titles say.
+
+### 7.4 `import:` resolves against the top-level program, not the importing file
+
+**Status: open. A semantics observation, not a diagnostic defect — recorded because any
+diagnostic about a missing import must not misdescribe it.**
+
+`state.cwd` is bound once, from the parent of the program passed to `exec_file`/`generate`,
+and is never rebound when `process_import` or `process_include` recurse. So a nested
+`import:` resolves relative to the **top-level program's directory**, not the directory of
+the file doing the importing.
+
+Measured with a discriminating fixture — the naive test cannot tell the two readings
+apart, because for a top-level program cwd and the file's own directory are the same path:
+
+```
+top.pdl          defs: {m: {import: sub/mid}}
+sub/mid.pdl      defs: {h: {import: helper}}      # imports a sibling by bare name
+```
+
+| where `helper.pdl` lives | result |
+| --- | --- |
+| `sub/`, beside the importing file | **fails** — looks for `helper.pdl` at the root |
+| root, beside the top-level program | succeeds |
+
+The consequence is that **a PDL library directory cannot import its own siblings**. A
+helper that works when its directory is the entry point breaks when some other program
+imports it, and the failure names a path in a directory the library author never referred
+to. Whether that is intended is a language question, not an error-reporting one.
+
+What it means for diagnostics, and why it is recorded here:
+
+- A message must **not** say "resolved relative to this file". It is not.
+- Naming the directory searched is still useful, and it is the top-level program's
+  directory. Where that differs from the importing file's directory, the diagnostic should
+  say so explicitly, because that gap is exactly what will have surprised the user.
+- Any "did you mean" must search the directory PDL actually searched, not the importing
+  file's neighbours, or it will suggest a file that cannot be imported from there.
+
+A first attempt at measuring this concluded the opposite. The fixture had the importing
+file *as* the top-level program, so both readings predicted the same outcome. Recorded as
+a reminder that a test which cannot fail under the competing hypothesis has not tested
+anything.

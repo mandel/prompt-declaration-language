@@ -6,6 +6,42 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### A failing `import:` reports a diagnostic, and raises `PDLRuntimeError` (SDK)
+
+An `import:` naming a file that cannot be read used to end in a Python traceback.
+It now prints a diagnostic that leads with the path you wrote, names the file
+PDL actually opened — `import:` appends `.pdl` and resolves the path from the
+directory of the program `pdl` was started with — and says what is in that
+directory:
+
+```console
+$ pdl prog.pdl
+prog.pdl:1 - cannot import `nosuch`: no such file `nosuch.pdl`
+  in import
+
+  `import: nosuch` looks for the file `nosuch.pdl`: PDL appends `.pdl` to an
+  import path that does not already end in it. Nothing exists at that path,
+  and the current directory contains no other `.pdl` files.
+
+  help: check the path; it is resolved relative to the current directory.
+```
+
+**One `except` clause stops matching.** `exec_file`/`exec_program` on a program
+whose `import:` names a missing file used to raise the bare `FileNotFoundError`
+(or `UnicodeDecodeError`, for an imported file that is not UTF-8) from the
+interpreter's own `open`. It now raises `pdl.pdl_ast.PDLRuntimeError`, like every
+other failure inside a running program and like `include:` has always done. The
+errno shims that keep `except FileNotFoundError` working around `parse_file`
+cannot be applied here, because `PDLRuntimeError` is shared with about forty
+other runtime failures. Catch `PDLRuntimeError` instead; `str(exc)` and
+`exc.message` are the rendered diagnostic, and the original `OSError`, `errno`
+and `filename` included, is still reachable through `__context__`. A
+`retry:` configured with `exceptions: FileNotFoundError` around the `import:`
+keeps matching, because the retry filter looks through the wrapping.
+
+Nothing about a program that runs today changes: same result, same exit code,
+same output on the success path.
+
 ### Reading a program now fails with a PDL diagnostic instead of a traceback
 
 `pdl` used to end in a Python traceback when the program file was missing, was a

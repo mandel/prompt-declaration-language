@@ -30,6 +30,7 @@ from pydantic import (
 from typing_extensions import TypeAliasType
 
 from .pdl_context import PDLContext
+from .pdl_diagnostics import Diagnostic
 from .pdl_lazy import PdlLazy
 
 
@@ -1646,6 +1647,30 @@ class PDLException(Exception):
         if isinstance(self.message, (list, tuple)):
             return "\n".join(str(m) for m in self.message)
         return str(self.message)
+
+
+class PDLImportError(PDLException):
+    """Carries a fully rendered diagnostic out through the runtime-error path.
+
+    `generate` prefixes a `PDLRuntimeError` with `get_loc_string(exc.loc)`, which
+    would give an already-rendered diagnostic a second header. Passing `loc=None`
+    does not avoid it: every re-wrap site substitutes the enclosing block's
+    location (`exc.loc or loc`), so a nested import gets the prefix back on the
+    way up. `PDLRuntimeError.__init__` collapses `source_exception` to the
+    innermost one, so an instance of this class reaches `generate` intact however
+    many times the error is re-wrapped, and that is the channel used instead.
+
+    `message` is the rendered text, so `str(exc)` and `.text` are both the
+    diagnostic; `.diagnostic` is the structured record behind it.
+
+    Not raised on its own: it travels as the `source_exception` of a
+    `PDLRuntimeError`, and the failure that produced it -- the `OSError` from
+    the read -- stays reachable on that error's exception chain.
+    """
+
+    def __init__(self, diagnostic: Diagnostic):
+        super().__init__(diagnostic.text)
+        self.diagnostic = diagnostic
 
 
 class PDLScopeError(PDLException, ValueError):

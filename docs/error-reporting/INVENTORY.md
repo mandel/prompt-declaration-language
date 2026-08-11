@@ -599,14 +599,19 @@ to be recomputed from the raw bytes on the failure path. *Overstated for this co
 
 ### 7.2 Non-UTF-8 inputs that are still uncovered
 
-Not decided, because nothing forced it yet. `parse_file` is now the only reader that
-turns a decode failure into a diagnostic. Two siblings still raise a bare
-`UnicodeDecodeError` and would each need their own corpus entry and golden:
+Not decided, because nothing forced it yet. Two siblings raised a bare
+`UnicodeDecodeError`; one is now closed and would each need their own corpus entry and
+golden:
 
-- `load_initial_scope` (`pdl.py:245-246`), the `-f` data file. One `except` clause away
-  from the same treatment, but it is a second error ID, not this one.
-- `process_import` (`pdl_interpreter.py:3093`), which opens the imported file itself
-  instead of calling `parse_file` — the same reason `E-RUNTIME-002` was left to item 4.
+- `load_initial_scope` (`pdl.py:245-246`), the `-f` data file. **Still open.** One
+  `except` clause away from the same treatment, but it is a second error ID, not this
+  one.
+- `process_import`, which opens the imported file itself instead of calling `parse_file`.
+  **Closed** by the `E-RUNTIME-002` commit: its `except UnicodeDecodeError` routes through
+  `undecodable_source_error` and carries the resulting diagnostic out on the runtime-error
+  path. Deliberately left without a corpus entry, since "a non-UTF-8 *imported* file" has
+  no taxonomy ID of its own and inventing one to score a golden would claim coverage no
+  spec designed; the E-PARSE-005 golden pins the text this now reuses.
 
 ### 7.3 The corpus tests `--stream none`, which is not the CLI default
 

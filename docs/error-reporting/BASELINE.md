@@ -7,19 +7,19 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **46 corpus entries**, one per reproducible taxonomy class.
-- **327 / 690** rubric points (**47%**).
-- **3 entries leak a Python traceback** to the user.
+- **338 / 690** rubric points (**49%**).
+- **2 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 44 | 138 | 0.96 |
-| What | 71 | 138 | 1.54 |
-| Why | 75 | 138 | 1.63 |
-| Fix | 35 | 138 | 0.76 |
-| Hygiene | 102 | 138 | 2.22 |
+| Location | 46 | 138 | 1.00 |
+| What | 74 | 138 | 1.61 |
+| Why | 77 | 138 | 1.67 |
+| Fix | 36 | 138 | 0.78 |
+| Hygiene | 105 | 138 | 2.28 |
 
 ## By error class
 
@@ -32,7 +32,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-MODEL | 3 | 20 | 45 | 6.7 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
-| E-RUNTIME | 6 | 37 | 90 | 6.2 |
+| E-RUNTIME | 6 | 48 | 90 | 8.0 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -42,7 +42,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | duplicate mapping key silently accepted |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
-| `E-RUNTIME-002` | S0 | 0 | 0 | 1 | 0 | 0 | **1** | `█░░░░░░░░░` | TB | import names a missing file |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
 | `E-SCHEMA-006` | S1 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | analyzer produces nothing, useless fallback |
@@ -78,6 +77,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
 | `E-CLI-001` | S0 | 1 | 3 | 3 | 1 | 3 | **11** | `███████░░░` |  | PDL file does not exist |
 | `E-CLI-002` | S0 | 1 | 3 | 3 | 2 | 3 | **12** | `████████░░` |  | PDL path is a directory |
+| `E-RUNTIME-002` | S0 | 2 | 3 | 3 | 1 | 3 | **12** | `████████░░` |  | import names a missing file |
 | `E-CLI-004` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | malformed pdl_model_default_parameters |
 | `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
 | `E-RUNTIME-007` | S1 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | contribute entry is a dict of the wrong size |
@@ -177,7 +177,7 @@ Gives the position inside the regex but no position in the .pdl file.
 Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), the include site is `:0`, and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. Two stacked claim lines for one error keep hygiene at 2.
 
 **`E-RUNTIME-002`** — import names a missing file  
-Same. Note the traceback shows 'nosuch.pdl' -- the .pdl suffix PDL appended -- which does not match what the user wrote.
+Fixed (spec docs/error-reporting/specs/E-RUNTIME-002.md). `process_import` guards only its own two-line read -- it cannot call `parse_file`, because `state.imported` is keyed on the source text -- and builds `import_read_diagnostic` (pdl_diagnostics.py) instead of reusing E-CLI-001's, whose sentences are about the command-line argument. The message leads with what the user wrote and then names what PDL opened, so the appended `.pdl` is accounted for rather than sprung on them. The rendered text reaches `generate` through a `PDLImportError` carried as `source_exception`, which `PDLRuntimeError` collapses to the innermost one, so no re-wrap site can give it a second location header. This entry shows the weakest branch: the work directory holds only `prog.pdl`, and the importing file is excluded from the listing, so there is no near miss to suggest and nothing to list -- hence Fix 1. The richer branches (near miss, `.pdl`-suffix trap, directory listing) score 2-3 and are exercised in the spec's verification runs. Location 2 is file:line plus the block path; the line comes from `get_line(loc.table, loc.path + ['import'])`, which is why it is 1 rather than E-RUNTIME-001's :0. Column and excerpt need phase-3 item 0. SDK note: a bad `import:` now raises `PDLRuntimeError` rather than a bare `FileNotFoundError` (docs/release-notes.md).
 
 **`E-RUNTIME-004`** — read of a missing file reports line 0  
 'prog.pdl:0'. Top-level blocks have an empty location path, and get_line returns 0 for it. Clean message otherwise.

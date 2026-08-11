@@ -113,6 +113,7 @@ from .pdl_ast import (
     Pattern,
     PatternType,
     PdlCodeBlock,
+    PDLImportError,
     PdlLocationType,
     PdlParser,
     PDLRuntimeError,
@@ -144,11 +145,17 @@ from .pdl_context import (
     deserialize,
     ensure_context,
 )
+from .pdl_diagnostics import Diagnostic, import_read_diagnostic
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, get_loc_string
-from .pdl_parser import PDLParseError, parse_file, parse_str
+from .pdl_location_utils import append, get_line, get_loc_string
+from .pdl_parser import (
+    PDLParseError,
+    parse_file,
+    parse_str,
+    undecodable_source_error,
+)
 from .pdl_python_repl import PythonREPL
 from .pdl_scheduler import (
     yield_background,
@@ -247,7 +254,14 @@ def generate(
         print(exc.text, file=sys.stderr)
         return 1
     except PDLRuntimeError as exc:
-        if exc.loc is None:
+        # A carried diagnostic is already rendered, location line included, so
+        # it is printed as it stands. The test is the carrier class rather than
+        # the presence of a `.diagnostic` attribute: the parse-error shims carry
+        # one too, and they reach here wrapped in prose that a bare attribute
+        # test would silently drop.
+        if isinstance(exc.source_exception, PDLImportError):
+            message = exc.source_exception.diagnostic.text
+        elif exc.loc is None:
             message = exc.message
         else:
             message = get_loc_string(exc.loc) + exc.message
@@ -3079,6 +3093,31 @@ def process_include(
         ) from exc
 
 
+def import_read_error(
+    block: ImportBlock, loc: PdlLocationType, diagnostic: Diagnostic
+) -> PDLRuntimeError:
+    """Wrap a rendered diagnostic about an unreadable imported file.
+
+    The text is carried twice on purpose. `message` is what every re-wrap site
+    propagates and what lands in the trace; the `PDLImportError` is what tells
+    `generate` that the message is already a rendered diagnostic and must not be
+    given a second location header.
+
+    The caller chains the read failure with `raise ... from exc`, which is what
+    keeps `retry`'s `exception_matches` matching a configured `FileNotFoundError`
+    -- it walks `__cause__`. By the time the error reaches an SDK caller the
+    retry path's own `raise exc from exc` has overwritten `__cause__`, and the
+    `OSError` is on `__context__`.
+    """
+    message = diagnostic.text
+    return PDLRuntimeError(
+        message,
+        loc=loc,
+        trace=ErrorBlock(msg=message, program=block.model_copy()),
+        source_exception=PDLImportError(diagnostic),
+    )
+
+
 def process_import(
     state: InterpreterState,
     scope: ScopeType,
@@ -3089,9 +3128,38 @@ def process_import(
     if not path.endswith(".pdl"):
         path += ".pdl"
     file = state.cwd / path
+    # Only the read is guarded, so `prog_str` -- and therefore the cache key
+    # below -- stays exactly where it is. `parse_file` would have brought the
+    # parser's diagnostics for free, but it discards the source text that
+    # `state.imported` is keyed on, and re-keying that cache on the path would
+    # execute an imported program twice where today it runs once.
     try:
         with open(file, "r", encoding="utf-8") as pdl_fp:
             prog_str = pdl_fp.read()
+    except OSError as exc:
+        import_loc = append(loc, "import")
+        raise import_read_error(
+            block,
+            import_loc,
+            import_read_diagnostic(
+                written=block.import_,
+                resolved=file,
+                cwd=state.cwd,
+                exc=exc,
+                file=loc.file,
+                line=get_line(loc.table, import_loc.path),
+                block_path=import_loc.path,
+            ),
+        ) from exc
+    except UnicodeDecodeError as exc:
+        # Not an `OSError`, so the clause above does not cover it and a non-UTF-8
+        # imported file leaked a traceback. The parser already knows how to say
+        # this; only the carrier differs, because here the failure surfaces on
+        # the runtime path rather than the parse one.
+        raise import_read_error(
+            block, append(loc, "import"), undecodable_source_error(file, exc).diagnostic
+        ) from exc
+    try:
         prog, new_loc = parse_str(prog_str, file_name=str(file))
         cache = state.imported.get(prog_str)
         if cache is None:

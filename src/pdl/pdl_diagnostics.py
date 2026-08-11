@@ -438,6 +438,242 @@ def source_read_diagnostic(
 
 
 # --------------------------------------------------------------------------
+# Reading an imported program: E-RUNTIME-002
+# --------------------------------------------------------------------------
+
+
+def _import_form(written: str, candidate: Path) -> str:
+    """Name ``candidate`` the way the user writes an ``import:`` path.
+
+    Two things are preserved from what they wrote: the directory part, because
+    the candidate was found in the directory their own path pointed at, and
+    their choice about the ``.pdl`` suffix, because both forms resolve. The
+    suggestion is then a minimal edit rather than a style correction.
+
+    The directory part is taken from the string rather than from
+    ``Path(written).parent``, so that it comes back in the user's own spelling
+    -- a written `lib/` keeps its separator instead of being normalised away.
+    """
+    name = candidate.name if written.endswith(".pdl") else candidate.stem
+    return written[: written.rfind("/") + 1] + name
+
+
+def _import_candidates(search_dir: Path, importing_file: Path | None) -> list[Path]:
+    """The `.pdl` files in ``search_dir`` an `import:` could plausibly name.
+
+    The importing file is dropped. It is always in the list when the import
+    points at the program's own directory, and importing yourself is a cycle,
+    never the intended fix -- suggesting it, or counting it towards "the
+    directory contains", is worse than saying nothing.
+    """
+    candidates = _pdl_files(search_dir)
+    if importing_file is None:
+        return candidates
+    try:
+        importing = importing_file.resolve()
+        return [p for p in candidates if p.resolve() != importing]
+    except OSError:  # pragma: no cover - unresolvable path
+        return candidates
+
+
+def _import_rule(written: str, display: str, cwd: Path) -> str:
+    """Why the file PDL opened is not the string the user typed.
+
+    Two independent reasons, either, both or neither: the appended ``.pdl``
+    suffix and the directory PDL resolves from. Naming only the ones that
+    actually apply keeps the paragraph from explaining a transformation that did
+    not happen.
+    """
+    from_cwd = cwd not in (Path("."), Path(""))
+    if not written.endswith(".pdl"):
+        rule = (
+            f"`import: {written}` looks for the file `{display}`: PDL appends "
+            "`.pdl` to an import path that does not already end in it."
+        )
+        if from_cwd:
+            rule += f" It is resolved from `{cwd}/`."
+        return rule
+    if from_cwd:
+        return f"`import: {written}` is resolved from `{cwd}/`."
+    return "`import:` reads a PDL program from the file it names."
+
+
+def _import_missing(
+    written: str, resolved: Path, cwd: Path, importing: Path | None
+) -> tuple[str, str, Suggestion]:
+    """Headline, evidence and next action for an `import:` that found nothing.
+
+    Branches are checked in order and the first match wins. Every one of them
+    reads ``search_dir``, which is ``resolved.parent`` -- the directory PDL
+    actually opened in, so an `import: lib/helper` searches `lib/` and not the
+    program's own directory, and nothing here can claim to have looked somewhere
+    PDL did not.
+    """
+    display = str(resolved)
+    headline = f"cannot import `{written}`: no such file"
+    if display != written:
+        headline += f" `{display}`"
+
+    search_dir = resolved.parent
+    lower, capital = _directory_phrase(search_dir)
+    cwd_lower, _ = _directory_phrase(cwd)
+    base_help = Suggestion(f"check the path; it is resolved relative to {cwd_lower}.")
+
+    # 1. The suffix trap: the file the user named is right there, and `import:`
+    #    cannot read it. Phrased conditionally, because a rename followed
+    #    blindly turns this error into a schema error when the file is data.
+    unsuffixed = cwd / written
+    if not written.endswith(".pdl") and unsuffixed.is_file():
+        evidence = (
+            f"`{unsuffixed}` exists, but `import:` reads only files whose names "
+            "end in `.pdl`."
+        )
+        renamed = Path(written).with_suffix(".pdl")
+        if Path(written).suffix:
+            action = (
+                f"if `{unsuffixed}` is a PDL program, rename it to `{renamed}` "
+                f"and write `import: {Path(written).with_suffix('')}`."
+            )
+        else:
+            action = f"if `{unsuffixed}` is a PDL program, rename it to `{renamed}`."
+        return headline, evidence, Suggestion(action)
+
+    candidates = _import_candidates(search_dir, importing)
+
+    # 2. A near miss, matched on what the user *wrote* rather than on the
+    #    suffixed form: scoring `nosuch.pdl` against `helper.pdl` would credit
+    #    every candidate with the four characters PDL itself added.
+    names = [p.stem for p in candidates]
+    matches = difflib.get_close_matches(Path(written).stem, names, n=1, cutoff=0.7)
+    if matches:
+        best = candidates[names.index(matches[0])]
+        return (
+            headline,
+            "Nothing exists at that path.",
+            Suggestion(f"did you mean `import: {_import_form(written, best)}`?"),
+        )
+
+    if not search_dir.exists():
+        return headline, f"{capital} does not exist.", base_help
+
+    if candidates:
+        # The listing is a fact and is always shown. Turning it into "name one of
+        # them" is dropped in the one shape where it would misfire: an import
+        # inside an *imported* file that resolves back to the top-level
+        # program's own directory. The entry-point program is in that directory
+        # by construction, it is not the importing file so it is not excluded
+        # above, and importing it from a file it imported is a cycle.
+        listing = f"{capital} contains {_dir_listing(candidates)}."
+        if importing is not None and search_dir == cwd != importing.parent:
+            return headline, listing, base_help
+        return (
+            headline,
+            listing,
+            Suggestion(
+                f"name one of them, e.g. `import: {_import_form(written, candidates[0])}`."
+            ),
+        )
+
+    return (
+        headline,
+        f"Nothing exists at that path, and {lower} contains no other `.pdl` files.",
+        base_help,
+    )
+
+
+def import_read_diagnostic(  # pylint: disable=too-many-arguments,too-many-locals
+    *,
+    written: str,
+    resolved: Path,
+    cwd: Path,
+    exc: OSError,
+    file: str = "",
+    line: int | None = None,
+    block_path: Sequence[str] | None = None,
+) -> Diagnostic:
+    """E-RUNTIME-002. An `import:` inside a program named a file that cannot be read.
+
+    Unlike E-CLI-001 this diagnostic is *inside* a program, at a line, so
+    ``file`` and the span are the location of the `import:` and the path that
+    could not be read lives in the message. Getting that backwards is what gives
+    a diagnostic two stacked claim lines.
+
+    ``written`` is what the user typed and ``resolved`` is what PDL opened; the
+    two differ whenever PDL appended `.pdl` or prefixed the program's directory,
+    and the whole first paragraph exists to account for that difference.
+
+    Classification is on ``resolved.is_dir()`` rather than on ``errno``, for the
+    same reason as `source_read_diagnostic`: Windows raises `PermissionError` for
+    `open()` on a directory.
+    """
+    display = str(resolved)
+    importing = Path(file) if file else None
+    rule = _import_rule(written, display, cwd)
+    cwd_lower, _ = _directory_phrase(cwd)
+
+    if resolved.is_dir():
+        headline = f"cannot import `{written}`: `{display}` is a directory, not a file"
+        if display == written:
+            headline = f"cannot import `{written}`: it is a directory, not a file"
+        evidence = "A directory cannot be imported."
+        inside = _pdl_files(resolved)
+        if inside:
+            suggestion = Suggestion(
+                "name a program inside it, e.g. "
+                f"`import: {Path(written) / inside[0].stem}`."
+            )
+        else:
+            suggestion = Suggestion("give the path of a PDL program file.")
+    elif isinstance(exc, FileNotFoundError):
+        headline, evidence, suggestion = _import_missing(
+            written, resolved, cwd, importing
+        )
+    elif isinstance(exc, PermissionError):
+        headline = f"cannot import `{written}`: permission denied reading `{display}`"
+        evidence = "The file exists, but this user cannot read it."
+        suggestion = Suggestion(
+            f"check the file's permissions, e.g. `ls -l {display}`."
+        )
+    else:
+        detail = exc.strerror or str(exc)
+        headline = f"cannot import `{written}`: cannot read `{display}` ({detail})"
+        evidence = "The file could not be opened."
+        suggestion = Suggestion(
+            f"check the path; it is resolved relative to {cwd_lower}."
+        )
+
+    notes = [Note("rule", f"{rule} {evidence}")]
+    # Said only where the distinction bites. `state.cwd` is bound once, from the
+    # top-level program's parent, and never rebound when an import recurses, so
+    # an `import:` inside an imported file does *not* resolve from that file's
+    # directory (INVENTORY.md 7.4). Claiming otherwise would be confidently
+    # wrong, and stating it always would be noise for the single-file case where
+    # the two directories are the same.
+    if importing is not None and importing.parent != cwd:
+        notes.append(
+            Note(
+                "note",
+                f"import paths are resolved from {cwd_lower}, the directory of "
+                "the program `pdl` was started with, not from the file that "
+                "contains this `import:`.",
+            )
+        )
+
+    spans = []
+    if line is not None and line > 0:
+        spans.append(Span(line=line, label=f"no file `{display}`", primary=True))
+    return Diagnostic(
+        code="E-RUNTIME-002",
+        message=headline,
+        file=file,
+        spans=spans,
+        block_path=list(block_path) if block_path else None,
+        notes=notes,
+        suggestions=[suggestion],
+    )
+
+
+# --------------------------------------------------------------------------
 # Decoding a source file: E-PARSE-005
 # --------------------------------------------------------------------------
 

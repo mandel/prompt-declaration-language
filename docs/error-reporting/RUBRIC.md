@@ -88,8 +88,8 @@ the failure — location, whether it is wrapped or leaked, whether the block is 
 the wording LiteLLM or a provider chose. That text is stubbed in the corpus precisely so
 it cannot drift the score.
 
-**Two hygiene sub-flags** are recorded in `case.json` alongside the scores, because they
-drive tests rather than arithmetic:
+**Three hygiene sub-flags** are recorded in `case.json` alongside the scores, because they
+drive tests and counts rather than arithmetic:
 
 - `hygiene_traceback_expected` — this entry currently leaks a traceback. Marks
   `test_no_traceback` xfail. Removing the leak makes the test XPASS and *fails the
@@ -97,6 +97,14 @@ drive tests rather than arithmetic:
 - `hygiene_unstable_order` — this entry's message order varies with `PYTHONHASHSEED`.
   The harness pins the seed so goldens stay stable; these flags keep the instability
   visible rather than papered over.
+- `hygiene_silent_failure` — this entry produces **no diagnostic at all**: a broken
+  program that exits 0 and says nothing. It drives the "fail silently" count in
+  `BASELINE.md`. It is a flag rather than a derived predicate because the count must
+  self-heal when an entry is fixed, and `report.py` reads only `case.json` — it never
+  runs PDL, so it cannot inspect a golden's stderr. An earlier version derived the count
+  from `expect_exit == 0 and severity == "S0"` and miscounted three entries: two whose
+  defect was a *wrong* message rather than a missing one, and one that the fix had
+  already repaired.
 
 ---
 

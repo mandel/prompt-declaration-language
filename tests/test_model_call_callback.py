@@ -224,3 +224,50 @@ def test_both_backends_use_the_one_shared_callback(module):
     assert "make_model_call_done_callback(state, block, model_id)" in source
     assert "future.result()" not in source
     assert "def update_end_nanos" not in source
+
+
+def test_the_diagnostic_is_written_in_one_call(callback, monkeypatch):
+    """One `write`, so main-thread output cannot land inside the diagnostic.
+
+    `print` emits the text and the newline separately and stderr is line
+    buffered, so the last `help:` line waits in the buffer between the two
+    calls. This callback runs off the main thread, so another thread's output
+    was observed splicing into the middle of the message in 2 of 5 runs. The
+    diagnostic's *position* relative to other output is nondeterministic and
+    accepted; a line cut in half is not.
+    """
+    calls: list[str] = []
+
+    class _CountingSink:
+        def write(self, text):
+            calls.append(text)
+            return len(text)
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(pdl_scheduler, "stderr", _CountingSink())
+    on_done, _, _ = callback
+    on_done(_succeeded(_BrokenUsage()))
+    assert len(calls) == 1, calls
+    assert calls[0].endswith("\n")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("1", True), ("true", True), ("yes", True), ("0", False), ("", False)],
+)
+def test_pdl_traceback_is_off_for_zero_and_empty(
+    callback, written, monkeypatch, value, expected
+):
+    """`PDL_TRACEBACK=0` must not switch tracebacks *on*.
+
+    A bare truthiness test on the environment variable makes every non-empty
+    value true, including `"0"` -- which contradicts the `help:` line this same
+    function prints and the semantics reserved in `E-BOUNDARY.md`. This is the
+    first site to honour the name, so it is the precedent for the rest.
+    """
+    monkeypatch.setenv("PDL_TRACEBACK", value)
+    on_done, _, _ = callback
+    on_done(_succeeded(_BrokenUsage()))
+    assert ("Traceback (most recent call last)" in written.getvalue()) is expected

@@ -8,7 +8,8 @@
     "what": 0,
     "why": 0,
     "fix": 0,
-    "hygiene": 0
+    "hygiene": 0,
+    "hygiene_silent_failure": true
   },
   "notes": "No diagnostic at all. Last key wins, exit 0. Decision 5.5 makes this an error."
 }

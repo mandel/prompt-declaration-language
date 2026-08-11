@@ -37,6 +37,8 @@ def _flags(case: Case) -> str:
         marks.append("TB")
     if case.rubric.get("hygiene_unstable_order"):
         marks.append("ORD")
+    if case.rubric.get("hygiene_silent_failure"):
+        marks.append("SIL")
     return " ".join(marks)
 
 
@@ -54,14 +56,15 @@ def render(cases: list[Case]) -> str:
     w(
         "Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). "
         "`TB` marks an entry that leaks a Python traceback; `ORD` marks one whose "
-        "message order varies with the hash seed."
+        "message order varies with the hash seed; `SIL` marks one that fails "
+        "silently."
     )
     w("")
 
     total_possible = MAX_PER_DIMENSION * len(RUBRIC_DIMENSIONS) * len(cases)
     total_actual = sum(c.rubric_total for c in cases)
     tb = sum(1 for c in cases if c.rubric.get("hygiene_traceback_expected"))
-    silent = sum(1 for c in cases if c.expect_exit == 0 and c.severity == "S0")
+    silent = sum(1 for c in cases if c.rubric.get("hygiene_silent_failure"))
 
     w("## Summary")
     w("")
@@ -72,9 +75,8 @@ def render(cases: list[Case]) -> str:
     )
     w(f"- **{tb} entries leak a Python traceback** to the user.")
     w(
-        f"- **{silent} S0 entries exit 0** — either a broken program that "
-        "reports nothing, or a successful run whose S0 defect is what it "
-        "prints anyway."
+        f"- **{silent} entries fail silently** — a broken program that exits 0 "
+        "and reports nothing at all."
     )
     w("")
 

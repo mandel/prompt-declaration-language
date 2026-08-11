@@ -209,11 +209,19 @@ def _report_recording_bug(block: ModelBlock, model_id: str, exc: Exception) -> N
             ),
         ],
     )
-    print(diagnostic.text, file=stderr)
-    if environ.get("PDL_TRACEBACK"):
-        # Called from the `except` clause below, so the exception being handled
-        # is still current. `E-BOUNDARY.md` reserved this variable name; this is
-        # the first site to honour it.
+    # One write, not `print`. `print` emits the text and the newline separately,
+    # and `stderr` is line-buffered, so the final `help:` line sits in the buffer
+    # between the two calls. This runs off the main thread, so main-thread output
+    # lands *inside* the diagnostic -- observed spliced in 2 of 5 runs. The
+    # position of this diagnostic relative to other output is nondeterministic by
+    # nature and that is accepted; a line cut in half is not.
+    stderr.write(diagnostic.text + "\n")
+    if environ.get("PDL_TRACEBACK", "") not in ("", "0"):
+        # Not a bare truthiness test: `PDL_TRACEBACK=0` would then *enable*
+        # tracebacks, contradicting the `help:` line printed just above and the
+        # semantics `E-BOUNDARY.md` reserved for this name. This is the first
+        # site to honour the variable, so it sets the precedent for the
+        # last-resort handler that spec defers.
         print_exc(file=stderr)
 
 

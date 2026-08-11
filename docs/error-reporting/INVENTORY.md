@@ -701,3 +701,43 @@ A first attempt at measuring this concluded the opposite. The fixture had the im
 file *as* the top-level program, so both readings predicted the same outcome. Recorded as
 a reminder that a test which cannot fail under the competing hypothesis has not tested
 anything.
+
+### 7.5 Open findings from the E-RUNTIME-002 gates
+
+Recorded rather than fixed, except where noted. None blocks anything.
+
+**`E-CODE-004` — a `code:` block can end the program with any exit code, silently.**
+Verified: a block containing `import sys; sys.exit(42)` exits the whole `pdl` process
+with **42**, prints nothing, and the blocks after it never run. `SystemExit` does not
+derive from `Exception`, so neither `call_python` nor `generate` catches it. This breaks
+decision §5.8's "exit code stays 1" invariant outright, and it is invisible to the
+`hygiene_silent_failure` flag because the exit code is not 0 either. Needs a taxonomy row,
+a corpus entry, and a decision: catching `SystemExit` changes what a `code:` block can do,
+which is semantics, not diagnostics.
+
+**Fixed here: the near-miss branch could suggest an import cycle.** The gate predicted it
+and a run confirmed it — a nested `import: prg` inside `lib/a.pdl` produced
+`help: did you mean \`import: prog\`?`, naming the running program. `_import_candidates`
+drops the *importing* file, but in a nested import the entry program is not the importing
+file. Both suggestion branches now refuse under one shared `would_cycle` condition. It
+over-refuses: a genuine near miss in that directory is suppressed too, because nothing at
+that point can tell which candidate is the entry program. That costs a Fix point, where
+suggesting a cycle is a confidently wrong instruction — which the rubric ranks below
+saying nothing. A precise fix needs the entry program's path threaded down.
+
+**The `UnicodeDecodeError`-under-`import:` diagnostic has no import context.** It reuses
+`E-PARSE-005`'s record whole, so it names the undecodable file but carries no `in import`
+block path and does not mention the program that imported it. Honest and actionable — the
+file to fix is named — but weaker than the `OSError` branch beside it, and invisible to
+the corpus because that shape has no taxonomy ID.
+
+**A `__cause__` walker self-loops.** `raise exc from exc` at `pdl_interpreter.py:813`
+self-assigns `__cause__` on *every* runtime error leaving the retry wrapper, so
+`while e.__cause__: e = e.__cause__` never terminates. Pre-existing, unrelated to any
+change here, and confirmed on an untouched expression error. The original exception is on
+`__context__`, which is what the release note documents.
+
+**Spec `file:line` citations go stale.** `E-CODE-002.md`'s references drifted when
+`pdl_interpreter.py` moved 14–16 lines mid-session. This is the same brittleness fixed in
+corpus notes by naming functions instead; the specs have it too, and they are the durable
+record. A sweep is owed.

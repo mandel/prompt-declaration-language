@@ -540,12 +540,25 @@ def _import_missing(
 
     candidates = _import_candidates(search_dir, importing)
 
+    # An import inside an *imported* file that resolves back to the top-level
+    # program's own directory. The entry-point program sits there by
+    # construction and is not the importing file, so `_import_candidates` does
+    # not drop it -- and naming it from a file it imported is a cycle. Both
+    # suggestion branches below refuse in this shape; the *facts* they carry are
+    # still stated.
+    #
+    # This over-refuses: a genuine near miss in that directory is suppressed
+    # too, because nothing here can tell which candidate is the entry program.
+    # That costs a Fix point, where suggesting a cycle would be a confidently
+    # wrong instruction -- which the rubric ranks below saying nothing.
+    would_cycle = importing is not None and search_dir == cwd != importing.parent
+
     # 2. A near miss, matched on what the user *wrote* rather than on the
     #    suffixed form: scoring `nosuch.pdl` against `helper.pdl` would credit
     #    every candidate with the four characters PDL itself added.
     names = [p.stem for p in candidates]
     matches = difflib.get_close_matches(Path(written).stem, names, n=1, cutoff=0.7)
-    if matches:
+    if matches and not would_cycle:
         best = candidates[names.index(matches[0])]
         return (
             headline,
@@ -557,14 +570,11 @@ def _import_missing(
         return headline, f"{capital} does not exist.", base_help
 
     if candidates:
-        # The listing is a fact and is always shown. Turning it into "name one of
-        # them" is dropped in the one shape where it would misfire: an import
-        # inside an *imported* file that resolves back to the top-level
-        # program's own directory. The entry-point program is in that directory
-        # by construction, it is not the importing file so it is not excluded
-        # above, and importing it from a file it imported is a cycle.
+        # The listing is a fact and is always shown; only the "name one of them"
+        # action is dropped, under the same `would_cycle` condition as the near
+        # miss above.
         listing = f"{capital} contains {_dir_listing(candidates)}."
-        if importing is not None and search_dir == cwd != importing.parent:
+        if would_cycle:
             return headline, listing, base_help
         return (
             headline,

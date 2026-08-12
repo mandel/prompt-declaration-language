@@ -2,6 +2,11 @@
 
 Covers **E-MODEL-001** and **E-MODEL-002**. Phase-3 item 2.
 
+> **Citations point at `2517fc0`**, the tree this spec was written against — not at the
+> current tree. Read one with `git show 2517fc0:src/pdl/pdl_llms.py`. Symbol names
+> survive; line numbers do not. The three citations added later, in `89281b0`, resolve
+> at that commit too: neither file moved in between.
+
 Two corpus entries, one root cause, one fix site duplicated across two files. Unlike every
 other spec in this directory, **the message is already right**. `async_generate_text`
 wraps the provider failure in a `PDLRuntimeError` carrying `block.pdl__location`

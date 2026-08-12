@@ -3,6 +3,10 @@
 Phase-3 item 4, first half. The sibling `include:` entry (E-RUNTIME-001) is deliberately
 **not** folded in; see "Follow-up: `include:`" at the end.
 
+> **Citations point at `60b27f4`**, the tree this spec was written against — not at the
+> current tree. Read one with `git show 60b27f4:src/pdl/pdl_interpreter.py`. Symbol names
+> survive; line numbers do not.
+
 ## Today
 
 ```

@@ -744,7 +744,14 @@ self-assigns `__cause__` on *every* runtime error leaving the retry wrapper, so
 change here, and confirmed on an untouched expression error. The original exception is on
 `__context__`, which is what the release note documents.
 
-**Spec `file:line` citations go stale.** `E-CODE-002.md`'s references drifted when
-`pdl_interpreter.py` moved 14–16 lines mid-session. This is the same brittleness fixed in
-corpus notes by naming functions instead; the specs have it too, and they are the durable
-record. A sweep is owed.
+**Spec `file:line` citations go stale.** *Resolved by anchoring, not by sweeping.* The
+drift is larger than it looked: `call_python` has moved from line 2644 to 3506 since
+`E-CODE-002.md` was written, and `parse_file` moved 18 → 155 while `E-BOUNDARY.md` was
+still being edited. But every citation checked resolved correctly *at the commit its spec
+was written against* — they were never wrong, only unanchored.
+
+Re-verifying them on each refactor would be unbounded work with a bad failure mode: a
+half-swept spec reads as current while some of it is not. Instead each spec now carries a
+blockquote naming its anchor commit, and `specs/README.md` records the convention —
+citations are pinned, read them with `git show <anchor>:<path>`, and where a line number
+and a symbol name disagree, the symbol name is what was meant.

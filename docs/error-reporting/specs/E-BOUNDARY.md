@@ -3,6 +3,11 @@
 Covers **E-CLI-001, E-CLI-002, E-CLI-003, E-CLI-004, E-PARSE-001, E-PARSE-002,
 E-PARSE-005**. Phase-3 item 1.
 
+> **Citations point at `640f1e0`**, the tree this spec was written against — not at the
+> current tree. Read one with `git show 640f1e0:src/pdl/pdl_parser.py`. Symbol names
+> survive; line numbers do not (`parse_file` moved from line 18 to line 155 while this
+> spec was still being edited).
+
 Seven corpus entries, one root cause: nothing between `argparse` and the first PDL block
 is inside a `try`. `main` (`pdl.py:213-337`) catches nothing at all; `parse_file`
 (`pdl_parser.py:18-21`) opens and decodes a file with no handler; `parse_str`

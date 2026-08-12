@@ -4,6 +4,10 @@ Upstream: [#386](https://github.com/IBM/prompt-declaration-language/issues/386).
 Phase-3 item 3. Pilot spec: the shape used here is the pattern for the rest of the
 corpus.
 
+> **Citations point at `d906c11`**, the tree this spec was written against — not at the
+> current tree. Read one with `git show d906c11:src/pdl/pdl_interpreter.py`. Symbol names
+> survive; line numbers do not (`call_python` has moved from line 2644 to line 3506 since).
+
 ## Today
 
 ```

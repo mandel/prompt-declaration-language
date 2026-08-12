@@ -2951,10 +2951,18 @@ _RAISED_RULE = (
     "escapes it stops the program."
 )
 
-# Only true when something was printed with a `code:N` gutter above it. The
-# sentence goes away entirely once file lines are available (phase-3 item 0).
+# Only emitted when something was printed with a `code:N` gutter above it. The
+# note goes away entirely once file lines are available (phase-3 item 0).
+#
+# A `note:` line, not a tail on the rule paragraph: E-CODE-002 puts a comparable
+# side-fact (`print(...)` writes to stdout) on its own `note:`, and the two
+# diagnostics are meant to be indistinguishable in shape. The rule paragraph
+# states the rule; how to read the evidence is a note. It names the `code:N`
+# gutter rather than saying "above", because it is emitted last among the notes
+# and a preceding `note: raised inside ..., line 2 of another `code:` block`
+# carries a line number this caveat does not describe.
 _RAISED_GUTTER_CAVEAT = (
-    "Line numbers above are within the block's code, not the PDL file."
+    "`code:N` line numbers are within the block's code, not the PDL file."
 )
 
 _MODULE_ENV_NOTE = (
@@ -3506,10 +3514,7 @@ def _raised_body(  # pylint: disable=too-many-arguments
         lines += gutter + [""]
     if detail is not None:
         lines += _detail_paragraph(detail) + [""]
-    rule = _RAISED_RULE
-    if gutter:
-        rule += f" {_RAISED_GUTTER_CAVEAT}"
-    lines += _wrap(rule)
+    lines += _wrap(_RAISED_RULE)
 
     inside = _raised_inside_note(exc, unit)
     if inside is not None:
@@ -3517,6 +3522,12 @@ def _raised_body(  # pylint: disable=too-many-arguments
     caused = _caused_by_note(exc)
     if caused is not None:
         notes.append(caused)
+    # Last among the notes, and only when there is a gutter to explain: every
+    # other note says something about the failure, this one says how to read the
+    # output. Same condition as before -- a program with no renderable frame must
+    # not grow a note about a gutter it never saw.
+    if gutter:
+        notes.append(_RAISED_GUTTER_CAVEAT)
     if notes or suggestion is not None:
         lines.append("")
     for note in notes:

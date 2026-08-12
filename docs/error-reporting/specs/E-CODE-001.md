@@ -11,9 +11,11 @@ vocabulary, same `append(loc, "code")` location.
 > survive; line numbers do not. The "Which frames survive" section was rewritten later,
 > against `88174ff`, after the filename-based rule shipped as a regression.
 
-**All `pdl_interpreter.py` line numbers in this spec were re-read at the end of the
-session.** The file moved by 14–16 lines while this was being written, so anything cited
-from an earlier reading (including E-CODE-002.md's own citations) is stale.
+That blockquote supersedes an earlier note here claiming the line numbers had been
+re-read at the end of the session and that E-CODE-002.md's were therefore stale. Neither
+half survives: the citations in both specs resolve correctly against their own anchors,
+and "re-read at the end of the session" was a currency claim that expired the moment the
+file moved again — which it has, by 862 lines.
 
 ## Today
 
@@ -59,8 +61,9 @@ code:1 | result = 1/0
        |          ^^^
 
   Python code in a `code:` block must run to completion; an exception that
-  escapes it stops the program. Line numbers above are within the block's
-  code, not the PDL file.
+  escapes it stops the program.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.
 ```
 
 Rubric: L1 W3 Y3 **F0** H3 = 10/15
@@ -77,6 +80,15 @@ changed reproducer here; see "Adjacent entries this design creates".
   `prog.pdl`, and the `code:` prefix says so at a glance. A bare `1 |` would read as file
   line 1 — which is `lang: python` — i.e. a confidently-stated wrong location, the one
   thing the rubric scores below saying nothing.
+- **The numbering caveat is a `note:`, not a tail on the rule paragraph.** E-CODE-002 puts
+  a comparable side-fact (`print(...)` writes to stdout; it does not set the block's value)
+  on its own `note:` line, and these two diagnostics are meant to be indistinguishable in
+  shape. The rule paragraph states only the rule; how to read the evidence is a note. It
+  is emitted **last among the notes** — every other note says something about the failure,
+  this one says how to read the output — and it names the `code:N` gutter rather than
+  saying "above", because a `note: raised inside …, line 2 of another `code:` block` may
+  precede it and carries a line number this caveat does not describe. It appears only when
+  a gutter was printed; the no-frame branches never mention a gutter the user did not see.
 - The **source line** is supplied from the `code` string, not from `linecache`. This is
   why today's traceback shows no source under the `<code-block>` frame and the target
   does.
@@ -183,8 +195,9 @@ code:2 | return 1/0
        |        ^^^ in helper
 
   Python code in a `code:` block must run to completion; an exception that
-  escapes it stops the program. Line numbers above are within the block's
-  code, not the PDL file.
+  escapes it stops the program.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.
 ```
 
 Outermost first, innermost last — Python's order, because that is the order the reader
@@ -223,11 +236,11 @@ code:2 | result = json.loads("{")
   column 2 (char 1)
 
   Python code in a `code:` block must run to completion; an exception that
-  escapes it stops the program. Line numbers above are within the block's
-  code, not the PDL file.
+  escapes it stops the program.
 
   note: raised inside `decoder.py`, line 355, in `raw_decode`, which this
         block called.
+  note: `code:N` line numbers are within the block's code, not the PDL file.
 ```
 
 Basename only, never the absolute path (hygiene: no absolute paths, and it keeps the
@@ -326,6 +339,15 @@ computed; the rule paragraph is constant.
 | `str(exc)` raises | `code block raised Nasty: <unprintable message>` | frames | none |
 | the builder itself fails | `code block raised <ExcType>` | none | none |
 
+**Every row that renders a gutter also ends its notes with**
+``note: `code:N` line numbers are within the block's code, not the PDL file.`` — that is
+each row above except the last two and the no-`lineno` corner of the `SyntaxError` row (a
+NUL byte in the source, where `compile` reports no line and there is no row to caption).
+The order within the note block is: the branch's own advice, then `raised inside …`, then
+`caused by …`, then this one, then the `help:`. It goes last because it is the only note
+that is about the shape of the output rather than about the failure, and last-among-notes
+still leaves the actionable `help:` in final position.
+
 Only three branches produce a `help:`, and each is checkable:
 
 - **`did you mean`** — `difflib.get_close_matches(exc.name, candidates, n=1, cutoff=0.7)`
@@ -369,7 +391,7 @@ Rubric: L3 W3 Y3 F0 H3 = 12/15 (15/15 on the branches that carry a `help:`).
 
 Four deltas, all from the foundation: the header line becomes the real file line and
 column, `in code` renders `loc.path` (`text[2].code` when nested), the gutter becomes file
-line numbers, and the numbering caveat sentence disappears with them. The arithmetic is
+line numbers, and the numbering-caveat `note:` disappears with them. The arithmetic is
 `file_line = scalar_start + code_line - 1`, `file_col = scalar_indent + code_col`, exact
 for a block scalar because item 0's YAML marks give the *value* node's start.
 
@@ -394,7 +416,9 @@ Decision 5.6.
   "message": "code block raised ZeroDivisionError: division by zero",
   "notes": [
     {"kind": "rule",
-     "text": "Python code in a `code:` block must run to completion; an exception that escapes it stops the program. Line numbers above are within the block's code, not the PDL file."}
+     "text": "Python code in a `code:` block must run to completion; an exception that escapes it stops the program."},
+    {"kind": "note",
+     "text": "`code:N` line numbers are within the block's code, not the PDL file."}
   ],
   "suggestions": [],
   "source": "result = 1/0\n",

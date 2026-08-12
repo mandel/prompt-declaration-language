@@ -169,11 +169,11 @@ def test_python_raised_frames_of_another_block_are_not_rendered_as_source():
         "       |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
         "\n"
         "  Python code in a `code:` block must run to completion; an exception that\n"
-        "  escapes it stops the program. Line numbers above are within the block's\n"
-        "  code, not the PDL file.\n"
+        "  escapes it stops the program.\n"
         "\n"
         "  note: raised inside `embed`, line 2 of another `code:` block, which this\n"
-        "        block called."
+        "        block called.\n"
+        "  note: `code:N` line numbers are within the block's code, not the PDL file."
     )
     # The wrong-block line and the wrong-block frame label, spelled out: both
     # were printed before, and both are lines of the *defining* block.
@@ -213,11 +213,11 @@ text:
         "       |          ^^^^^^^^^^^^^^^^^^^^^^^^^\n"
         "\n"
         "  Python code in a `code:` block must run to completion; an exception that\n"
-        "  escapes it stops the program. Line numbers above are within the block's\n"
-        "  code, not the PDL file.\n"
+        "  escapes it stops the program.\n"
         "\n"
         "  note: raised inside `boom`, line 7 of another `code:` block, which this\n"
-        "        block called."
+        "        block called.\n"
+        "  note: `code:N` line numbers are within the block's code, not the PDL file."
     )
 
 
@@ -325,6 +325,30 @@ def test_python_raised_help_line_is_clipped():
         exec_str(prog_str)
     assert max(len(line) for line in exc.value.message.splitlines()) <= 82
     assert "..." in exc.value.message
+
+
+def test_python_raised_gutter_note_is_emitted_only_when_there_is_a_gutter():
+    """The note explains the `code:N` gutter, so it cannot outlive one.
+
+    It is now appended to the same `notes` list as every other note, where
+    dropping the condition is a one-line slip and the result is a diagnostic
+    telling the user how to read line numbers it never printed. The one branch
+    that renders no gutter row is a `compile` failure with no `lineno` -- a NUL
+    byte in the source -- which cannot be written in a YAML scalar, so the
+    builder is called directly.
+    """
+    # pylint: disable=import-outside-toplevel,protected-access
+    from pdl import pdl_interpreter
+
+    code = "result = 1\0"
+    with pytest.raises(SyntaxError) as raised:
+        compile(code, "<code-block>", "exec")
+    message = pdl_interpreter._raised_diagnostic(
+        raised.value, code, {}, set(), pdl_interpreter.empty_scope, unit={}
+    )
+    assert message.startswith("code block has a syntax error: ")
+    assert not [line for line in message.splitlines() if line.startswith("code:")]
+    assert "note:" not in message
 
 
 def test_python_raised_by_an_exception_that_cannot_be_printed():

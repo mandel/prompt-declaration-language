@@ -10,5 +10,6 @@ code:1 | result = 1/0
        |          ^^^
 
   Python code in a `code:` block must run to completion; an exception that
-  escapes it stops the program. Line numbers above are within the block's
-  code, not the PDL file.
+  escapes it stops the program.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.

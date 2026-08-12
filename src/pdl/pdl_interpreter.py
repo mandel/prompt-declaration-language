@@ -2634,9 +2634,15 @@ def process_call_code(
                 raise exc from exc
             except Exception as exc:
                 # Near-unreachable now that `call_python` renders its own
-                # diagnostic: only a failure building the background context
-                # above lands here. `repr`, not `traceback.format_exc()`, so this
-                # is not a second latent traceback leak in the same `match` arm.
+                # diagnostic. It used to say that only a failure building the
+                # background context above could land here; that was wrong,
+                # because the message builder itself could raise -- and then
+                # this arm reported *its* error, at `:0`, as if it were the
+                # user's. `_raised_diagnostic` is total for exactly that reason,
+                # so what remains here is the background context and whatever a
+                # future edit adds to the arm. `repr`, not
+                # `traceback.format_exc()`, so this is not a second latent
+                # traceback leak in the same `match` arm.
                 raise PDLRuntimeError(
                     f"Python Code error: {exc!r}",
                     loc=loc,
@@ -2902,7 +2908,43 @@ class _CodeBlockRaised(PDLRuntimeExpressionError):
     """
 
 
+# The name given to `compile` for every execution of every `code:` block. It is
+# shared, deliberately, and it is *not* what tells one block's traceback frames
+# from another's -- `_unit_code_objects` is.
+#
+# The name is observable. Python prints it from the user's own code: a
+# `warnings.warn` in a block reports `<code-block>:2: UserWarning`, and a block
+# that catches its own exception and calls `traceback.format_exc()` gets a string
+# containing `File "<code-block>", line 3` -- which can then be assigned to
+# `result` and become the program's output. Making the name unique per execution
+# (`<code-block-1>`, `<code-block-2>`, ...) therefore changes success-path output,
+# and in a `for:`/`repeat:` loop it makes that output differ between iterations of
+# a single block that used to produce identical strings. Diagnostics may not buy
+# accuracy with a change to what a working program prints, so the discriminator
+# has to be something the user cannot see.
 _CODE_BLOCK_FILENAME = "<code-block>"
+
+
+def _unit_code_objects(unit: types.CodeType) -> dict[int, types.CodeType]:
+    """Every code object belonging to one compiled `code:` block, by identity.
+
+    `compile` returns a fresh code object per call even when the filename is
+    identical, and the code objects of nested `def`s, `lambda`s and
+    comprehensions are reachable from `co_consts`, recursively. So the set of
+    code objects reachable from one `compile` result is exactly "the frames whose
+    line numbers index *this* block's source", which is the question the
+    diagnostic needs answered and the one a filename cannot answer.
+
+    Keyed by `id`, but the dict holds the code objects as values, which is what
+    makes the key safe: nothing here can be collected and have its address
+    reused while the mapping is alive.
+    """
+    objects = {id(unit): unit}
+    for const in unit.co_consts:
+        if isinstance(const, types.CodeType):
+            objects.update(_unit_code_objects(const))
+    return objects
+
 
 _RAISED_RULE = (
     "Python code in a `code:` block must run to completion; an exception that "
@@ -2935,6 +2977,24 @@ _RAISED_DETAIL_CLIP = 60
 
 _RAISED_MAX_DETAIL_LINES = 5
 
+# What a clipped line ends with, in every position that clips.
+_CLIP_MARK = "..."
+
+# Stands in for an exception message that could not be rendered at all.
+_UNPRINTABLE = "<unprintable message>"
+
+# How much of one source line the gutter shows. The excerpt needs a wall of its
+# own: `_RAISED_DETAIL_CLIP` bounds the exception's text, but nothing bounded the
+# line the user wrote, so a 440-character line printed a 450-character row with a
+# 449-character caret under it -- the same wall the detail paragraph has, missed
+# at a different position. Chosen so that gutter + source + both clip marks stay
+# beside the 78 the detail paragraph wraps at.
+_RAISED_SOURCE_WIDTH = 66
+
+# How much of the line before the caret survives when the excerpt is windowed.
+# Enough to see what the failing expression is attached to.
+_RAISED_SOURCE_LEAD = 16
+
 # A `RecursionError` must print five lines, not a thousand.
 _RAISED_MAX_FRAMES = 3
 
@@ -2956,6 +3016,15 @@ def _user_scope_names(scope: ScopeType) -> list[str]:
     visible in the code. The interpreter's own entries are excluded rather than
     listed back at the user as if they had written them. Ordered iteration,
     never a `set`, so the list does not move with `PYTHONHASHSEED`.
+
+    The `pdl_` filter is knowingly over-broad. Nothing in `docs/` reserves the
+    prefix from users, so a PDL variable genuinely named `pdl_foo` is usable in
+    the code and is nonetheless dropped from this list and from the near-miss
+    candidates. The trade is deliberate: everything else the interpreter injects
+    (`pdl_usage`, the CLI's `pdl_model_default_parameters`) lives under the
+    prefix and has no fixed name to exclude, and listing PDL's plumbing back at a
+    user as if they had declared it is the worse failure of the two. Revisit if
+    the prefix is ever reserved, or if the injected set becomes enumerable.
     """
     hidden = set(empty_scope) | set(_PDL_INTERNAL_NAMES)
     return [
@@ -2984,6 +3053,11 @@ def _code_line(code: str, lineno: int | None) -> str:
 
     `linecache` cannot resolve `<code-block>`, which is why a traceback prints
     those frames bare. The interpreter is holding the string, so it can.
+
+    Only ever called with a line number from a frame of *this* block: a line
+    number is meaningful only against the source it was compiled from, and
+    indexing one block's number into another's is exactly the defect the
+    code-object test in `_traced_frames` exists to prevent.
     """
     lines = code.splitlines()
     if lineno is None or not 1 <= lineno <= len(lines):
@@ -2991,20 +3065,96 @@ def _code_line(code: str, lineno: int | None) -> str:
     return lines[lineno - 1]
 
 
-def _block_frames(exc: BaseException) -> list[traceback.FrameSummary]:
-    """The traceback frames running the block's own code, outermost first.
+def _traced_frames(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> list[tuple[traceback.FrameSummary, bool]]:
+    """Every traceback frame, outermost first, paired with "is it this block's?".
 
-    `compile(code, "<code-block>", "exec")` stamps that filename on every frame
-    executing the block's source, including frames inside functions the block
-    itself defined, so the filter is mechanical and needs no heuristic: keep
-    `<code-block>`, drop everything else. That drops PDL's own `exec` frame and
-    any library the code called into -- neither is text the user can edit.
+    The test is code-object identity, not filename. Every `code:` block compiles
+    under the same `<code-block>` name -- it has to, because that name is
+    observable from the user's own code -- so a filename comparison cannot tell
+    this block's frames from another block's. It could not even in principle:
+    the `PDL_SESSION` idiom (`examples/rag/tfidf_rag.pdl`,
+    `examples/ppdl/mbpp.pdl`) has one block call a function another block
+    defined, and the resulting frames carry the *defining* block's line numbers.
+    Indexed into this block's source they printed an innocent line of the wrong
+    block under a caret, or, when the other block was the longer one, an empty
+    line under a bare `^`. A location stated confidently and wrongly is the one
+    outcome the rubric ranks below saying nothing.
+
+    `traceback.extract_tb` cannot answer the question -- a `FrameSummary` keeps
+    the filename and the line number but drops the code object -- so the `tb`
+    chain is walked alongside it. The two are in the same order, one entry each,
+    and `zip` stops at the shorter of them.
     """
+    tbs: list[types.TracebackType] = []
+    tb = exc.__traceback__
+    while tb is not None:
+        tbs.append(tb)
+        tb = tb.tb_next
     return [
-        frame
-        for frame in traceback.extract_tb(exc.__traceback__)
-        if frame.filename == _CODE_BLOCK_FILENAME
+        (summary, id(entry.tb_frame.f_code) in unit)
+        for entry, summary in zip(tbs, traceback.extract_tb(exc.__traceback__))
     ]
+
+
+def _block_frames(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> list[traceback.FrameSummary]:
+    """The traceback frames running *this* block's own code, outermost first.
+
+    Keep the frames whose code object came out of this block's `compile`,
+    including frames inside functions the block itself defined; drop everything
+    else. That drops PDL's own `exec` frame and any library the code called into
+    -- neither is text the user can edit -- and it drops frames from *other*
+    `code:` blocks, whose line numbers index a source string this diagnostic does
+    not have. `_raised_inside_note` names those in prose instead of rendering
+    them as if they were this block's lines.
+    """
+    return [summary for summary, mine in _traced_frames(exc, unit) if mine]
+
+
+def _excerpt(
+    source: str, start: int | None, end: int | None
+) -> tuple[str, int | None, int | None]:
+    """One source line as it is printed, with the caret columns rebased onto it.
+
+    Two adjustments, both of which CPython's own `traceback` makes:
+
+    *Leading whitespace is stripped and the columns shifted by as much.* Without
+    it a tab-indented line is printed as a tab -- one character, but eight
+    columns wide in a terminal -- while the caret line below is padded with
+    spaces, so the caret lands about seven columns left of its token. Stripping
+    removes the disagreement rather than trying to model the terminal's tab
+    stops, and it costs nothing: the gutter already says which line this is.
+
+    *An over-long line is windowed around the caret* rather than printed whole.
+    The window keeps the caret visible, which a plain head-clip would not.
+    """
+    stripped = source.lstrip()
+    shift = len(source) - len(stripped)
+    source = stripped
+    if start is not None:
+        start = max(start - shift, 0)
+        if end is not None:
+            end = max(end - shift, start + 1)
+    elif end is not None:
+        end = max(end - shift, 0)
+
+    if len(source) <= _RAISED_SOURCE_WIDTH:
+        return source, start, end
+    if start is None:
+        return source[:_RAISED_SOURCE_WIDTH] + _CLIP_MARK, None, None
+
+    window_start = min(max(start - _RAISED_SOURCE_LEAD, 0), len(source))
+    text = source[window_start : window_start + _RAISED_SOURCE_WIDTH]
+    prefix = _CLIP_MARK if window_start else ""
+    suffix = _CLIP_MARK if window_start + len(text) < len(source) else ""
+    start = min(start - window_start, len(text)) + len(prefix)
+    if end is not None:
+        end = min(end - window_start + len(prefix), len(prefix) + len(text))
+        end = max(end, start + 1)
+    return prefix + text + suffix, start, end
 
 
 def _caret_line(source: str, start: int | None, end: int | None, label: str) -> str:
@@ -3064,6 +3214,7 @@ def _frame_rows(
             if end_lineno == frame.lineno
             else None
         )
+        source, start, end = _excerpt(source, start, end)
         label = "" if frame.name == "<module>" else f" in {frame.name}"
         rows.append((f"code:{frame.lineno}", source, start, end, label))
     return rows
@@ -3072,7 +3223,7 @@ def _frame_rows(
 def _syntax_error_rows(
     exc: SyntaxError, code: str
 ) -> list[tuple[str, str, int | None, int | None, str]]:
-    """Gutter rows for a `compile` failure, which has no `<code-block>` frame.
+    """Gutter rows for a `compile` failure, which has no frame of its own.
 
     Unlike a `FrameSummary` column, `SyntaxError.offset` is a 1-based *character*
     offset into `exc.text`.
@@ -3083,7 +3234,30 @@ def _syntax_error_rows(
     start = None if exc.offset is None else max(exc.offset - 1, 0)
     end_offset = getattr(exc, "end_offset", None)
     end = None if end_offset is None else max(end_offset - 1, 0)
+    source, start, end = _excerpt(source, start, end)
     return [(f"code:{exc.lineno}", source, start, end, "")]
+
+
+def _safe_type_name(value: Any) -> str:
+    """`type(value).__name__`, for a value whose metaclass may disagree."""
+    try:
+        return str(type(value).__name__)
+    except Exception:  # pylint: disable=broad-except
+        return "object"
+
+
+def _safe_text(value: Any) -> str:
+    """`str(value)` for a value that may not have a working `__str__`.
+
+    Not hypothetical: an exception class with a `__str__` that raises is one
+    `def` away in any `code:` block, and this builder runs *because* the user's
+    code already failed. It must not become the second failure. The placeholder
+    does not repeat the type, which the header prints beside it anyway.
+    """
+    try:
+        return str(value)
+    except Exception:  # pylint: disable=broad-except
+        return _UNPRINTABLE
 
 
 def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
@@ -3093,8 +3267,8 @@ def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
     message moves to a paragraph of its own instead, so that a 2000-character
     exception from inside user code cannot become a wall in either position.
     """
-    name = type(exc).__name__
-    text = str(exc)
+    name = _safe_type_name(exc)
+    text = _safe_text(exc)
     first = text.split("\n", 1)[0]
     if not text:
         return name, None
@@ -3104,36 +3278,39 @@ def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
 
 
 def _wrap(text: str, subsequent: str = "  ", width: int = _RAISED_WIDTH) -> list[str]:
-    """Wrap one paragraph into the two-space-indented body block."""
-    return textwrap.wrap(
-        text,
-        width=width,
-        initial_indent="  ",
-        subsequent_indent=subsequent,
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
+    """Wrap one paragraph into the two-space-indented body block, and clip it.
+
+    Wrapping alone is not a wall. `break_long_words=False` keeps identifiers,
+    paths and URLs intact -- worth having, since a hyphenated module name split
+    across two lines is no longer greppable -- but it means a single unbreakable
+    token comes back longer than `width`, and every caller passes text that came
+    from outside: an exception's message, a module name, a variable name. A
+    400-character identifier in a `NameError` produced a 410-character `help:`
+    line. The clip is what makes the width a bound.
+    """
+    return [
+        line if len(line) <= width else line[:width] + _CLIP_MARK
+        for line in textwrap.wrap(
+            text,
+            width=width,
+            initial_indent="  ",
+            subsequent_indent=subsequent,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    ]
 
 
 def _detail_paragraph(text: str) -> list[str]:
     """The exception's own text, when it did not fit on the header line.
 
-    Bounded in both directions. `textwrap` will not split a word, so a single
-    unbroken 400-character token comes back as one 400-character line and has to
-    be clipped by hand; the paragraph as a whole is capped at five lines. A
-    message from inside user code must not become a wall in either direction.
+    Bounded in both directions: `_wrap` clips each line to the width, and the
+    paragraph as a whole is capped at five lines. A message from inside user code
+    must not become a wall in either direction.
     """
     lines: list[str] = []
     for paragraph in text.split("\n"):
         lines += _wrap(paragraph, width=_RAISED_DETAIL_WIDTH) or [""]
-    lines = [
-        (
-            line
-            if len(line) <= _RAISED_DETAIL_WIDTH
-            else line[:_RAISED_DETAIL_WIDTH] + "..."
-        )
-        for line in lines
-    ]
     if len(lines) > _RAISED_MAX_DETAIL_LINES:
         hidden = len(lines) - _RAISED_MAX_DETAIL_LINES
         lines = lines[:_RAISED_MAX_DETAIL_LINES] + [f"  ... ({hidden} more lines)"]
@@ -3143,11 +3320,13 @@ def _detail_paragraph(text: str) -> list[str]:
 def _clip(text: str) -> str:
     first = text.split("\n", 1)[0]
     if len(first) > _RAISED_DETAIL_CLIP:
-        return first[:_RAISED_DETAIL_CLIP].rstrip() + "..."
+        return first[:_RAISED_DETAIL_CLIP].rstrip() + _CLIP_MARK
     return first
 
 
-def _raised_inside_note(exc: BaseException) -> str | None:
+def _raised_inside_note(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> str | None:
     """Where the exception came from, when it was not the block's own code.
 
     Frames in libraries the user imported are dropped from the gutter -- they
@@ -3156,13 +3335,25 @@ def _raised_inside_note(exc: BaseException) -> str | None:
     raising line when it is not. Basename only: no absolute paths, and the
     message stays machine-independent.
     """
-    frames = traceback.extract_tb(exc.__traceback__)
-    if not frames or frames[-1].filename == _CODE_BLOCK_FILENAME:
+    traced = _traced_frames(exc, unit)
+    if not traced or traced[-1][1]:
         return None
-    if not any(frame.filename == _CODE_BLOCK_FILENAME for frame in frames):
+    if not any(mine for _, mine in traced):
         return None
-    innermost = frames[-1]
+    innermost = traced[-1][0]
     name = innermost.filename
+    if name == _CODE_BLOCK_FILENAME:
+        # Not this block's code object, but compiled under this block's name: a
+        # function another `code:` block defined, reached through `PDL_SESSION`
+        # or a shared object. Its line number is a coordinate in that block's
+        # source, which this diagnostic does not hold, so it is named in prose.
+        # There is no name to give the other block -- the compile-time filename
+        # is shared -- and "another `code:` block" is what the user can act on
+        # anyway; the function name is the part they recognise.
+        return (
+            f"raised inside `{innermost.name}`, line {innermost.lineno} of "
+            "another `code:` block, which this block called."
+        )
     if name.startswith("<") and name.endswith(">"):
         # `<frozen importlib._bootstrap>` and friends: plumbing, not a file.
         return None
@@ -3181,13 +3372,30 @@ def _caused_by_note(exc: BaseException) -> str | None:
         cause = exc.__context__
     if cause is None:
         return None
-    text = str(cause).split("\n", 1)[0]
-    if text and text in str(exc):
+    text = _safe_text(cause).split("\n", 1)[0]
+    if text and text in _safe_text(exc):
         # A wrapper that re-raised its cause's own message verbatim. Saying it a
         # second time adds nothing.
         return None
-    label = f"{type(cause).__name__}: {_clip(text)}" if text else type(cause).__name__
+    cause_name = _safe_type_name(cause)
+    label = f"{cause_name}: {_clip(text)}" if text else cause_name
     return f"caused by `{label}`"
+
+
+def _exception_name_attr(exc: BaseException) -> str | None:
+    """`exc.name` when it is a name, and `None` otherwise.
+
+    `NameError.name` and `ModuleNotFoundError.name` are documented as strings,
+    but they are plain writable attributes: `raise NameError(name=42)` or a
+    subclass with a `name` property is enough to put a non-string here, and it
+    would reach `difflib.get_close_matches`, which compares by slicing and fails
+    on anything that is not a sequence of characters.
+    """
+    try:
+        name = getattr(exc, "name", None)
+    except Exception:  # pylint: disable=broad-except
+        return None
+    return name if isinstance(name, str) else None
 
 
 def _raised_advice(
@@ -3198,7 +3406,7 @@ def _raised_advice(
     Everything else stays silent. There is nothing true and useful to say to
     someone who divided by zero, and a vacuous suggestion scores below none.
     """
-    name = getattr(exc, "name", None)
+    name = _exception_name_attr(exc)
     if isinstance(exc, ModuleNotFoundError) and name:
         return [_MODULE_ENV_NOTE], f"install `{name}` in that environment."
     if isinstance(exc, NameError) and not isinstance(exc, UnboundLocalError) and name:
@@ -3224,22 +3432,61 @@ def _raised_advice(
     return [], None
 
 
-def _raised_diagnostic(
+def _raised_diagnostic(  # pylint: disable=too-many-arguments
     exc: Exception,
     code: str,
     namespace: dict[str, Any],
     bound_before: set[str],
     scope: ScopeType,
+    *,
+    unit: dict[int, types.CodeType],
+) -> str:
+    """The message body for a `code:` block that raised. Total by construction.
+
+    The whole builder runs under a catch. Its inputs are an arbitrary exception
+    object from user code and an arbitrary namespace, so "this cannot raise" is
+    not a claim that survives review: an exception whose `__str__` raises and a
+    `NameError` whose `.name` is not a string were both found to take the
+    builder down. Those two are fixed at the source (`_safe_text`,
+    `_exception_name_attr`); this catch is the guarantee, so that the next one
+    costs the user a thinner message rather than a diagnostic about PDL's own
+    error reported at the wrong place.
+    """
+    try:
+        return _raised_body(exc, code, namespace, bound_before, scope, unit=unit)
+    except Exception:  # pylint: disable=broad-except
+        return _raised_fallback(exc)
+
+
+def _raised_fallback(exc: BaseException) -> str:
+    """What is left of the diagnostic when building the rest of it failed.
+
+    Still true, still located, still free of a traceback -- the exception's type
+    and the rule it broke. The floor, not the target.
+    """
+    return "\n".join(
+        [f"code block raised {_safe_type_name(exc)}", ""] + _wrap(_RAISED_RULE)
+    )
+
+
+def _raised_body(  # pylint: disable=too-many-arguments
+    exc: Exception,
+    code: str,
+    namespace: dict[str, Any],
+    bound_before: set[str],
+    scope: ScopeType,
+    *,
+    unit: dict[int, types.CodeType],
 ) -> str:
     """The message body for a `code:` block that raised.
 
     One diagnostic, several renderings: the header verb, the evidence and the
     `help:` are computed; the rule paragraph is constant.
     """
-    frames = _block_frames(exc)
+    frames = _block_frames(exc, unit)
     detail: str | None = None
     if isinstance(exc, SyntaxError) and not frames:
-        headline = f"code block has a syntax error: {exc.msg}"
+        headline = f"code block has a syntax error: {_safe_text(exc.msg)}"
         rows = _syntax_error_rows(exc, code)
         notes: list[str] = []
         suggestion: str | None = None
@@ -3264,7 +3511,7 @@ def _raised_diagnostic(
         rule += f" {_RAISED_GUTTER_CAVEAT}"
     lines += _wrap(rule)
 
-    inside = _raised_inside_note(exc)
+    inside = _raised_inside_note(exc, unit)
     if inside is not None:
         notes.append(inside)
     caused = _caused_by_note(exc)
@@ -3282,9 +3529,14 @@ def _raised_diagnostic(
 def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy[Any]:
     my_namespace = types.SimpleNamespace(PDL_SESSION=__PDL_SESSION, **scope)
     bound_before = set(my_namespace.__dict__)
+    # Bound before the `try` because `compile` itself can raise: a `SyntaxError`
+    # leaves no compiled unit and no frame of this block at all, and the
+    # diagnostic needs an answer either way. The unit is walked in the handler,
+    # not here, so a block that succeeds pays nothing for it.
+    c: types.CodeType | None = None
     sys.path.append(str(state.cwd))
     try:
-        c = compile(code, "<code-block>", "exec")
+        c = compile(code, _CODE_BLOCK_FILENAME, "exec")
         exec(c, my_namespace.__dict__)  # nosec B102
         # [B102:exec_used] Use of exec detected.
         # This is the code that the user asked to execute. It can be executed in a docker container with the option `--sandbox`
@@ -3292,7 +3544,14 @@ def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy
         raise exc from exc
     except Exception as exc:
         raise _CodeBlockRaised(
-            _raised_diagnostic(exc, code, my_namespace.__dict__, bound_before, scope),
+            _raised_diagnostic(
+                exc,
+                code,
+                my_namespace.__dict__,
+                bound_before,
+                scope,
+                unit={} if c is None else _unit_code_objects(c),
+            ),
             source_exception=exc,
         ) from exc
     else:

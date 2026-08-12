@@ -80,9 +80,16 @@ changed reproducer here; see "Adjacent entries this design creates".
   the one dimension of this diagnostic that does *not* wait on Phase-3 item 0: the
   coordinates are inside a string the interpreter is holding.
 
-### Which frames survive: `filename == "<code-block>"`, exactly
+### Which frames survive: the code objects *this* `compile` produced, exactly
 
-Measured, not reasoned (coordinator's run). For
+**Corrected after shipping.** This section first said the filter was
+`filename == "<code-block>"` and that it was "mechanical and needs no heuristic". The
+first half was implemented and the second half was false, and the two together were a
+regression that `regression-guard` caught on `c5a2519`. What follows is the correction;
+the original argument is kept below it, because the *shape* of it was right and only its
+premise was wrong.
+
+For
 
 ```
 lang: python
@@ -92,23 +99,83 @@ code: |
   result = helper()
 ```
 
-today's frame list is `pdl_interpreter.py:2880 in call_python`, `<code-block>:3 in
-<module>`, `<code-block>:2 in helper`. `compile(code, "<code-block>", "exec")`
-(`pdl_interpreter.py:2879`) stamps that filename on every frame executing the block's own
-source — including frames inside functions the block itself defined. So the filter is
-mechanical and needs no heuristic:
+the frame list is `pdl_interpreter.py:… in call_python`, `<code-block>:3 in <module>`,
+`<code-block>:2 in helper`. `compile(code, "<code-block>", "exec")` stamps that filename
+on every frame executing the block's own source — including frames inside functions the
+block itself defined. That much was measured and holds.
 
-> Keep frames whose `filename` is `<code-block>`. Drop every other frame.
+**What did not hold is that the name identified a block.** `compile(code, "<code-block>",
+"exec")` stamped the *same* name on every Python block in the program, so
+`filename == "<code-block>"` kept frames whose line numbers index a *different* block's
+source. Those numbers were then indexed into the failing block's string. It is reachable
+from the repo's own examples — `examples/rag/tfidf_rag.pdl:9-15` defines `embed` in one
+block and calls it from a later one through `PDL_SESSION`, as do `examples/ppdl/mbpp.pdl`
+and `examples/expectations/mbpp.pdl`:
 
-That keeps both user frames above and drops PDL's `exec`. It renders as:
+```
+code:3 | result = PDL_SESSION.embed(key)
+       |          ^^^^^^^^^^^^^^^^^^^^^^
+code:2 | other = key.upper()
+       |            ^^^^^ in embed        <-- a line of the *other* block
+```
+
+The caret pointed at an innocent line of a block that had not failed; where the other
+block was the longer one, the row came out as an empty source line under a bare `^`. That
+is a confidently-stated wrong location, which the rubric ranks *below* no location, and it
+is precisely what the `code:N` gutter was introduced to avoid. It was also a regression:
+before this design the same program printed `File "<code-block>", line 2, in embed` with
+no source — useless, but not false.
+
+So the rule keeps its shape and fixes its premise. The discriminator is **not** the
+filename:
+
+> Keep frames whose *code object* came out of this block's `compile`. Drop every other
+> frame.
+
+`compile` returns a fresh code object per call even when the filename is identical, and
+the code objects of nested `def`s, `lambda`s and comprehensions hang off `co_consts`,
+recursively. So `_unit_code_objects` collects one `compile`'s whole unit, keyed by `id`
+with the objects themselves as values so nothing can be collected and have its address
+reused. `traceback.extract_tb` cannot answer the question — a `FrameSummary` keeps the
+filename and drops the code object — so `_traced_frames` walks the `tb` chain alongside
+`extract_tb` and pairs each summary with `id(tb.tb_frame.f_code) in unit`. Measured: it
+attributes nested frames (`go`, `helper`) to the block that compiled them, and excludes
+both PDL's own `exec` frame and a second block compiled under the same name.
+
+**A per-execution filename was the wrong mechanism**, and it was tried first
+(`<code-block-N>` for a per-process counter). It works, but the name is *observable from a
+succeeding program*, so it cannot be used as an internal discriminator:
+
+- `warnings.warn` in a block prints it to stderr, as before — that much was known.
+- A block that catches its own exception and assigns `traceback.format_exc()` to `result`
+  puts `File "<code-block>", line 3` into **the program's value and stdout**. Measured:
+  with the counter that string became `<code-block-1>`, at exit 0. That is success-path
+  output, which this project's hardest constraint puts out of reach of any diagnostic
+  change.
+- Worse, in a `for:`/`repeat:` the value varies per iteration: three iterations of one
+  block yielded `-1`, `-2`, `-3` where they had yielded three identical strings. A program
+  that compares or aggregates them changes behaviour.
+
+`block.pdl__id` was the first suggestion and fails for the same reason plus two of its
+own: it is not in scope at the `compile` (`call_python(code, scope, state)` is handed
+neither the block nor its location — the same reason `_CodeBlockRaised` and
+`_MissingResultError` exist), and it is unique per execution only by a measured invariant
+(every loop iteration, retry and call pushes a segment) rather than a structural one.
+Code-object identity needs no such argument and costs no observable byte.
+
+**Nothing user-facing carries the discriminator**, because there is nothing to carry: the
+filename stays exactly `<code-block>` everywhere Python prints it, the gutter prints
+`code:N`, and a frame belonging to another block is named in prose (below).
+
+With the filter fixed, the two-frame example above renders as:
 
 ```
 prog.pdl:2 - code block raised ZeroDivisionError: division by zero
 
 code:3 | result = helper()
        |          ^^^^^^^^
-code:2 |     return 1/0
-       |            ^^^ in helper
+code:2 | return 1/0
+       |        ^^^ in helper
 
   Python code in a `code:` block must run to completion; an exception that
   escapes it stops the program. Line numbers above are within the block's
@@ -117,13 +184,29 @@ code:2 |     return 1/0
 
 Outermost first, innermost last — Python's order, because that is the order the reader
 already knows. The caret label carries the function name for any frame that is not
-`<module>`; when no column is available the label goes with the caret line.
+`<module>`; when no column is available the label goes with the caret line. The excerpt is
+`lstrip`ped and the caret columns rebased by the same amount, which is what CPython's own
+`traceback` does; see "Two walls the excerpt needs" below.
+
+**A frame from another `code:` block is named, not rendered.** Its line number is a
+coordinate in a source string this diagnostic does not hold, so it falls into the same
+bounded note as a library frame:
+
+```
+  note: raised inside `embed`, line 2 of another `code:` block, which this
+        block called.
+```
+
+The trigger is "the innermost frame is not in this unit, and its filename is
+`<code-block>`" — i.e. some other block compiled it. There is no name to give that block,
+since the filename is shared by construction, and "another `code:` block" is the part the
+user can act on anyway, with the function name as the handle they recognise.
 
 **Frames in libraries the user imported are dropped too**, and that is deliberate: they
 are not text the user can edit, and a `json/decoder.py` frame chain is unbounded. But
 dropping them silently would leave `result = json.loads("{")` looking like the raising
-line when it is not, so when the *innermost* frame of the whole traceback is not
-`<code-block>`, one bounded line says where it really came from:
+line when it is not, so when the *innermost* frame of the whole traceback is not this
+block's, one bounded line says where it really came from:
 
 ```
 prog.pdl:2 - code block raised JSONDecodeError
@@ -147,9 +230,62 @@ golden machine-independent). The same line fires when the innermost frame is in 
 user's *own* module next to the program — which is right: `helpers.py` is as informative
 a name as PDL can give without leaking a path.
 
-**Recursion and long chains are capped.** At most three `<code-block>` frames are shown;
+**Recursion and long chains are capped.** At most three of this block's frames are shown;
 beyond that it is the outermost, then `... N more frames`, then the innermost. A
 `RecursionError` prints five lines, not a thousand.
+
+### Two walls the excerpt needs
+
+Also corrected after shipping. The exception's text was walled at `_RAISED_DETAIL_CLIP`;
+nothing walled the line the user wrote or the suggestion built from it, so the same
+failure recurred at two other positions. A 440-character source line printed a
+450-character gutter row with a 449-character caret under it, and a 400-character
+identifier in a `NameError` produced a 410-character `help:` line — `textwrap` with
+`break_long_words=False` will not split an identifier, so wrapping alone was never a
+bound.
+
+- **`_wrap` clips.** Keeping identifiers, paths and URLs unbroken is worth having (a
+  hyphenated module name split across two lines is no longer greppable), so the wrap stays
+  and each returned line is clipped to the width with `...`. That makes the width a bound
+  for every `note:`, `help:` and detail line, all of which carry text from outside.
+- **The excerpt is windowed, not head-clipped**, so the caret stays visible. Over
+  `_RAISED_SOURCE_WIDTH` (66) characters the row shows a window that keeps
+  `_RAISED_SOURCE_LEAD` (16) characters before the caret, with `...` on whichever side was
+  cut, and the caret span is clamped to the visible text rather than running under the
+  trailing `...`.
+
+**Leading whitespace is stripped and the columns rebased**, which CPython's own
+`traceback` does for the same reason. A tab is one character but eight columns, so padding
+the caret line with spaces against a tab-rendered source line put the caret about seven
+columns left of its token. Stripping removes the disagreement rather than modelling the
+terminal's tab stops, and it costs nothing here: the gutter already says which line this
+is, and indentation is not the evidence. It also buys back width on deeply indented lines.
+
+### The builder is total
+
+The message builder runs *because* the user's code already failed, and its inputs are an
+arbitrary exception object and an arbitrary namespace. Two inputs were found that made it
+raise: an exception whose `__str__` raises, and a `NameError` whose `.name` is not a
+string (`.name` is a plain writable attribute, and `difflib.get_close_matches` compares by
+slicing). Neither crashed `pdl` — the generic handler in `process_call_code` caught it —
+but that handler then reported the *builder's* own error, at `:0`, as if it were the
+user's.
+
+Both are fixed at the source (`_safe_text`, `_exception_name_attr`), and `_wrap`'s clip is
+what makes the header safe. On top of that, `_raised_diagnostic` runs `_raised_body` under
+a catch and degrades to the exception's type and the rule:
+
+```
+code block raised ZeroDivisionError
+
+  Python code in a `code:` block must run to completion; an exception that
+  escapes it stops the program.
+```
+
+That is the floor, not the target — but it is still true, still located, and still free of
+a traceback. "This cannot raise" is not a claim this builder can make, so the guarantee is
+structural. The comment on `process_call_code`'s generic handler, which used to say that
+only a failure building the background context could land there, is corrected to match.
 
 ### Where the exception text goes
 
@@ -178,9 +314,12 @@ computed; the rule paragraph is constant.
 | `NameError` with a near miss among visible names | `code block raised NameError: name 'valeu' is not defined` | frames, caret on the name | `help: did you mean \`value\`?` |
 | `NameError`, no near miss | same | frames | `note:` PDL variables in scope are usable by name (+ the list, capped at 5) / `help: define \`foo\` in the code, or define it earlier with \`def:\`.` |
 | `ModuleNotFoundError` | `code block raised ModuleNotFoundError: No module named 'numpy'` | frames | `note:` a `code:` block runs in the same Python environment as `pdl` itself, with the program's directory on `sys.path`. / `help: install \`numpy\` in that environment.` |
-| `SyntaxError` from `compile` (no `<code-block>` frame) | `code block has a syntax error: invalid syntax` | `exc.text` at `code:<lineno>`, caret at `exc.offset` | none |
+| `SyntaxError` from `compile` (no frame of this block's) | `code block has a syntax error: invalid syntax` | `exc.text` at `code:<lineno>`, caret at `exc.offset` | none |
 | `__cause__` or unsuppressed `__context__` present | unchanged | + `note: caused by \`KeyError: 'x'\`` (one line, clipped) | unchanged |
 | no frames, not a `SyntaxError` | `code block raised <ExcType>: ...` | none | none |
+| innermost frame belongs to *another* `code:` block | either of the first two | + `note: raised inside \`embed\`, line 2 of another \`code:\` block, which this block called.` — never that block's source, whose line numbers this diagnostic cannot resolve | none |
+| `str(exc)` raises | `code block raised Nasty: <unprintable message>` | frames | none |
+| the builder itself fails | `code block raised <ExcType>` | none | none |
 
 Only three branches produce a `help:`, and each is checkable:
 
@@ -287,7 +426,7 @@ clause), printed at `:267` (`generate`).
 | `span.col`, `end_*` | `null` | not computed anywhere (DROP #1/#2) | **no** — item 0 |
 | `block_path` | `["code"]` | `loc.path` after the same `append`; carried to the print site and dropped (DROP #10) | value yes, rendering **no** — item 7 |
 | `message` type + detail | `ZeroDivisionError`, `division by zero` | `type(exc).__name__`, `str(exc)`, from the `exc` bound at `pdl_interpreter.py:2885` | yes |
-| `frames[*].line`, `.func` | `1`, `<module>` | `traceback.extract_tb(exc.__traceback__)` filtered on `filename == "<code-block>"`, the name given to `compile` at `:2879`; `traceback` imported at `:14` | yes |
+| `frames[*].line`, `.func` | `1`, `<module>` | `traceback.extract_tb(exc.__traceback__)` zipped with the `tb` chain and filtered on `id(tb.tb_frame.f_code) in _unit_code_objects(c)` for the `c` this block compiled (`_traced_frames`); `traceback` imported at `:14`. Filtering on `filename == "<code-block>"` here was the `c5a2519` regression, and making the *filename* unique was the wrong fix — see "Which frames survive" | yes |
 | `frames[*].col`, `.end_col` | `10`, `13` | `FrameSummary.colno` / `end_colno`, populated from `co_positions` | yes on CPython ≥3.11, which `pyproject.toml:32` already requires — but **undocumented before 3.13**, so read with `getattr(f, "colno", None)`, and `None` under `-X no_debug_ranges` / `PYTHONNODEBUGRANGES=1` |
 | `source` line text | `result = 1/0` | the `code` parameter of `call_python` (`:2874`), which is `code_s` from `:2559`. `linecache` cannot supply it — that is why today's `<code-block>` frame prints bare | yes |
 | `SyntaxError` position | `lineno`, `offset`, `text` | the exception itself; `compile` (`:2879`) fills them because it was handed the source | yes |
@@ -451,7 +590,12 @@ suggestion. Rejected outright rather than gated.
   `pdl_interpreter.py:2612` and `:2623`, in the two E-CODE goldens and in docs.
   `tests/test_code.py:108-117` exercises a *raising* block (`raise ValueError('boom')`) but
   asserts only `pytest.raises(PDLRuntimeError)` and the `sys.path` invariant, both of which
-  survive. No test in `tests/` asserts the text of a Python code-block failure.
+  survive. No test in `tests/` asserted the text of a Python code-block failure — which is
+  part of why the cross-block defect shipped. `tests/test_code.py` now pins the cases the
+  single corpus reproducer cannot reach: a frame from another `code:` block (twice, once
+  where the other block is the longer one), a tab-indented excerpt, both clip walls, the
+  builder's totality, and — on the *success* path — the exact `<code-block>` name a block
+  can read back out of `traceback.format_exc()` and its stability across loop iterations.
 - **The message becomes multi-line, and it travels.** `PDLRuntimeError.message` is copied
   into `ErrorBlock.msg` by the enclosing block handlers (e.g. `pdl_interpreter.py:995`)
   and so into the trace JSON and the viewer. Already true since E-CODE-002 shipped; this
@@ -462,6 +606,13 @@ suggestion. Rejected outright rather than gated.
   only part of the output that depends on how the interpreter was launched.
 - **Exit code, stdout and the success path are untouched.** Still exit 1, still nothing on
   stdout for this program.
+- **No observable consequence on a succeeding program.** The `compile` filename stays
+  exactly `<code-block>`, so everything a user can see from inside a block is unchanged:
+  `warnings.warn` still prints `<code-block>:2: UserWarning`, `traceback.format_exc()`
+  assigned to `result` still contains `File "<code-block>", line 3`, and three iterations
+  of one block still yield three identical strings. An earlier draft made the filename
+  unique per execution and broke all three; `tests/test_code.py` now pins the last two so
+  the counter cannot come back.
 - **Out of scope, found while specifying, worth its own look:** `sys.exit()` inside a
   `code:` block raises `SystemExit`, a `BaseException`, which neither `call_python:2885`
   nor `generate:256` catches — a code block can end the whole program with an arbitrary

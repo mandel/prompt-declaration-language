@@ -117,7 +117,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
-| E-EXPR-001 [obs] | undefined variable | `jinja_undef.pdl:3 - Error during the evaluation of ${ missing_var }: 'missing_var' is undefined` | file:line | S2 — no "in scope here: …" and no near-miss suggestion |
+| E-EXPR-001 [obs] | undefined variable | `jinja_undef.pdl:3 - Error during the evaluation of ${ missing_var }: 'missing_var' is undefined` — no "in scope here: …" listing and no near-miss suggestion | file:line | S2 |
 | E-EXPR-002 [obs] | Jinja syntax error | `jinja_syntax.pdl:1 - Syntax error in ${ 1 + }: unexpected 'end of print statement'` | file:line; **Jinja's own `lineno`/offset within the template is discarded** | S2 |
 | E-EXPR-003 [obs] | attribute/index miss | `Error during the evaluation of ${ {}['x'] }: 'dict object' has no attribute 'x'` — Jinja vocabulary (`'dict object'`), not PDL's | file:line | S2 |
 | E-EXPR-004 [obs] | expression fails inside an **imported** file | `sub/imported.pdl:1 - Error during the evaluation of ${ kaboom }: ...` — **line 1, actual line 4** | **wrong-line** | **S1** |
@@ -145,7 +145,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 | E-RUNTIME-004 [obs] | `read:` missing file | `bad_read.pdl:0 - file nofile.txt not found` | **line 0** when the block is at top level | S2 |
 | E-RUNTIME-005 [src] | `call:` target is not a function | `Type error: <x> is of type <class 'str'> but should be a function.` (+ `You might want to call \`${ x }\`.`) — the only **"did you mean"-style hint in the codebase** | file:line | S3 |
 | E-RUNTIME-006 [obs] | `for:` lists of unequal length | `for_len.pdl:1 - Lists inside the For block must be of the same length.` — does not say **which** lists or **what** lengths | file:line | S2 |
-| E-RUNTIME-007 [src] | malformed `contribute` entry | `Contributions are expected to be strings or dictionaries of length 1 but got {elem}` — **missing `f`-prefix at `pdl_interpreter.py:1875` and `:1894`; the literal text `{elem}` is printed** | file:line | **S1** (bug) |
+| E-RUNTIME-007 [src] | malformed `contribute` entry | `Contributions are expected to be strings or dictionaries of length 1 but got {elem}` — **missing `f`-prefix at `pdl_interpreter.py:1875` and `:1894`; the literal text `{elem}` is printed** | file:line | **S1** |
 | E-RUNTIME-008 [src] | `lang:` unsupported at runtime | `Unsupported language: <lang>` — usually shadowed by E-SCHEMA-006 first | file:line | S2 |
 | E-RUNTIME-009 [src] | bad aggregator | `An aggregator was expected but got a value of type <class ...>.` | file:line | S2 |
 | E-RUNTIME-010 [src] | Ctrl-D / Ctrl-C | `EOF` / `Keyboard Interrupt` as *errors* with exit 1 | file:line | S2 |
@@ -161,6 +161,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 | E-CODE-003 [src] | shell command non-zero exit | `ValueError: command exited with non zero code: N` — raw `ValueError`, and `p.stderr` is separately `print`ed | none | **S1** |
 | E-CODE-004 [src] | Jinja `lang: jinja` failure | `Jinja Code error: <repr>` | file:line | S2 |
 | E-CODE-005 [src] | nested `lang: pdl` failure | `PDL Code error: <repr>` — inner diagnostic is `repr`-wrapped, destroying the inner location | file:line | **S1** |
+| E-CODE-006 [obs] | exception raised inside a function that *another* `code:` block defined — the `PDL_SESSION` idiom, as in `examples/rag/tfidf_rag.pdl` | `prog.pdl:9 - code block raised ZeroDivisionError: division by zero`, the failing block's own line under a caret, then `note: raised inside \`embed\`, line 2 of another \`code:\` block, which this block called.` The other block's frames are named in prose and never indexed into this block's source; `88174ff` fixed the regression that printed an innocent line of the wrong block under a caret. The other block still cannot be named or located | line of the enclosing `code:` key | S2 |
 
 ### E-PARSER — output parsers (`parser:`)
 
@@ -203,7 +204,14 @@ with no file at all.
 | E-GUI-001 [src] | any failure in the viewer's Run panel | `String(err)` written verbatim to an xterm, tracebacks included | **S1** |
 | E-GUI-002 [src] | error blocks in a loaded trace | dropped from the timeline — `// TODO show errors in trace` (`view/timeline/model.ts:157`) | **S1** |
 
-**Counts:** 14 × S0, 21 × S1, 22 × S2, 4 × S3.
+**Counts:** 18 × S0, 22 × S1, 24 × S2, 3 × S3, plus 1 unclassifiable
+(E-SCHEMA-005, whose branch is unreachable in practice) — 68 rows.
+
+These were `14 / 21 / 22 / 4` until they were re-counted: wrong on every number, and
+summing to 61 against a table that had 67 rows at the time. Two severity cells carried
+trailing prose that also made the column impossible to tally mechanically; the prose has
+moved into the message column, so the four numbers above can now be checked by counting
+the last column of every `| E-…` row.
 
 ---
 

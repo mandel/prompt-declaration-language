@@ -6,37 +6,37 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **46 corpus entries**, covering 46 of the **67** error IDs in the taxonomy.
-- **343 / 690** rubric points (**50%**).
-- **1 entry leaks a Python traceback** to the user.
+- **48 corpus entries**, covering 48 of the **68** error IDs in the taxonomy.
+- **358 / 720** rubric points (**50%**).
+- **2 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
-**21 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
+**20 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
-> `E-CODE-004`, `E-CODE-005`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-PARSER-002`, `E-PARSER-003`, `E-PARSER-004`, `E-PARSER-006`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUNTIME-011`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
+> `E-CODE-004`, `E-CODE-005`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-PARSER-002`, `E-PARSER-003`, `E-PARSER-004`, `E-PARSER-006`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 46 | 138 | 1.00 |
-| What | 76 | 138 | 1.65 |
-| Why | 78 | 138 | 1.70 |
-| Fix | 36 | 138 | 0.78 |
-| Hygiene | 107 | 138 | 2.33 |
+| Location | 48 | 144 | 1.00 |
+| What | 81 | 144 | 1.69 |
+| Why | 83 | 144 | 1.73 |
+| Fix | 36 | 144 | 0.75 |
+| Hygiene | 110 | 144 | 2.29 |
 
 ## By error class
 
 | Class | Entries | Score | of | Mean / 15 |
 | --- | ---: | ---: | ---: | ---: |
 | E-CLI | 5 | 56 | 75 | 11.2 |
-| E-CODE | 3 | 29 | 45 | 9.7 |
+| E-CODE | 4 | 39 | 60 | 9.8 |
 | E-EXPR | 6 | 34 | 90 | 5.7 |
 | E-LINT | 4 | 25 | 60 | 6.2 |
 | E-MODEL | 3 | 20 | 45 | 6.7 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 2 | 11 | 30 | 5.5 |
-| E-RUNTIME | 6 | 48 | 90 | 8.0 |
+| E-RUNTIME | 7 | 53 | 105 | 7.6 |
 | E-SCHEMA | 8 | 43 | 120 | 5.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -57,6 +57,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-010` | S1 | 1 | 2 | 1 | 0 | 0 | **4** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
 | `E-EXPR-004` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | error inside an imported file reports the wrong line |
 | `E-EXPR-006` | S1 | 0 | 1 | 1 | 0 | 3 | **5** | `███░░░░░░░` |  | comment lines shift every reported line |
+| `E-RUNTIME-011` | S0 | 1 | 2 | 2 | 0 | 0 | **5** | `███░░░░░░░` | TB | Retry succeeds on the second attempt and prints a traceback anyway (exit 0) |
 | `E-CLI-005` | S0 | 1 | 1 | 2 | 0 | 2 | **6** | `████░░░░░░` |  | python -m pdl.pdl reports success on failure |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
 | `E-EXPR-001` | S2 | 1 | 1 | 1 | 0 | 3 | **6** | `████░░░░░░` |  | undefined variable in an expression |
@@ -78,6 +79,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-MODEL-002` | S2 | 1 | 2 | 2 | 1 | 3 | **9** | `██████░░░░` |  | model endpoint unreachable |
 | `E-CODE-001` | S1 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Python exception inside a code block |
+| `E-CODE-006` | S2 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Exception raised inside a function another `code:` block defined |
 | `E-TYPE-006` | S1 | 0 | 2 | 3 | 3 | 2 | **10** | `███████░░░` |  | deprecated type syntax warning on a SUCCESSFUL run |
 | `E-CLI-001` | S0 | 1 | 3 | 3 | 1 | 3 | **11** | `███████░░░` |  | PDL file does not exist |
 | `E-CLI-002` | S0 | 1 | 3 | 3 | 2 | 3 | **12** | `████████░░` |  | PDL path is a directory |
@@ -116,6 +118,9 @@ Fixed (spec docs/error-reporting/specs/E-CODE-002.md). `call_python` reads `resu
 
 **`E-CODE-003`** — shell command exits non-zero  
 Wrapped as 'prog.pdl:0 - Shell Code error: ValueError(...)'. The command's own stderr ('boom') is printed separately, above and unconnected to the diagnostic, so the two halves of the story arrive as two unrelated messages.
+
+**`E-CODE-006`** — Exception raised inside a function another `code:` block defined  
+Pins a fix rather than exposing a defect: the two-`code:`-block shape that `88174ff` repaired, which the corpus could not have caught because `E-CODE-001`'s reproducer is a single block. The idiom is real, not synthetic -- `examples/rag/tfidf_rag.pdl` defines `PDL_SESSION.embed` in one block and calls it from another, which is exactly what this program does. What the golden demonstrates: the failing block's own line is rendered as source under a caret (`code:3 | result = PDL_SESSION.embed(key)`), and the frame belonging to the *other* block is named in prose (`note: raised inside \`embed\`, line 2 of another \`code:\` block, which this block called.`) instead of being indexed into this block's source. Line 2 of the *defining* block is `return 1 / 0`; line 2 of the *failing* block is `other = key.upper()`, and that line is what the regression printed under a caret labelled `in embed` -- a confidently-stated wrong location, which the rubric ranks below no location at all. Verified rather than assumed: this exact `prog.pdl`, run against `88174ff~1` (`b6d15ec`) with that tree's `src` first on `sys.path`, prints the extra gutter row `code:2 | other = key.upper()` / `^^^^^ in embed`; against HEAD it does not. `other = key.upper()` exists in the reproducer for no other reason than to be that wrong line, so a reintroduced regression has something legible to get wrong. Mechanism of the fix, in `_raised_elsewhere_note` (`pdl_interpreter.py`, around `:3352`): frames are selected by *code-object identity* against this block's `compile` result, not by filename, because every block compiles under the one shared name `<code-block>` -- a filename filter cannot tell two blocks apart. A frame that carries that filename but not this block's code object is therefore known to belong to some other block, and its line number is a coordinate in source this diagnostic does not hold, so it is described instead of quoted. Making the filename unique per execution would also work and was rejected: the name is readable from a succeeding program through `traceback.format_exc()`, so it is success-path output. Scores are identical to `E-CODE-001` because it is the same renderer: What 3 and Why 3 for naming the construct, the rule, the offending expression and where inside it control was; Fix 0 because there is nothing true and useful to say to someone who divided by zero, and the rubric ranks a vacuous `help:` below none. Location 1 and not 2: `prog.pdl:9` is the enclosing `code:` key of the second block, while the offending statement is on file line 12 -- coarse, not wrong, and not credited as an accident since the block spans four file lines. There is no column and no block path (`text[1].code`), both foundation work (phase-3 items 0 and 7). The one gap this shape adds over `E-CODE-001` is that the other block cannot be named or located at all -- the prose note says `another \`code:\` block` because the compile-time filename is shared, so a reader with ten `code:` blocks still has to find the right one by searching for the function name.
 
 **`E-EXPR-001`** — undefined variable in an expression  
 Jinja's wording. Does not list what IS in scope, which is the natural next question.
@@ -191,6 +196,9 @@ States the rule perfectly in PDL vocabulary, then shows neither which lists nor 
 
 **`E-RUNTIME-007`** — contribute entry is a dict of the wrong size  
 Was: '...but got {elem}' -- the literal six characters, because `process_contribution` (pdl_interpreter.py) built the string without an f-prefix at two sites, so the one piece of evidence the message promised was never substituted. Adding the prefix alone was not enough: by that point the mapping's values are ContributeValue models, so the substitution produced a pydantic repr. The message now reports the keys the user actually wrote. Reproducer is the realistic mistake -- two list items written at one indent level collapse into a single mapping. Location stays 1: the line is right but there is no column and no block path, both foundation work.
+
+**`E-RUNTIME-011`** — Retry succeeds on the second attempt and prints a traceback anyway (exit 0)  
+The only traceback leak in the corpus that fires on a **success path**. The program is correct, produces `ok on attempt 2` on stdout and exits **0**; on the way it prints a six-frame Python traceback to stderr, wrapped in a hardcoded `\033[0;31m` ... `\033[0m` regardless of whether stderr is a tty. Mechanism: `process_advance_block_retry` calls `traceback.format_exc()` inside its `if do_retry:` branch, embeds the result in `An error occurred in a PDL block. Error details: ...`, and prints it. Nothing about that branch is a failure -- it is the code path taken when a block is *about to be retried*, i.e. when PDL has decided the error is recoverable -- yet it is reported with more machinery than any real error in the catalogue. Shape chosen: **retry that succeeds on the second attempt**, because it is the sharper story -- from the user's point of view nothing went wrong at all, so every byte on stderr is noise, and no one reading the transcript can tell that the run was fine without reading to the end. Determinism comes from `PDL_SESSION`, the module-global `types.SimpleNamespace` that `call_python` injects into every `code:` block: it is a documented, user-facing idiom (`examples/rag/tfidf_rag.pdl` uses it to share a model between blocks), so the reproducer reads as a plausible user program rather than a harness trick, and it does not couple the entry to the internals of `trace_error_on_retry` -- the other deterministic lever, which feeds the previous error into `pdl_context` and would make the entry a test of that feature instead of of the leak. The alternative shape is `retry: 2` with a `fallback:`, which needs no counter and also exits 0; it was measured rather than reasoned about, and it prints the traceback **twice**, because `trial_total = max_retry + 1` in `process_advance_block_retry` makes `retry: N` mean N *retries* / N+1 attempts, and the banner fires once per retry taken. So the leak scales with the retry count: a `retry: 5` block that eventually succeeds dumps five tracebacks onto a successful run. The banner itself says `[Retry 1/1]`, which reads as a failure count rather than as `attempt 1 of 2 failed, retrying`. Location scores 1 and not 0: `prog.pdl:0` is not a *wrong* line, it is the `get_line` fallback for a top-level block (DROP #4), which the rubric places at 1; the accurate `code:4` gutter inside the wrapped `PDLRuntimeError` is a within-block line, not a file line. Normalizer note: every frame here names a real path, so all six are rewritten to `line <LINE>`; the deliberate `File "<code-block>", line 1` exemption never applies to this golden, because `call_python` converts the user's exception into a `PDLRuntimeError` whose rendered message carries the `code:N` gutter instead of a `<code-block>` frame -- the traceback shown is entirely interpreter frames. The ANSI escapes are not stripped by the harness and appear raw in the golden, which is the evidence: the rubric scores ANSI on a non-tty as a Hygiene defect in its own right, on top of the traceback. `hygiene_silent_failure` is deliberately **not** set -- this entry is the opposite of silence. Note also that INVENTORY's E-RUNTIME-011 row is `[src]` and describes only the *retry exhausted* shape, with location `file:line`; observed, the banner fires on retries taken (not on exhaustion, where the exception is simply re-raised) and the location is `:0`.
 
 **`E-RUNTIME-012`** — for over a string iterates characters  
 No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error.

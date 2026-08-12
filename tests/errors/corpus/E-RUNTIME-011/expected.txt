@@ -1,0 +1,34 @@
+$ exit: 0
+
+--- stdout ---
+ok on attempt 2
+
+--- stderr ---
+
+[0;31m[Retry 1/1] prog.pdl:0 - An error occurred in a PDL block. Error details: Traceback (most recent call last):
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_advance_block_retry
+    result, background, new_scope, trace = process_block_body_with_replay(
+                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_block_body_with_replay
+    raise exc from exc
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_block_body_with_replay
+    result, background, scope, trace = process_block_body(
+                                       ^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_block_body
+    return process_leaf_block(state, scope, block, loc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_leaf_block
+    result, background, scope, trace = process_call_code(
+                                       ^^^^^^^^^^^^^^^^^^
+  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_call_code
+    raise PDLRuntimeError(
+pdl.pdl_ast.PDLRuntimeError: code block raised ValueError: transient failure
+
+code:4 | raise ValueError("transient failure")
+       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  Python code in a `code:` block must run to completion; an exception that
+  escapes it stops the program.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.
+[0m

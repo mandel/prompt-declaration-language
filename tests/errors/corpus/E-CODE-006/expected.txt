@@ -1,0 +1,17 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:9 - code block raised ZeroDivisionError: division by zero
+
+code:3 | result = PDL_SESSION.embed(key)
+       |          ^^^^^^^^^^^^^^^^^^^^^^
+
+  Python code in a `code:` block must run to completion; an exception that
+  escapes it stops the program.
+
+  note: raised inside `embed`, line 2 of another `code:` block, which this
+        block called.
+  note: `code:N` line numbers are within the block's code, not the PDL file.

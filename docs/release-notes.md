@@ -28,6 +28,14 @@ Three things move as a result:
   read `line 4 - ...`, matching the label such a program's YAML errors already
   carried. `line N - ` now means what it says: a program with no source text at
   all, such as one built with `exec_dict`.
+- **A program that a program produced is named for where it came from.** The
+  `code:` of a `lang: pdl` block is a program of its own with no file name;
+  diagnostics about it now read
+  `<program:prog.pdl#text[0].code>:2 - ...`, naming the file that contains the
+  block and the block path of the `code:` field, instead of `<program>`. It also
+  stops such a block from taking the name of the program that ran it: a string
+  program containing one used to report line numbers belonging to the nested
+  code from that point on.
 
 **`PdlLocationType` loses `table` and gains `line` and `col` (SDK).** The type is
 `(file, line, col, path)`. The per-file line data it used to carry moved into a

@@ -16,6 +16,9 @@ The model, after decisions 5.1/5.2 of `docs/error-reporting/INVENTORY.md`:
 * `append` resolves the new path against that file's marks as it descends, so a
   location knows its own line at the moment it is built, from the one file it
   belongs to.
+* Every source needs a key, including the ones with no file name. A string
+  program is `<program>`; a program a running program produced is named for the
+  route to it, `<program:hello.pdl#text[0].code>` (`nested_source_name`).
 
 The registry is process-global because a location is a plain value that travels
 into traces and exceptions and must stay cheap to copy; the alternative is
@@ -32,6 +35,7 @@ from typing import Any, Iterator, Mapping, Sequence
 import yaml
 
 from .pdl_ast import PdlLocationType
+from .pdl_diagnostics import join_path
 
 UNNAMED_SOURCE = "<program>"
 """What a source parsed from a string with no file name is called.
@@ -51,12 +55,84 @@ in the same process had parsed a string.
 So `""` stays the unknown location, is never registered, and never resolves;
 `<program>` is a real source with real marks. `get_loc_string` renders the first
 as `line N - ` and the second as `<program>:N - `.
+
+A source that a *running* program produced -- the `code:` of a `lang: pdl` block
+-- is not this. It gets a name of its own; see `nested_source_name`.
 """
+
+NESTED_SOURCE_PREFIX = "<program:"
+NESTED_SOURCE_SUFFIX = ">"
 
 
 def is_unnamed(file: str) -> bool:
-    """True for a location with no user-facing file name, of either kind."""
-    return file in ("", UNNAMED_SOURCE)
+    """True for a location with no file the user could open.
+
+    Three shapes qualify: `""` (no source at all), `<program>` (a string handed
+    to `exec_str`), and `<program:...>` (a program a running program produced).
+    The distinction that matters to a caller is not "does this have a name" but
+    "may I tell the user to go and edit this path", and for all three the answer
+    is no.
+    """
+    return file in ("", UNNAMED_SOURCE) or (
+        file.startswith(NESTED_SOURCE_PREFIX) and file.endswith(NESTED_SOURCE_SUFFIX)
+    )
+
+
+def source_hint(file: str) -> str:
+    """The part of `file` that identifies it *inside* a nested source's name.
+
+    A real file name is its own hint. `<program>` has none -- there is only one
+    of it, and `<program:<program>#...>` would nest brackets to say nothing. An
+    already-nested name contributes its chain, so nesting composes left to right
+    instead of one bracket per level.
+    """
+    if file in ("", UNNAMED_SOURCE):
+        return ""
+    if file.startswith(NESTED_SOURCE_PREFIX) and file.endswith(NESTED_SOURCE_SUFFIX):
+        return file[len(NESTED_SOURCE_PREFIX) : -len(NESTED_SOURCE_SUFFIX)]
+    return file
+
+
+def nested_source_name(loc: PdlLocationType) -> str:
+    """The registry key for a source found at `loc` inside another source.
+
+    `loc` is the location of the *field holding the program text* -- the `code:`
+    of a `lang: pdl` block -- so the name reads as a route to it:
+
+        <program:hello.pdl#text[0].code>            a file's nested program
+        <program:text[0].code>                      a string program's
+        <program:hello.pdl#text[0].code#defs.f.code>    two levels down
+
+    Three properties, in the order they were argued for:
+
+    * **Qualified by the containing file, not just the path.** Two different
+      `.pdl` files with a `lang: pdl` block at the same path run in one process
+      -- one importing the other, say -- would otherwise be handed the same key,
+      which is the bug this naming exists to fix, moved rather than removed.
+    * **Readable.** It is printed in every diagnostic about the nested program
+      and it is what a user has to act on. `text[0].code` is where to go and
+      look; a hash or a counter is unique and tells them nothing. The spelling
+      is the block path `Diagnostic` already renders (`join_path`), so a
+      diagnostic's `  in <path>` line and this name use one syntax.
+    * **Not mistakable for a file.** The angle brackets are `<program>`'s, and
+      `is_unnamed` covers the whole family, so nothing invites the user to open
+      a path that does not exist.
+
+    `#` separates the containing source from the path within it, as in a URL
+    fragment, and chains for deeper nesting. It cannot be `:`, which
+    `get_loc_string` uses to attach the line number.
+
+    What this does **not** make unique: one site whose text changes between runs
+    -- a `lang: pdl` block inside a `for:` loop, whose `code:` interpolates the
+    loop variable -- keeps one name for every iteration. See
+    `SourceRegistry.register` for what the registry does about that.
+    """
+    hint = source_hint(loc.file)
+    inner = join_path(loc.path)
+    chain = f"{hint}#{inner}" if hint and inner else hint or inner
+    if not chain:
+        return UNNAMED_SOURCE
+    return f"{NESTED_SOURCE_PREFIX}{chain}{NESTED_SOURCE_SUFFIX}"
 
 
 @dataclass(frozen=True)
@@ -156,6 +232,15 @@ class PdlSource:
     file: str
     text: str
     marks: Mapping[str, SourceMark]
+    contested: bool = False
+    """Some *other* text was registered under this name earlier in the run.
+
+    Set by `SourceRegistry.register`, never cleared. It does not make the marks
+    below wrong -- they are this text's -- but it does mean a location built
+    before the change names a source whose text has moved underneath it, and
+    nothing recorded on a location says which of the two it meant. `text_of`
+    therefore stops answering for a contested name; see there.
+    """
 
     def mark(self, path: Sequence[str]) -> SourceMark | None:
         """The mark recorded for exactly this path, or None."""
@@ -190,18 +275,20 @@ class SourceRegistry:
     location can always find its own source and can never be resolved against
     another file's -- the shape of DROP #6.
 
-    Every source parsed without a file name is registered under the single key
-    `UNNAMED_SOURCE`, so two *different* unnamed sources alive at once share one
-    entry, last registration winning. The reachable case is `exec_str` of a
-    program that itself contains a `lang: pdl` block: the inner code is parsed
-    unnamed too, and locations built in the outer program *after* that point
-    resolve against the inner source's marks. Both are unnamed, so the file name
-    in the message is right either way; the line can be wrong.
+    A key is *not* guaranteed to name one text for the length of a run, and the
+    registry is explicit about that rather than pretending otherwise. Two cases
+    remain after `nested_source_name` gave every nested program a key of its own
+    (both are documented in `docs/error-reporting/INVENTORY.md` 7.7):
 
-    Fixing it means giving each unnamed source a distinct name, and that name is
-    user-visible -- it is printed in diagnostics and serialised into traces --
-    so it is a naming decision, not an implementation detail. It is recorded
-    here rather than invented.
+    * one nested site whose text changes between iterations -- a `lang: pdl`
+      block in a `for:` loop whose `code:` interpolates the loop variable;
+    * two threads each running `exec_str`, both of them `<program>`.
+
+    `register` detects the second registration of a *different* text and marks
+    the entry `contested`. Line and column are unaffected: they are resolved
+    when a location is built, against the marks in force at that moment, and are
+    frozen on the location from then on. What a contested key costs is the
+    *text*, which a renderer would read much later; see `text_of`.
     """
 
     def __init__(self) -> None:
@@ -211,19 +298,52 @@ class SourceRegistry:
     def register(
         self, file: str, text: str, marks: Mapping[str, SourceMark]
     ) -> PdlSource:
-        source = PdlSource(file=file, text=text, marks=dict(marks))
+        """Record a parsed source, or re-assert one already recorded.
+
+        Re-registering the identical text is a no-op that returns the existing
+        entry -- marks are a pure function of the text, so there is nothing to
+        update, and skipping the rebuild is what makes it cheap enough for
+        `parse_str` to call on every hit of its own cache. That call matters:
+        without it, a cached re-parse of text A would leave the registry holding
+        text B's marks, and every location built during that run of A would
+        resolve against them.
+        """
         with self._lock:
+            existing = self._sources.get(file)
+            if existing is not None and existing.text == text:
+                return existing
+            source = PdlSource(
+                file=file,
+                text=text,
+                marks=dict(marks),
+                contested=existing is not None,
+            )
             self._sources[file] = source
-        return source
+            return source
 
     def get(self, file: str) -> PdlSource | None:
         with self._lock:
             return self._sources.get(file)
 
     def text_of(self, file: str) -> str | None:
-        """The source text of a file, for excerpts and carets at render time."""
+        """The source text of a file, for excerpts and carets at render time.
+
+        `None` for a contested name, where the honest answer is that the
+        registry no longer knows which text a given location meant. An excerpt
+        drawn from the wrong text is not a smaller error than no excerpt: the
+        line number is right, the line quoted under it is some other program's,
+        and nothing on the page says so. `RUBRIC.md` ranks that below showing
+        nothing.
+
+        This is the fallback path. A diagnostic that captures its excerpt when
+        it is *built* -- which is what every boundary diagnostic already does,
+        by taking the source text as an argument -- is not affected by any of
+        this, and is the pattern to prefer.
+        """
         source = self.get(file)
-        return None if source is None else source.text
+        if source is None or source.contested:
+            return None
+        return source.text
 
     def mark(self, file: str, path: Sequence[str]) -> SourceMark | None:
         source = self.get(file)

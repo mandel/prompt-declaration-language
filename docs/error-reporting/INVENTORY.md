@@ -469,7 +469,8 @@ consequences that reshape the earlier plan:
 - Gives the Rust interpreter a concrete target to converge on if it is ever brought in.
 
 The trace contract is already being opened by 5.2, so this rides along on the same
-version bump rather than costing a second one.
+version bump rather than costing a second one. *(Superseded in part: the trace format
+did not change and there is no version bump — 7.6 and 7.8.)*
 
 **5.7 — The Rust interpreter is OUT of scope. DECIDED.**
 `pdl-live-react/src-tauri/src/pdl/interpreter.rs` stays as-is: 23 ad-hoc `format!` error
@@ -502,8 +503,9 @@ explicitly-flagged public-API/trace-format change, with `tests/test_line_table.p
 the viewer updated in the same series.
 
 0. **Foundation** — diagnostic record + renderer (5.6); YAML-marks `SafeLoader` and
-   source registry, `PdlLocationType` → `(file, line, col, path)` (5.1/5.2); trace format
-   bump and the matching `pdl-live-react` change. Everything below assumes it.
+   source registry, `PdlLocationType` → `(file, line, col, path)` (5.1/5.2); the matching
+   `pdl-live-react` change. Everything below assumes it. *No trace format bump: the trace
+   format turned out not to change, and a version field was declined — see 7.8.*
 
 Then, independent of each other and parallelisable across worktrees:
 
@@ -790,7 +792,7 @@ every *runtime* and *schema* diagnostic is still built from — deliberately doe
 it: turning on `:col` there rewrites the header of every entry in the corpus in one step,
 and that is a rendering decision belonging to 5.6's renderer, not to the location model.
 
-**Open question, not decided: how to name a source that has no file name.** The registry
+**How to name a source that has no file name — decided since, in 7.7.** The registry
 must be keyed by something, and the empty string cannot be it — `""` is
 `empty_block_location.file`, i.e. *no source at all*, carried by every block of an
 `exec_dict` program. Registering an anonymous source under `""` makes a program with no
@@ -801,8 +803,9 @@ registered under `<program>`, the label `parse_str` already used in its YAML err
 `""` never resolves. What remains unanswered is **multiple** unnamed sources: they all
 share the one `<program>` entry, last registration winning, and the reachable case is
 `exec_str` of a program containing a `lang: pdl` block. Giving each one a distinct name
-would fix it, and that name is printed in diagnostics and serialised into traces, so it is
-a naming decision rather than an implementation detail.
+would fix it, and that name is printed in diagnostics, so it is a naming decision rather
+than an implementation detail. **7.7 takes that decision**; the paragraph above is left as
+the statement of the problem it answers.
 
 **Correction to §5.2: `pdl__location` is not in a trace file.** The decision record says
 "`PdlLocationType` is serialised into trace JSON, so the trace format changes". It is not:
@@ -816,11 +819,114 @@ regenerate the types and confirm the build. `location_to_dict` was updated in st
 a dead serialiser that dumps a field the model no longer has is a trap for whoever
 uncomments those two lines.
 
-**Also not decided: the "trace format bump" of §6.** There is no version field anywhere in
-`pdl_ast.py` today, and no envelope around a trace to put one in — a trace is
+**The "trace format bump" of §6 — declined since, in 7.8.** There is no version field
+anywhere in `pdl_ast.py` today, and no envelope around a trace to put one in — a trace is
 `block_to_dict` of the root block. Adding a version therefore means either wrapping every
 trace in a new object (which every trace reader, including the viewer's loader, would have
 to be taught) or adding a field to the block model itself (which puts it on every block in
 the file). Neither is a contained addition, and inventing a versioning scheme is not a
 decision this work should make on its own. The trace *content* change is delivered and
-documented in `docs/release-notes.md`; the version field is left for the owner.
+documented in `docs/release-notes.md`.
+
+---
+
+### 7.7 Naming a source that no file contains
+
+**DECIDED: `<program:x>`, where `x` is the route to where the program came from.**
+
+`lang: pdl` runs the text of a `code:` field as a program in its own right. Until this
+decision that text was parsed unnamed, so it was registered under `<program>` — the very
+key the *containing* string program uses — and evicted it. Measured, not predicted: a
+string program with a `lang: pdl` block at `text[0]` and a failing expression on line 7
+reported `<program>:2`, because `['text', '[2]']` is absent from the inner source's marks
+and `PdlSource.resolve`'s ancestor walk fell back to the inner `['text']`, line 2. The same
+program without the `lang: pdl` block reported the right line.
+
+The spelling, in full:
+
+| Source | Name |
+| --- | --- |
+| a `.pdl` file | its path, unchanged |
+| a string handed to `exec_str`, `pdl-infer`, the notebook magic | `<program>`, unchanged |
+| a `lang: pdl` block inside a file | `<program:hello.pdl#text[0].code>` |
+| a `lang: pdl` block inside a string program | `<program:text[0].code>` |
+| one inside another | `<program:hello.pdl#text[0].code#defs.f.code>` |
+
+Four properties, in the order they were argued for:
+
+- **Qualified by the containing file, not by the path alone.** Two `.pdl` files can each
+  hold a `lang: pdl` block at the same block path and both be alive in one process — one
+  importing the other. Named for the path alone they would share a key, which is this bug
+  moved rather than removed.
+- **Readable, because it is user-visible.** It is printed in diagnostics about the nested
+  program and it lands in `PdlLocationType.file`. `text[0].code` is somewhere to go and
+  look; a hash or a counter would be unique and useless. The path is spelled as
+  `Diagnostic` already spells a block path (`join_path`), so a diagnostic's `in <path>`
+  line and this name use one syntax.
+- **Not mistakable for a file.** The angle brackets are `<program>`'s, and `is_unnamed`
+  now covers the whole family, so no message invites the user to open a path that does not
+  exist.
+- **`#`, not `:`.** `get_loc_string` attaches the line number with a colon; a colon inside
+  the name would make `<program:x>:7` unreadable at exactly the moment it is read.
+
+**What it closes.** The reachable eviction case — one program running another — is gone,
+including for two files that each contain one, and including deeper nesting. Every nested
+program now has a key that no other source in the process shares, unless one of the two
+cases below applies.
+
+**What it does not close, deliberately.** A key still names one text *at a time*, not one
+text for the length of a run:
+
+1. **A nested site whose text changes.** `nested_source_name` is derived from a block
+   path, and a `lang: pdl` block inside a `for:` loop whose `code:` interpolates the loop
+   variable is one path with a different text per turn. Measured: one path, two texts
+   (`text: alpha`, `text: beta`) in a single run. Making the name unique here means
+   putting a hash or a counter in it, which loses the one property that makes the name
+   worth printing.
+2. **Two threads in one `exec_str` each.** Both are top-level and both are `<program>`,
+   which is pinned by `tests/test_parse_errors.py` and is what `parse_str`'s YAML errors
+   already say. The registry's lock protects the dictionary, not logical ownership.
+
+Two mitigations, because "does not close" must not mean "goes wrong quietly":
+
+- **Lines stay right.** A location resolves its line and column when it is *built*, from
+  the marks in force at that moment, and freezes them. `parse_str` therefore re-registers
+  on a hit of its own `lru_cache` as well as on a miss: without that, a cached re-parse of
+  text A would run with text B's marks still in the registry, and every location built
+  during it would resolve against them. That is a wrong line, not merely a wrong excerpt,
+  and it is now covered by `tests/test_source_locations.py`.
+- **Text stops answering rather than lying.** `SourceRegistry.register` marks a key
+  `contested` when a *different* text is registered under it, and `source_text` returns
+  `None` for a contested key. This is aimed at 5.6's renderer, which will read text from
+  the registry long after the location was built: an excerpt drawn from the wrong text sits
+  under a correct line number with nothing on the page to say so, and `RUBRIC.md` ranks
+  that below showing nothing. A diagnostic that captures its excerpt when it is *built* —
+  what every boundary diagnostic already does — is unaffected, and is the pattern to
+  prefer.
+
+The one collision the scheme cannot see is a real file literally named `text[0].code`
+sharing a process with a nested program at that path in a string program. Recorded rather
+than defended against.
+
+**Where it is visible.** Corpus entry `E-CODE-005` is the only place a CLI user meets the
+name today, because every *runtime* failure inside a nested program is caught by
+`process_call_code` and interpolated into `PDL Code error: {repr(exc)}`, which discards the
+inner location entirely. A nested program that fails to *parse* still shows its name. The
+string-program case, which is where the wrong line was reported, is not CLI-reachable at
+all and is covered by `tests/test_source_locations.py` instead.
+
+### 7.8 No trace version field
+
+**DECIDED: skip it.** §6 item 0 asked for a "trace format bump" to protect a trace-format
+change that this work turned out not to make: `pdl__location` was never serialised, because
+`pdl_dumper.py`'s call site is commented out (7.6). There is nothing to version.
+
+Both implementations cost more than the problem. An envelope around the root block breaks
+every existing reader, including the viewer's loader, for a field none of them would read.
+A field on the block model stamps a version on every block in the file. Inventing a
+versioning scheme is a decision about the trace contract as a whole and does not belong to
+a change that leaves the contract alone.
+
+The clause is therefore struck from §6 item 0, so the plan stops asking for it.
+`docs/release-notes.md` never promised a bump — it says the opposite, that files written by
+`pdl --trace` do not change — and needed no correction.

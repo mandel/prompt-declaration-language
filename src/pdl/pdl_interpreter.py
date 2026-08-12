@@ -149,7 +149,7 @@ from .pdl_diagnostics import Diagnostic, import_read_diagnostic
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, get_loc_string
+from .pdl_location_utils import append, get_loc_string, nested_source_name
 from .pdl_parser import (
     PDLParseError,
     parse_file,
@@ -2724,7 +2724,7 @@ def process_call_code(
                 ) from exc
         case PdlCodeBlock():
             try:
-                result = call_pdl(code_s, execution_scope)
+                result = call_pdl(code_s, execution_scope, append(loc, "code"))
                 background = DependentContext(
                     PdlList(
                         [
@@ -3617,8 +3617,20 @@ def call_jinja(code: str, scope: ScopeType, parameters: dict) -> PdlLazy[Any]:
     return PdlConst(result)
 
 
-def call_pdl(code: str, scope: ScopeType) -> PdlLazy[Any]:
-    program, loc = parse_str(code)
+def call_pdl(
+    code: str, scope: ScopeType, code_loc: PdlLocationType | None = None
+) -> PdlLazy[Any]:
+    """Run a PDL program that another PDL program produced.
+
+    `code_loc` is where the text came from -- the `code:` key of the `lang: pdl`
+    block -- and it names the source. Without it the program is parsed as
+    `<program>`, and the *containing* program, if it was a string too, loses its
+    own entry in the registry: every location built in it after this point then
+    resolves against this code's marks. `code_loc=None` is kept only for a
+    caller outside the interpreter, and gets the old, shared name.
+    """
+    file_name = None if code_loc is None else nested_source_name(code_loc)
+    program, loc = parse_str(code, file_name=file_name)
     state = InterpreterState()
     result, _, _, _ = process_prog(state, scope, program, loc)
     return result

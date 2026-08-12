@@ -16,6 +16,7 @@ from .pdl_diagnostics import (
 )
 from .pdl_location_utils import (
     UNNAMED_SOURCE,
+    SourceMark,
     is_unnamed,
     load_with_marks,
     program_location,
@@ -277,15 +278,14 @@ def yaml_error(  # pylint: disable=too-many-arguments
 
 
 @lru_cache(maxsize=128)
-def parse_str(
-    pdl_str: str, file_name: str | None = None
-) -> tuple[Program, PdlLocationType]:
-    if file_name is None:
-        file_name = UNNAMED_SOURCE
+def _parse_str_cached(
+    pdl_str: str, file_name: str
+) -> tuple[Program, PdlLocationType, dict[str, SourceMark]]:
+    """`parse_str`'s body. The marks come back out so the caller can re-register."""
     try:
         prog_dict, marks = load_with_marks(pdl_str)
     except yaml.YAMLError as exc:
-        raise yaml_error(exc, pdl_str, file_name or "<program>") from exc
+        raise yaml_error(exc, pdl_str, file_name) from exc
     # The source is registered before anything can fail on it: `parse_dict`
     # reports schema errors through `append`, which resolves against exactly
     # this entry, and a diagnostic about a file PDL could not find its text for
@@ -293,6 +293,28 @@ def parse_str(
     register_source(file_name, pdl_str, marks)
     loc = program_location(file_name, marks)
     prog = parse_dict(prog_dict, loc)
+    return prog, loc, marks
+
+
+def parse_str(
+    pdl_str: str, file_name: str | None = None
+) -> tuple[Program, PdlLocationType]:
+    """Parse a PDL source, and make sure the registry describes *this* source.
+
+    The cache is on the body, not on this function, because the registry entry
+    has to be re-asserted on a hit as well as on a miss. A name can be shared by
+    more than one text within a run -- `<program>` by two `exec_str` calls, one
+    nested `<program:...#code>` by two turns of a `for:` loop -- and on a cache
+    hit the body does not run, so nothing would put this text's marks back. The
+    locations built during the cached parse would then be resolved against the
+    other text's marks, which is a wrong *line*, not merely a wrong excerpt.
+    Re-registering identical text is a dictionary lookup and a string compare
+    (see `SourceRegistry.register`).
+    """
+    if file_name is None:
+        file_name = UNNAMED_SOURCE
+    prog, loc, marks = _parse_str_cached(pdl_str, file_name)
+    register_source(file_name, pdl_str, marks)
     return prog, loc
 
 

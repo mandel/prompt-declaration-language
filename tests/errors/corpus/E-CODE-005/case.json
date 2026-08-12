@@ -1,0 +1,13 @@
+{
+  "id": "E-CODE-005",
+  "title": "a `lang: pdl` block whose program does not parse",
+  "severity": "S1",
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 2,
+    "hygiene": 1
+  },
+  "notes": "The inner diagnostic is the *whole* E-PARSE-001 diagnostic -- headline, excerpt, two carets, rule, help -- which scores 15 when it arrives on its own. Here `process_call_code` catches it and interpolates `repr(exc)` into `PDL Code error:`, so every newline becomes a literal `\\n` and the whole document arrives as one line of Python list repr. That is the E-CODE-005 defect and every score below is capped by it: hygiene 1 for the repr chain, and what/why/fix held at 2 because the content is all present but has to be unescaped by eye. Location 1 is the outer `prog.pdl:3`, the enclosing block, which is right but coarse. The inner location names the nested source: it reads `<program:prog.pdl#text[0].code>:4:1`, where before the naming decision of INVENTORY 7.7 it read `<program>:4:1` -- the same label a top-level string program uses, with nothing to say which `code:` field the failure was in. This entry exists to pin that name, because it is the one place a CLI user sees it."
+}

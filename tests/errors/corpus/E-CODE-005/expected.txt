@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3 - PDL Code error: PDLYamlError(['<program:prog.pdl#text[0].code>:4:1 - not valid YAML: a quoted string is never closed\n\n2 | - "hello\n  |   ^ this quote is never closed\n...\n4 |\n  | ^ the input ends here, with the string still open\n\n  A PDL program is a YAML document: it must parse as YAML before any PDL rule\n  is checked.\n\n  help: close the quote opened on line 2.'])

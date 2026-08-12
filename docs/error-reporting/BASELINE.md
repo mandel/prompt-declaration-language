@@ -6,10 +6,14 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **46 corpus entries**, one per reproducible taxonomy class.
+- **46 corpus entries**, covering 46 of the **67** error IDs in the taxonomy.
 - **343 / 690** rubric points (**50%**).
-- **1 entries leak a Python traceback** to the user.
+- **1 entry leaks a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
+
+**21 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
+
+> `E-CODE-004`, `E-CODE-005`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-PARSER-002`, `E-PARSER-003`, `E-PARSER-004`, `E-PARSER-006`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUNTIME-011`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
 
 ## Per-dimension totals
 

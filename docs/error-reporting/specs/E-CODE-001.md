@@ -6,6 +6,11 @@ below is designed to stand next to the E-CODE-002 output without looking like a 
 tool wrote it: same header shape, same one-location-prefix rule, same rule/`note:`/`help:`
 vocabulary, same `append(loc, "code")` location.
 
+> **Citations point at `f9542b9`**, the tree this spec was written against — not at the
+> current tree. Read one with `git show f9542b9:src/pdl/pdl_interpreter.py`. Symbol names
+> survive; line numbers do not. The "Which frames survive" section was rewritten later,
+> against `88174ff`, after the filename-based rule shipped as a regression.
+
 **All `pdl_interpreter.py` line numbers in this spec were re-read at the end of the
 session.** The file moved by 14–16 lines while this was being written, so anything cited
 from an earlier reading (including E-CODE-002.md's own citations) is stale.

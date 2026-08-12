@@ -574,7 +574,25 @@ def parser_to_dict(parser: ParserType) -> str | dict[str, Any]:
 
 
 def location_to_dict(location: PdlLocationType) -> dict[str, Any]:
-    return {"path": location.path, "file": location.file, "table": {}}
+    """Serialise a location into a trace.
+
+    `table` is gone -- it was always dumped empty, so no reader can have been
+    using it -- and `line`/`col` take its place.
+
+    Dead as it stands: the only call is commented out at `:387-388`, so
+    `pdl --trace` writes no `pdl__location` at all. Kept and updated rather than
+    left stale, because it is the serialiser of record for the field and a dead
+    function that dumps a field the model no longer has is a trap for whoever
+    uncomments those two lines. Note that the *schema* and the viewer's
+    generated types do carry the field, and `model_dump()` on a block emits it,
+    so the shape is public even though the trace writer skips it.
+    """
+    return {
+        "path": location.path,
+        "file": location.file,
+        "line": location.line,
+        "col": location.col,
+    }
 
 
 def contribute_to_list(

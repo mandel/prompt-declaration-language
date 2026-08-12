@@ -4,4 +4,4 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:0 - file nofile.txt not found
+prog.pdl:1 - file nofile.txt not found

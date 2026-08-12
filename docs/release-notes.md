@@ -6,6 +6,45 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### Source positions come from the YAML parser — `PdlLocationType` changes shape
+
+Reported line numbers used to be reconstructed by a regex scan over the program
+text, which split each line on `":"` to guess what was on it. It counted comment
+lines as structure, had no notion of flow style or of a multi-line scalar, and
+had nothing to say about a top-level block. Positions now come from the marks
+PyYAML computes while parsing, so they are exact, and they include a **column**
+for the first time.
+
+Three things move as a result:
+
+- **An error after a comment, or inside an imported function, now reports the
+  right line.** A program with a comment block at the top used to report every
+  subsequent error some lines early; an expression that failed inside a function
+  defined in an imported file reported the first line of that file.
+- **A top-level block is `file:1`, not `file:0`.** `read:`, `code:` and
+  `include:` programs of one block each used to report line 0.
+- **A program parsed from a string is named `<program>`.** Diagnostics from
+  `exec_str` and the notebook magic read `<program>:4 - ...` where they used to
+  read `line 4 - ...`, matching the label such a program's YAML errors already
+  carried. `line N - ` now means what it says: a program with no source text at
+  all, such as one built with `exec_dict`.
+
+**`PdlLocationType` loses `table` and gains `line` and `col` (SDK).** The type is
+`(file, line, col, path)`. The per-file line data it used to carry moved into a
+registry keyed by file name, which is what makes the imported-function bug above
+unrepresentable rather than merely fixed: a location can only ever be resolved
+against the file it names. Code constructing a `PdlLocationType` by hand — the
+only field that was ever useful to pass is `file` — should drop `table=`; code
+reading `.table` has no replacement and almost certainly wanted `.line`.
+
+`pdl-schema.json` and the viewer's generated types change with it, and so does
+`model_dump()` on any block. Files written by `pdl --trace` do **not**: the trace
+writer has never emitted `pdl__location` (`pdl_dumper.py:387-388` is commented
+out), and the viewer strips the field on load in any case.
+
+Nothing about a program that runs today changes: same result, same exit code,
+same output on the success path.
+
 ### A failing `import:` reports a diagnostic, and raises `PDLRuntimeError` (SDK)
 
 An `import:` naming a file that cannot be read used to end in a Python traceback.

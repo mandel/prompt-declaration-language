@@ -79,9 +79,12 @@ spec: integer
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
+    # `<program>:3` where this used to say `line 3`; see the same change in
+    # `tests/test_fallback.py`. `line N - ` is now reserved for a program with no
+    # source at all, such as one built as a dict.
     assert (
         str(exc.value.message)
-        == "Type errors during spec checking:\nline 3 - Hello should be of type <class 'int'>"
+        == "Type errors during spec checking:\n<program>:3 - Hello should be of type <class 'int'>"
     )
 
 

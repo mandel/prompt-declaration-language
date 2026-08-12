@@ -1,13 +1,13 @@
 {
   "id": "E-EXPR-006",
-  "title": "comment lines shift every reported line",
+  "title": "comment lines before the error",
   "severity": "S1",
   "rubric": {
-    "location": 0,
+    "location": 1,
     "what": 1,
     "why": 1,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "Reports line 2; the error is on line 5. get_line_map counts comment lines as structure. Any file with comments -- i.e. any real file -- is affected."
+  "notes": "Reports line 5, the line `- ${ nope }` is on. Until phase-3 item 0 it reported line 2: `get_line_map` scanned the text with a regex and counted comment lines as structure (DROP #2). Positions now come from PyYAML's own marks, which know what a comment is. The entry is now the regression test for it. Location 1 rather than 2: no column and no block path are printed yet."
 }

@@ -9,5 +9,5 @@
     "fix": 1,
     "hygiene": 2
   },
-  "notes": "Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), the include site is `:0`, and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. Two stacked claim lines for one error keep hygiene at 2."
+  "notes": "Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. The include site was `:0` and is now `:1`, the line the `include:` block starts on (phase-3 item 0). Two stacked claim lines for one error keep hygiene at 2."
 }

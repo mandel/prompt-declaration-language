@@ -100,12 +100,23 @@ class BlockKind(StrEnum):
 
 
 class PdlLocationType(BaseModel):
-    """Internal data structure to keep track of the source location information."""
+    """Internal data structure to keep track of the source location information.
+
+    `path` is the block path inside the file, e.g. `["text", "[2]", "model"]`.
+    `line` and `col` are 1-based positions of that block in `file`, taken from
+    the YAML parser's own marks; `0` means unknown.
+
+    The per-file line data that used to sit here as `table` now lives in
+    `pdl_location_utils.SOURCES`, keyed by `file`. A location that carried its
+    file's line table could be -- and was -- built with one file's `path` and
+    another file's table; see DROP #6 in `docs/error-reporting/INVENTORY.md`.
+    """
 
     model_config = ConfigDict(extra="forbid")
     path: list[str]
     file: str
-    table: dict[str, int]
+    line: int = 0
+    col: int = 0
 
 
 OptionalPdlLocationType = TypeAliasType(
@@ -115,7 +126,7 @@ OptionalPdlLocationType = TypeAliasType(
 
 
 # Value for blocks without source location information
-empty_block_location = PdlLocationType(file="", path=[], table={})
+empty_block_location = PdlLocationType(file="", path=[], line=0, col=0)
 
 
 LocalizedExpressionT = TypeVar("LocalizedExpressionT")

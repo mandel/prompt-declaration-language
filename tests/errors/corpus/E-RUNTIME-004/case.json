@@ -1,6 +1,6 @@
 {
   "id": "E-RUNTIME-004",
-  "title": "read of a missing file reports line 0",
+  "title": "read of a missing file",
   "severity": "S2",
   "rubric": {
     "location": 1,
@@ -9,5 +9,5 @@
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "'prog.pdl:0'. Top-level blocks have an empty location path, and get_line returns 0 for it. Clean message otherwise."
+  "notes": "'prog.pdl:1', the line of the `read:` block. It was 'prog.pdl:0' until phase-3 item 0: a top-level block has an empty location path and `get_line` returned 0 for it, so the one block a single-block program has was the one thing that could not be located. Clean message otherwise; location stays 1 because no column or block path is printed."
 }

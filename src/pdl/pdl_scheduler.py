@@ -11,7 +11,6 @@ from termcolor import colored
 
 from .pdl_ast import BlockKind, ModelBlock
 from .pdl_diagnostics import Diagnostic, Note, Span, Suggestion
-from .pdl_location_utils import get_line
 from .pdl_utils import stringify
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for type checking only
@@ -194,11 +193,7 @@ def _report_recording_bug(block: ModelBlock, model_id: str, exc: Exception) -> N
             f"'{model_id}': {exc!r}"
         ),
         file="" if loc is None else loc.file,
-        spans=(
-            []
-            if loc is None
-            else [Span(line=get_line(loc.table, loc.path), primary=True)]
-        ),
+        spans=[] if loc is None else [Span(line=loc.line, primary=True)],
         notes=[Note("rule", _RECORDING_BUG_RULE)],
         suggestions=[
             Suggestion(

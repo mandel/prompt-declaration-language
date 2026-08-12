@@ -12,12 +12,17 @@ def do_test(t, capsys):
     assert set(output) == set(t["errors"])
 
 
+# `:1`, twice, where this file used to assert `:0`. The two "missing required
+# field" errors are about the whole program, whose path is `[]`; `get_line`
+# returned a literal `0` for the empty path, so the file's own top-level block
+# was the one thing in the file that could not be located. The document's root
+# node has a mark like any other node and it is line 1.
 line = {
     "file": "tests/data/line/hello.pdl",
     "errors": [
         "",
-        "tests/data/line/hello.pdl:0 - Missing required field: return",
-        "tests/data/line/hello.pdl:0 - Missing required field: function",
+        "tests/data/line/hello.pdl:1 - Missing required field: return",
+        "tests/data/line/hello.pdl:1 - Missing required field: function",
         "tests/data/line/hello.pdl:2 - Field not allowed: texts",
     ],
 }
@@ -395,8 +400,10 @@ line31 = {
     "file": "tests/data/line/hello31.pdl",
     "errors": [
         "",
-        "tests/data/line/hello31.pdl:0 - Missing required field: function",
-        "tests/data/line/hello31.pdl:0 - Missing required field: return",
+        # `:1` for the same reason as `test_line`: these are about the program
+        # itself, at path `[]`, which starts on line 1.
+        "tests/data/line/hello31.pdl:1 - Missing required field: function",
+        "tests/data/line/hello31.pdl:1 - Missing required field: return",
         "tests/data/line/hello31.pdl:9 - Field not allowed: show_result",
     ],
 }

@@ -1,13 +1,13 @@
 {
   "id": "E-EXPR-004",
-  "title": "error inside an imported file reports the wrong line",
+  "title": "error inside an imported file",
   "severity": "S1",
   "rubric": {
-    "location": 0,
+    "location": 1,
     "what": 1,
     "why": 1,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "Reports sub/imported.pdl:1; the expression is on line 4. `execute_call` (pdl_interpreter.py) builds the callee's location with the CALLER's line table. Location 0 because a confident wrong line is worse than none."
+  "notes": "Reports sub/imported.pdl:4, the line the expression is on. Until phase-3 item 0 it reported `sub/imported.pdl:1`: `execute_call` built the callee's location out of the callee's file and path and the CALLER's line table, the lookup missed, and `get_line`'s ancestor walk turned the miss into a confident wrong line (DROP #6). `PdlLocationType` no longer carries a table, so that location cannot be spelled; the entry is now the regression test for it. Location 1 rather than 2: the line is right, but no column, no block path and no import chain are printed."
 }

@@ -149,7 +149,7 @@ from .pdl_diagnostics import Diagnostic, import_read_diagnostic
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, get_line, get_loc_string
+from .pdl_location_utils import append, get_loc_string
 from .pdl_parser import (
     PDLParseError,
     parse_file,
@@ -3672,11 +3672,14 @@ def execute_call(state, current_context, closure, args, loc):
         | (args or {})
     )
     if closure.pdl__location is not None:
-        fun_loc = PdlLocationType(
-            file=closure.pdl__location.file,
-            path=closure.pdl__location.path + ["return"],
-            table=loc.table,
-        )
+        # The body of the function is at `<callee>.return`, in the callee's own
+        # file. This used to be spelled out field by field with `table=loc.table`
+        # -- the *caller's* line map -- so a function called across files was
+        # resolved against a table its path does not occur in, and the lookup
+        # missed into the ancestor walk and produced a confident wrong line
+        # (DROP #6). `append` can only ever consult the file named in the
+        # location it is given, so the mistake no longer has a spelling.
+        fun_loc = append(closure.pdl__location, "return")
     else:
         fun_loc = empty_block_location
     result, background, _, f_trace = process_block(state, f_scope, f_body, fun_loc)
@@ -3827,7 +3830,7 @@ def process_import(
                 cwd=state.cwd,
                 exc=exc,
                 file=loc.file,
-                line=get_line(loc.table, import_loc.path),
+                line=import_loc.line,
                 block_path=import_loc.path,
             ),
         ) from exc

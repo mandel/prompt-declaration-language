@@ -14,7 +14,13 @@ from .pdl_diagnostics import (
     undecodable_diagnostic,
     yaml_diagnostic,
 )
-from .pdl_location_utils import get_line_map
+from .pdl_location_utils import (
+    UNNAMED_SOURCE,
+    is_unnamed,
+    load_with_marks,
+    program_location,
+    register_source,
+)
 from .pdl_schema_error_analyzer import analyze_errors
 
 
@@ -275,13 +281,17 @@ def parse_str(
     pdl_str: str, file_name: str | None = None
 ) -> tuple[Program, PdlLocationType]:
     if file_name is None:
-        file_name = ""
+        file_name = UNNAMED_SOURCE
     try:
-        prog_dict = yaml.safe_load(pdl_str)
+        prog_dict, marks = load_with_marks(pdl_str)
     except yaml.YAMLError as exc:
         raise yaml_error(exc, pdl_str, file_name or "<program>") from exc
-    line_table = get_line_map(pdl_str)
-    loc = PdlLocationType(path=[], file=file_name, table=line_table)
+    # The source is registered before anything can fail on it: `parse_dict`
+    # reports schema errors through `append`, which resolves against exactly
+    # this entry, and a diagnostic about a file PDL could not find its text for
+    # is the failure mode this registry exists to remove.
+    register_source(file_name, pdl_str, marks)
+    loc = program_location(file_name, marks)
     prog = parse_dict(prog_dict, loc)
     return prog, loc
 
@@ -299,7 +309,10 @@ def parse_dict(pdl_dict: dict[str, Any], loc: PdlLocationType | None = None) -> 
             loc = empty_block_location
         errors = analyze_errors(defs, defs["Program"], pdl_dict, loc)
         if errors == []:
-            if loc.file == "":
+            # `<program>` is a display name, not a file name: a fallback reading
+            # `The file PDL <program> does not respect the schema.` would invite
+            # the user to go and look for it.
+            if is_unnamed(loc.file):
                 errors = ["The PDL program does not respect the schema."]
             else:
                 errors = [f"The file PDL {loc.file} does not respect the schema."]

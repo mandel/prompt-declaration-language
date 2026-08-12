@@ -763,3 +763,64 @@ half-swept spec reads as current while some of it is not. Instead each spec now 
 blockquote naming its anchor commit, and `specs/README.md` records the convention —
 citations are pinned, read them with `git show <anchor>:<path>`, and where a line number
 and a symbol name disagree, the symbol name is what was meant.
+
+### 7.6 What Phase-3 item 0 landed, and the one question it could not answer
+
+**Status: DROP #1, #2, #4 and #6 are closed.** `pdl_location_utils.load_with_marks`
+composes the YAML node graph and reads PyYAML's `start_mark`/`end_mark` off it, so every
+mapping key and every sequence item has an exact line **and column** (#1, #2). The
+per-file mark map lives in a `SourceRegistry` keyed by file name, and `PdlLocationType` is
+`(file, line, col, path)` with no `table` (5.2), which is what closes #6: `execute_call`'s
+`fun_loc` is now `append(closure.pdl__location, "return")` and a location can only ever be
+resolved against the file it names. The ancestor walk of #4 survives inside
+`PdlSource.resolve` but has changed meaning — with real marks a miss means the path is not
+in the source at all (a synthetic segment, a block built at runtime), where before it was
+the *normal* case for flow style, for the document root and for any key the regex
+mis-split.
+
+Two drops in §3.2 are untouched and remain open: **#5** (manual `loc` threading — the
+model is now correct, but `append` is still called by hand at 41 sites) and **#10**
+(`loc.path` is carried to the print site and dropped; `get_loc_string` still renders
+`file:line - ` only). #10 is Phase-3 item 7 and is now purely a renderer change.
+
+**Columns are recorded but not rendered.** `PdlLocationType.col` is populated, serialised
+into traces, and available to `Diagnostic`'s span renderer, which has printed
+`file:line:col` for boundary diagnostics since E-BOUNDARY. `get_loc_string` — the prefix
+every *runtime* and *schema* diagnostic is still built from — deliberately does not use
+it: turning on `:col` there rewrites the header of every entry in the corpus in one step,
+and that is a rendering decision belonging to 5.6's renderer, not to the location model.
+
+**Open question, not decided: how to name a source that has no file name.** The registry
+must be keyed by something, and the empty string cannot be it — `""` is
+`empty_block_location.file`, i.e. *no source at all*, carried by every block of an
+`exec_dict` program. Registering an anonymous source under `""` makes a program with no
+source report line numbers belonging to whatever string was parsed most recently; that was
+observed, not predicted (`tests/test_errors.py` went from `line 0 - ` to `line 8 - ` as
+soon as another test in the same process had parsed a string). So a string program is now
+registered under `<program>`, the label `parse_str` already used in its YAML errors, and
+`""` never resolves. What remains unanswered is **multiple** unnamed sources: they all
+share the one `<program>` entry, last registration winning, and the reachable case is
+`exec_str` of a program containing a `lang: pdl` block. Giving each one a distinct name
+would fix it, and that name is printed in diagnostics and serialised into traces, so it is
+a naming decision rather than an implementation detail.
+
+**Correction to §5.2: `pdl__location` is not in a trace file.** The decision record says
+"`PdlLocationType` is serialised into trace JSON, so the trace format changes". It is not:
+`location_to_dict` (`pdl_dumper.py`) is dead code, because its only call site — the two
+lines that would write `d["pdl__location"]` — is commented out. A trace written by
+`pdl --trace` today contains no location at all, verified by running one. What really
+changes is `pdl-schema.json`, the viewer's generated `pdl_ast.d.ts`, and `model_dump()` on
+any block; the viewer strips `pdl__location` on load (`pdl_code_cleanup.ts:153`) and reads
+it nowhere, and the Rust side has no location type at all, so the viewer work was to
+regenerate the types and confirm the build. `location_to_dict` was updated in step anyway:
+a dead serialiser that dumps a field the model no longer has is a trap for whoever
+uncomments those two lines.
+
+**Also not decided: the "trace format bump" of §6.** There is no version field anywhere in
+`pdl_ast.py` today, and no envelope around a trace to put one in — a trace is
+`block_to_dict` of the root block. Adding a version therefore means either wrapping every
+trace in a new object (which every trace reader, including the viewer's loader, would have
+to be taught) or adding a field to the block model itself (which puts it on every block in
+the file). Neither is a contained addition, and inventing a versioning scheme is not a
+decision this work should make on its own. The trace *content* change is delivered and
+documented in `docs/release-notes.md`; the version field is left for the owner.

@@ -9,5 +9,5 @@
     "fix": 0,
     "hygiene": 1
   },
-  "notes": "Wrapped as 'prog.pdl:0 - Shell Code error: ValueError(...)'. The command's own stderr ('boom') is printed separately, above and unconnected to the diagnostic, so the two halves of the story arrive as two unrelated messages."
+  "notes": "Wrapped as 'prog.pdl:1 - Shell Code error: ValueError(...)'. The command's own stderr ('boom') is printed separately, above and unconnected to the diagnostic, so the two halves of the story arrive as two unrelated messages. The line was `:0` until phase-3 item 0: the block is the whole program, whose path is empty, and `get_line` returned a literal 0 for it. It now resolves to the root node's own mark. Location stays 1 because the rubric's 2 needs a column or a rendered block path, and neither is printed yet (DROP #10, item 7)."
 }

@@ -39,7 +39,7 @@ def _block() -> LitellmModelBlock:
     block.pdl__usage = PdlUsage()
     block.pdl__timing = PdlTiming()
     block.pdl__location = PdlLocationType(
-        file="prog.pdl", path=["text", "[0]"], table={"['text', '[0]']": 2}
+        file="prog.pdl", path=["text", "[0]"], line=2, col=3
     )
     return block
 

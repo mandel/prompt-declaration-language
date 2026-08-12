@@ -72,9 +72,12 @@ fallback: "Error"
 """
     with pytest.raises(PDLRuntimeError) as exc:
         _ = exec_str(prog_str)
+    # `<program>:4` where this used to say `line 4`: a program parsed from a
+    # string now has a named source in the registry, under the same label its
+    # YAML errors already used. The line is unchanged.
     assert (
         str(exc.value.message)
-        == "Type errors during spec checking:\nline 4 - Error should be of type <class 'int'>"
+        == "Type errors during spec checking:\n<program>:4 - Error should be of type <class 'int'>"
     )
 
 

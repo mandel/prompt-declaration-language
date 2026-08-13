@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-003",
+  "title": "yaml parser on ill-formed YAML",
+  "severity": "S1",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "The `yaml` branch of `parse_result` catches whatever `yaml.safe_load` raises and interpolates `repr(exc)` into the message; the `PDLRuntimeParserError` is built with no `loc`, so `generate` prints no file, no line and no block path. Using `repr` rather than `str` is the specific defect: PyYAML's `MarkedYAMLError.__str__` renders a readable multi-line report ending in `in \"<unicode string>\", line 1, column 6`, and `repr` throws all of that away, leaving two `<yaml.error.Mark object at 0x...>` addresses in the user's face. Those addresses also differ on every run; only the corpus normalizer keeps this golden stable."
+}

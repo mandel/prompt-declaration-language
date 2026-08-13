@@ -6,24 +6,24 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **49 corpus entries**, covering 49 of the **68** error IDs in the taxonomy.
-- **385 / 735** rubric points (**52%**).
+- **53 corpus entries**, covering 53 of the **68** error IDs in the taxonomy.
+- **403 / 795** rubric points (**51%**).
 - **2 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
-**19 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
+**15 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
-> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-PARSER-002`, `E-PARSER-003`, `E-PARSER-004`, `E-PARSER-006`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
+> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 68 | 147 | 1.39 |
-| What | 83 | 147 | 1.69 |
-| Why | 85 | 147 | 1.73 |
-| Fix | 38 | 147 | 0.78 |
-| Hygiene | 111 | 147 | 2.27 |
+| Location | 68 | 159 | 1.28 |
+| What | 88 | 159 | 1.66 |
+| Why | 90 | 159 | 1.70 |
+| Fix | 38 | 159 | 0.72 |
+| Hygiene | 119 | 159 | 2.25 |
 
 ## By error class
 
@@ -35,7 +35,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-LINT | 4 | 26 | 60 | 6.5 |
 | E-MODEL | 3 | 22 | 45 | 7.3 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
-| E-PARSER | 2 | 11 | 30 | 5.5 |
+| E-PARSER | 6 | 29 | 90 | 4.8 |
 | E-RUNTIME | 7 | 54 | 105 | 7.7 |
 | E-SCHEMA | 8 | 49 | 120 | 6.1 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
@@ -51,7 +51,10 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-006` | S1 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | analyzer produces nothing, useless fallback |
 | `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
 | `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
+| `E-PARSER-003` | S1 | 0 | 1 | 1 | 0 | 1 | **3** | `██░░░░░░░░` |  | yaml parser on ill-formed YAML |
 | `E-PARSER-001` | S1 | 0 | 1 | 1 | 0 | 2 | **4** | `███░░░░░░░` |  | json parser on non-JSON (issue #387) |
+| `E-PARSER-002` | S1 | 0 | 1 | 1 | 0 | 2 | **4** | `███░░░░░░░` |  | jsonl parser on non-JSONL text |
+| `E-PARSER-004` | S1 | 0 | 1 | 1 | 0 | 2 | **4** | `███░░░░░░░` |  | csv parser exceeding the field size limit |
 | `E-SCHEMA-010` | S1 | 1 | 2 | 1 | 0 | 0 | **4** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
 | `E-RUNTIME-011` | S0 | 1 | 2 | 2 | 0 | 0 | **5** | `███░░░░░░░` | TB | Retry succeeds on the second attempt and prints a traceback anyway (exit 0) |
 | `E-SCHEMA-007` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | dict fails every block union branch |
@@ -67,6 +70,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-006` | S1 | 2 | 1 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | comment lines before the error |
 | `E-LINT-001` | S1 | 2 | 2 | 1 | 0 | 2 | **7** | `█████░░░░░` |  | pdl-lint reports a schema error as a list repr |
 | `E-PARSER-005` | S1 | 0 | 2 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | invalid regex in a parser |
+| `E-PARSER-006` | S2 | 0 | 2 | 2 | 0 | 3 | **7** | `█████░░░░░` |  | regex parser spec naming a group the pattern does not define |
 | `E-RUNTIME-001` | S0 | 1 | 1 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | include names a missing file |
 | `E-TYPE-001` | S2 | 1 | 2 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | block result violates its spec |
 | `E-CODE-005` | S1 | 1 | 2 | 2 | 2 | 1 | **8** | `█████░░░░░` |  | a `lang: pdl` block whose program does not parse |
@@ -183,8 +187,20 @@ Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md, decision INVENTORY.md 7.1)
 **`E-PARSER-001`** — json parser on non-JSON (issue #387)  
 No file, no line -- every E-PARSER site raises with loc=None. Reports a Python TypeError for a parse failure and never shows the offending text.
 
+**`E-PARSER-002`** — jsonl parser on non-JSONL text  
+The `jsonl` branch of `parse_result` splits the text and calls `json.loads` per line, wrapping any failure in a `PDLRuntimeParserError` built with no `loc`, so `generate` prints the bare message with no file, no line and no block path. Two further defects are visible here. The message says `ill-formed JSON` although the parser is `jsonl`, so the reported parser is not the one the program asked for. And the failing line is the *second* line of the block's text, yet the JSONDecodeError position reads `line 1 column 1 (char 0)`: each line is parsed as its own document, so the position is relative to that line and is stated confidently as line 1 whichever line actually failed. The offending line itself is never shown (issue #387).
+
+**`E-PARSER-003`** — yaml parser on ill-formed YAML  
+The `yaml` branch of `parse_result` catches whatever `yaml.safe_load` raises and interpolates `repr(exc)` into the message; the `PDLRuntimeParserError` is built with no `loc`, so `generate` prints no file, no line and no block path. Using `repr` rather than `str` is the specific defect: PyYAML's `MarkedYAMLError.__str__` renders a readable multi-line report ending in `in "<unicode string>", line 1, column 6`, and `repr` throws all of that away, leaving two `<yaml.error.Mark object at 0x...>` addresses in the user's face. Those addresses also differ on every run; only the corpus normalizer keeps this golden stable.
+
+**`E-PARSER-004`** — csv parser exceeding the field size limit  
+The taxonomy trigger `parser: csv` on *malformed* CSV does not exist: `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs without complaint, returning nonsense and exit 0. The only way a user's text reaches the `csv` branch's `except` in `parse_result` is by exceeding `csv.field_size_limit()`, which PDL never sets and offers no way to raise, so this program builds a single 131073-character field. The message then calls that well-formed input `ill-formed CSV`, misdiagnosing a resource limit as a syntax error, and states the limit without stating the size actually seen or where in the block's output the oversized field began. As with every branch of `parse_result`, the `PDLRuntimeParserError` carries no `loc`, so there is no file, line or block path.
+
 **`E-PARSER-005`** — invalid regex in a parser  
 Gives the position inside the regex but no position in the .pdl file.
+
+**`E-PARSER-006`** — regex parser spec naming a group the pattern does not define  
+The `spec` of a `RegexParser` names the groups to pull out of the match; `parse_result` calls `m.group(name)` for each key and turns the resulting `IndexError` into a `PDLRuntimeParserError` with no `loc`, so there is no file, line or block path. The best-worded message of the E-PARSER series, and still misleading in two ways: it says the group was not found `in hello`, i.e. in the matched *text*, when the group is absent from the *pattern* -- no input could have supplied it -- and it never lists the group the pattern does define (`first`), which is the whole of the fix. The text is interpolated raw and untruncated, so a block that produced a page of output puts a page into the message. Note the neighbouring silent failure: when the regex simply does not match, the same code path returns `None` and the program prints `null` and exits 0.
 
 **`E-RUNTIME-001`** — include names a missing file  
 Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. The include site was `:0` and is now `:1`, the line the `include:` block starts on (phase-3 item 0). Phase-3 item 7 does not move this golden: the `include:` block is the whole program, so its path is `[]` and no `  in` line is rendered -- compare E-RUNTIME-002, whose `import:` sits inside a `text:` and does print `  in import`. Two stacked claim lines for one error keep hygiene at 2.

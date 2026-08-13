@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+No group named second found by (?P<first>\w+) in hello

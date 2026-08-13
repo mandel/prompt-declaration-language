@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-002",
+  "title": "jsonl parser on non-JSONL text",
+  "severity": "S1",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "The `jsonl` branch of `parse_result` splits the text and calls `json.loads` per line, wrapping any failure in a `PDLRuntimeParserError` built with no `loc`, so `generate` prints the bare message with no file, no line and no block path. Two further defects are visible here. The message says `ill-formed JSON` although the parser is `jsonl`, so the reported parser is not the one the program asked for. And the failing line is the *second* line of the block's text, yet the JSONDecodeError position reads `line 1 column 1 (char 0)`: each line is parsed as its own document, so the position is relative to that line and is stated confidently as line 1 whichever line actually failed. The offending line itself is never shown (issue #387)."
+}

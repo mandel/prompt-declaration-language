@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-004",
+  "title": "csv parser exceeding the field size limit",
+  "severity": "S1",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 0,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "The taxonomy trigger `parser: csv` on *malformed* CSV does not exist: `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs without complaint, returning nonsense and exit 0. The only way a user's text reaches the `csv` branch's `except` in `parse_result` is by exceeding `csv.field_size_limit()`, which PDL never sets and offers no way to raise, so this program builds a single 131073-character field. The message then calls that well-formed input `ill-formed CSV`, misdiagnosing a resource limit as a syntax error, and states the limit without stating the size actually seen or where in the block's output the oversized field began. As with every branch of `parse_result`, the `PDLRuntimeParserError` carries no `loc`, so there is no file, line or block path."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-006",
+  "title": "regex parser spec naming a group the pattern does not define",
+  "severity": "S2",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 0,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "The `spec` of a `RegexParser` names the groups to pull out of the match; `parse_result` calls `m.group(name)` for each key and turns the resulting `IndexError` into a `PDLRuntimeParserError` with no `loc`, so there is no file, line or block path. The best-worded message of the E-PARSER series, and still misleading in two ways: it says the group was not found `in hello`, i.e. in the matched *text*, when the group is absent from the *pattern* -- no input could have supplied it -- and it never lists the group the pattern does define (`first`), which is the whole of the fix. The text is interpolated raw and untruncated, so a block that produced a page of output puts a page into the message. Note the neighbouring silent failure: when the regex simply does not match, the same code path returns `None` and the program prints `null` and exits 0."
+}

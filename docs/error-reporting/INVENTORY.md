@@ -166,16 +166,18 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 ### E-PARSER — output parsers (`parser:`)
 
 Every one of these is raised with **`loc=None`**, so `generate` prints a bare message
-with no file at all.
+with no file at all — no location prefix and no `  in <block path>` line. All six are now
+pinned by corpus goldens; the four rows previously marked `[src]` were executed and three
+of the four descriptions were wrong (see E-PARSER-002/003/004 below).
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
 | E-PARSER-001 [obs] | `parser: json` on non-JSON (**issue #387**) | `Attempted to parse ill-formed JSON: TypeError("'int' object is not subscriptable")` — **does not show the offending text**, and reports a Python type error for a *parse* failure | **none** | **S1** |
-| E-PARSER-002 [obs] | `parser: jsonl` | `Attempted to parse ill-formed JSON: JSONDecodeError(...)` | **none** | **S1** |
-| E-PARSER-003 [src] | `parser: yaml` | `Attempted to parse ill-formed YAML: <repr>` | **none** | **S1** |
-| E-PARSER-004 [src] | `parser: csv` | `Attempted to parse ill-formed CSV: <repr>` | **none** | **S1** |
+| E-PARSER-002 [obs] | `parser: jsonl` on non-JSONL | `Attempted to parse ill-formed JSON: JSONDecodeError('Expecting value: line 1 column 1 (char 0)')` — says **JSON** for a `jsonl` parser, and since each line is loaded as its own document the position is relative to that line: a failure on the *second* line still reports `line 1 column 1`. Offending line not shown | **none** | **S1** |
+| E-PARSER-003 [obs] | `parser: yaml` on non-YAML | `Attempted to parse ill-formed YAML: ParserError('while parsing a flow sequence', <yaml.error.Mark object at 0x...>, "expected ',' or ']', but got '<stream end>'", <yaml.error.Mark object at 0x...>)` — `repr(exc)` where `str(exc)` would have given PyYAML's readable report with `line 1, column 6` and a caret; the two `Mark` objects that hold that position are printed as **memory addresses**, which differ on every run | **none** | **S1** |
+| E-PARSER-004 [obs] | `parser: csv` — **not reachable on malformed CSV** | Malformed CSV does **not** raise: an unbalanced quote, ragged rows and embedded NULs are all accepted, yielding nonsense and **exit 0**. The only reachable trigger is a field over `csv.field_size_limit()` (131072), which PDL never sets and gives no way to raise: `Attempted to parse ill-formed CSV: Error('field larger than field limit (131072)')` — calls well-formed input `ill-formed`, and states the limit but not the size seen | **none** | **S1** |
 | E-PARSER-005 [obs] | invalid regex | `Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')` — regex position 0 given, PDL position absent | **none** | **S1** |
-| E-PARSER-006 [src] | named group absent | `No group named <g> found by <regex> in <text>` | **none** | S2 |
+| E-PARSER-006 [obs] | `spec` names a group the regex does not define | `No group named second found by (?P<first>\w+) in hello` — wording confirmed; the group is missing from the **pattern**, not from the text the message blames it on, the group the pattern *does* define is never listed, and the matched text is interpolated raw and untruncated. When the regex simply fails to match, the same path returns `None`: the program prints `null` and **exits 0** | **none** | S2 |
 
 ### E-MODEL — model / tool calls
 
@@ -542,7 +544,12 @@ Then, serialised on the foundation:
 8. **E-EXPR-004 and E-EXPR-006** — the cross-file wrong-line bug and the comment-shift
    bug, both fixed by 5.1/5.2; this item is the regression tests proving it.
 9. **E-PARSER-001…006** — thread location into `parse_result` (six raise sites currently
-   passing `loc=None`), and include the offending text (issue #387).
+   passing `loc=None`), and include the offending text (issue #387). Three corrections
+   from pinning the series: `jsonl` reports `JSON` and a per-line position that always
+   reads `line 1`; `yaml` uses `repr(exc)` and so discards PyYAML's own readable
+   report — `str(exc)` alone would be an improvement; and the `csv` branch's `except`
+   is **unreachable on malformed CSV**, which parses to nonsense and exits 0, so the
+   real csv defect is a silent failure rather than a bad message.
 10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
     **E-EXPR-001** ("in scope here").
 11. **E-PARSE-003 and E-RUNTIME-012** — the two semantic changes from 5.5. Deliberately

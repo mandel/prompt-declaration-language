@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Attempted to parse ill-formed YAML: ParserError('while parsing a flow sequence', <yaml.error.Mark object at 0xADDR>, "expected ',' or ']', but got '<stream end>'", <yaml.error.Mark object at 0xADDR>)

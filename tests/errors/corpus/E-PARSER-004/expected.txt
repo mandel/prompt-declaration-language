@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+Attempted to parse ill-formed CSV: Error('field larger than field limit (131072)')

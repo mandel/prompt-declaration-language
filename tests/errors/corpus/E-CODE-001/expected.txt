@@ -5,6 +5,7 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:2 - code block raised ZeroDivisionError: division by zero
+  in code
 
 code:1 | result = 1/0
        |          ^^^

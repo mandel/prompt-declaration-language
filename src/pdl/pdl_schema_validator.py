@@ -2,7 +2,7 @@
 from typing import Any
 
 from .pdl_ast import FunctionBlock, PdlTypeType
-from .pdl_location_utils import get_loc_string
+from .pdl_location_utils import located_message
 from .pdl_schema_error_analyzer import analyze_errors
 from .pdl_schema_utils import get_json_schema, pdltype_to_jsonschema
 
@@ -52,6 +52,6 @@ def type_check(result: Any, schema: dict[str, Any], loc) -> list[str]:
     except ValidationError as e:
         errors = analyze_errors({}, schema, result, loc)
         if len(errors) == 0:
-            errors = [get_loc_string(loc) + e.message]
+            errors = [located_message(loc, e.message)]
         return errors
     return []

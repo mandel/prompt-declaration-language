@@ -6,6 +6,44 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### Diagnostics name the block they are about
+
+Every diagnostic built from a source location now carries the **block path** on a
+line of its own, under the header:
+
+```console
+$ pdl prog.pdl
+sub/imported.pdl:4 - Error during the evaluation of ${ kaboom }: 'kaboom' is undefined
+  in defs.f.return
+```
+
+The path was always computed; it was simply never printed. It is the route from
+the top of the file to the block that failed — `text[0].code`, `defs.f.return`,
+`contribute[0]` — written the same way everywhere, with dots between names and
+no dot before a `[n]`. Where it says something the file and line do not, it says
+it: which of two `code:` blocks raised, which function body an expression was
+in, that `contribute:` read two list items as one entry.
+
+Boundary diagnostics (`E-CLI-*`, `E-PARSE-*`, a failing `import:`) have printed
+this line since they were introduced; the change brings runtime, schema and type
+diagnostics into the same shape. A diagnostic about the program as a whole — a
+one-block program, or a complaint about the document itself — has an empty path
+and prints no such line.
+
+**If you match on diagnostic text (SDK).** Nothing about a program that runs
+changes: same result, same exit code, same success-path output, same exit code
+`1` on failure. What moves is stderr, and two exception fields:
+
+- `PDLRuntimeError.message` is unchanged. The path is added by the printer, so
+  it appears in `pdl`'s output but not in the exception's own `message`.
+- `PDLParseError.message` is still a `list[str]`, one element per schema
+  complaint, and still readable as prose through `.text`. Each element may now
+  **contain a newline**: the complaint, then its `  in <path>` line. An element
+  is no longer guaranteed to be a single line. Splitting `.text` on `"\n"` to
+  count complaints was never right and is now definitely wrong.
+- Type-checking messages (`Type errors during spec checking:` and the function-call
+  form) embed the same list, so they gain the same interior newlines.
+
 ### Source positions come from the YAML parser — `PdlLocationType` changes shape
 
 Reported line numbers used to be reconstructed by a regex scan over the program

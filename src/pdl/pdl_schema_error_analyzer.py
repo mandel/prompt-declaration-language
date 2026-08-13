@@ -1,5 +1,5 @@
 from .pdl_ast import PdlLocationType
-from .pdl_location_utils import append, get_loc_string
+from .pdl_location_utils import append, located_message
 from .pdl_schema_utils import convert_to_json_type, json_types_convert
 
 
@@ -90,6 +90,21 @@ def match(ref_type, data):
 
 
 def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # noqa: C901
+    """Every way `data` fails `schema`, one independently-located message each.
+
+    The return type is the awkward part of rendering block paths here (DROP #10).
+    Each element is a whole diagnostic with a location of its own -- E-SCHEMA-010
+    produces five, at four different lines -- and `PDLParseError.message` *is*
+    this list, which `docs/release-notes.md` documents. So each element carries
+    its own `  in <path>` line, as `located_message` builds it, and the list stays
+    a list.
+
+    The alternative, one `in` line for the group, was rejected on the same
+    evidence: the recursion descends into `append`ed sub-locations, so the paths
+    within one call genuinely differ, and a single line would attribute one
+    block's path to complaints about several. Joining the elements into one
+    string was not available -- the list shape is public.
+    """
     ret = []
     if schema == {}:
         return []  # anything matches type Any
@@ -103,18 +118,16 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
                 or not isinstance(data, the_type)  # type: ignore
             ):
                 ret.append(
-                    get_loc_string(loc)
-                    + str(data)
-                    + " should be of type "
-                    + str(the_type)
+                    located_message(
+                        loc, str(data) + " should be of type " + str(the_type)
+                    )
                 )
         if "enum" in schema:
             if data not in schema["enum"]:
                 ret.append(
-                    get_loc_string(loc)
-                    + str(data)
-                    + " should be one of: "
-                    + str(schema["enum"])
+                    located_message(
+                        loc, str(data) + " should be one of: " + str(schema["enum"])
+                    )
                 )
 
     elif "$ref" in schema:
@@ -124,7 +137,7 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
 
     elif is_array(schema):
         if not isinstance(data, list):
-            ret.append(get_loc_string(loc) + str(data) + " should be a list")
+            ret.append(located_message(loc, str(data) + " should be a list"))
         else:
             for i, item in enumerate(data):
                 newloc = append(loc, "[" + str(i) + "]")
@@ -132,13 +145,13 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
 
     elif is_object(schema):
         if not isinstance(data, dict):
-            ret.append(get_loc_string(loc) + str(data) + " should be an object")
+            ret.append(located_message(loc, str(data) + " should be an object"))
         else:
             if "required" in schema.keys():
                 required_fields = schema["required"]
                 for missing in list(set(required_fields) - set(data.keys())):
                     ret.append(
-                        get_loc_string(loc) + "Missing required field: " + missing
+                        located_message(loc, "Missing required field: " + missing)
                     )
             if "properties" in schema.keys():
                 all_fields = schema["properties"].keys()
@@ -149,7 +162,7 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
                 ):
                     for field in extras:
                         nloc = append(loc, field)
-                        ret.append(get_loc_string(nloc) + "Field not allowed: " + field)
+                        ret.append(located_message(nloc, "Field not allowed: " + field))
 
                 valid_fields = list(set(all_fields) & set(data.keys()))
                 for field in valid_fields:
@@ -190,10 +203,9 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
                     break
             if not the_type_exists:
                 ret.append(
-                    get_loc_string(loc)
-                    + str(data)
-                    + " should be of type "
-                    + str(schema)
+                    located_message(
+                        loc, str(data) + " should be of type " + str(schema)
+                    )
                 )
 
         elif isinstance(data, list):
@@ -204,7 +216,7 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
             if found is not None:
                 ret += analyze_errors(defs, found, data, loc)
             else:
-                ret.append(get_loc_string(loc) + str(data) + " should not be a list")
+                ret.append(located_message(loc, str(data) + " should not be a list"))
 
         elif isinstance(data, dict):
             match_ref = {}
@@ -217,10 +229,9 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
 
             if match_ref == {}:
                 ret.append(
-                    get_loc_string(loc)
-                    + str(data)
-                    + " should be of type: "
-                    + str(schema)
+                    located_message(
+                        loc, str(data) + " should be of type: " + str(schema)
+                    )
                 )
 
             else:

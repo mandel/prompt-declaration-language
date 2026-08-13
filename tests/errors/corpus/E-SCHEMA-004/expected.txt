@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:2 - 42 should be of type <class 'str'>
+  in role

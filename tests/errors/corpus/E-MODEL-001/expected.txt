@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:2 - Error during 'not_a_provider/nope' model call: litellm.BadRequestError: LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=not_a_provider/nope
+  in text[0]

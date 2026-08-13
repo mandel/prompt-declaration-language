@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:1 - Lists inside the For block must be of the same length.
+  in for

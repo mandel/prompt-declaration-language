@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 sub/imported.pdl:4 - Error during the evaluation of ${ kaboom }: 'kaboom' is undefined
+  in defs.f.return

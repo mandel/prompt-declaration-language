@@ -5,6 +5,7 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:4 - contribute entry has 2 keys, expected exactly 1
+  in contribute[0]
 
   A `contribute` entry is either `result` or `context`, or a mapping with a
   single key naming where to contribute. This one maps `stdout`, `stderr`.

@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:3 - Error during the evaluation of ${ missing_var }: 'missing_var' is undefined
+  in text[1]

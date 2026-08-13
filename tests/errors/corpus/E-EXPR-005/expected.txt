@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:5 - Error during the evaluation of Hello ${ nope }: 'nope' is undefined
+  in defs.greet.return

@@ -3,11 +3,11 @@
   "title": "comment lines before the error",
   "severity": "S1",
   "rubric": {
-    "location": 1,
+    "location": 2,
     "what": 1,
     "why": 1,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "Reports line 5, the line `- ${ nope }` is on. Until phase-3 item 0 it reported line 2: `get_line_map` scanned the text with a regex and counted comment lines as structure (DROP #2). Positions now come from PyYAML's own marks, which know what a comment is. The entry is now the regression test for it. Location 1 rather than 2: no column and no block path are printed yet."
+  "notes": "Reports line 5, the line `- ${ nope }` is on. Until phase-3 item 0 it reported line 2: `get_line_map` scanned the text with a regex and counted comment lines as structure (DROP #2). Positions now come from PyYAML's own marks, which know what a comment is. The entry is now the regression test for it. Location 1 -> 2 with phase-3 item 7: the previous note recorded that only the column and the block path were missing, and `  in text[1]` supplies the second. Note the path and the line disagree in a useful way -- the block is the *second* list item but sits on file line 5, because of the comment; that is exactly the confusion DROP #2 caused, now legible from the output."
 }

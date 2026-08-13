@@ -7,5 +7,8 @@ $ exit: 1
 prog.pdl:1 - Missing required field: function
 prog.pdl:1 - Missing required field: return
 prog.pdl:4 - Field not allowed: foo
+  in foo
 prog.pdl:2 - Field not allowed: texts
+  in texts
 prog.pdl:5 - Field not allowed: bar
+  in bar

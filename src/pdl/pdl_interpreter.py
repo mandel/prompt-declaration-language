@@ -149,7 +149,7 @@ from .pdl_diagnostics import Diagnostic, import_read_diagnostic
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, get_loc_string, nested_source_name
+from .pdl_location_utils import append, located_message, nested_source_name
 from .pdl_parser import (
     PDLParseError,
     parse_file,
@@ -264,7 +264,7 @@ def generate(
         elif exc.loc is None:
             message = exc.message
         else:
-            message = get_loc_string(exc.loc) + exc.message
+            message = located_message(exc.loc, exc.message)
         print(message, file=sys.stderr)
         if trace_file and exc.pdl__trace is not None:
             write_trace(trace_file, exc.pdl__trace)
@@ -817,7 +817,7 @@ def process_advance_block_retry(  # noqa: C901
                 if loc is None:
                     message = error
                 else:
-                    message = get_loc_string(loc) + error
+                    message = located_message(loc, error)
                 print(
                     f"\n\033[0;31m[Retry {trial_idx+1}/{max_retry}] {message}\033[0m\n",
                     file=sys.stderr,
@@ -2980,7 +2980,7 @@ _RAISED_DETAIL_WIDTH = 78
 
 # How much of `str(exc)` fits on the header line before it moves to a paragraph
 # of its own. A fixed budget rather than a measured fit: the header is completed
-# by `get_loc_string` at print time, so its final length is not known here.
+# by `located_message` at print time, so its final length is not known here.
 _RAISED_DETAIL_CLIP = 60
 
 _RAISED_MAX_DETAIL_LINES = 5

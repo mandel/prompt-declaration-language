@@ -3,11 +3,11 @@
   "title": "near-miss field name (typo)",
   "severity": "S2",
   "rubric": {
-    "location": 1,
+    "location": 2,
     "what": 2,
     "why": 1,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "One character from 'description' and the message is identical to E-SCHEMA-001. No 'did you mean'. Highest-value Fix win in the taxonomy."
+  "notes": "One character from 'description' and the message is identical to E-SCHEMA-001. No 'did you mean'. Highest-value Fix win in the taxonomy. Location 1 -> 2 (phase-3 item 7): `  in descrption` is rendered and `prog.pdl:1` is that key's own mark. The path adds least here of anywhere in the corpus -- the key is at the top level, so it is a single segment that repeats the name already in the message. It is rendered anyway, because a renderer that suppressed one-segment paths would make the presence of the line carry meaning of its own."
 }

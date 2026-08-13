@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:2 - model 'ollama/granite' encountered ConnectError('[Errno 111] Connection refused') trying to POST against http://localhost:11434/api/chat
+  in text[0]

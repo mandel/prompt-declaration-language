@@ -5,3 +5,4 @@ $ exit: 0
 
 --- stderr ---
 prog.pdl:2 - Error during the evaluation of ${ undefined_here }: 'undefined_here' is undefined
+  in text[0]

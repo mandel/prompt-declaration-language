@@ -82,9 +82,15 @@ spec: integer
     # `<program>:3` where this used to say `line 3`; see the same change in
     # `tests/test_fallback.py`. `line N - ` is now reserved for a program with no
     # source at all, such as one built as a dict.
+    #
+    # The `  in spec` line is phase-3 item 7: `analyze_errors` renders each
+    # complaint's block path under its own header. The header line of the
+    # enclosing `PDLRuntimeError` carries no path here because the raise site
+    # builds it as a bare string; only `generate` adds one, at print time.
     assert (
-        str(exc.value.message)
-        == "Type errors during spec checking:\n<program>:3 - Hello should be of type <class 'int'>"
+        str(exc.value.message) == "Type errors during spec checking:\n"
+        "<program>:3 - Hello should be of type <class 'int'>\n"
+        "  in spec"
     )
 
 

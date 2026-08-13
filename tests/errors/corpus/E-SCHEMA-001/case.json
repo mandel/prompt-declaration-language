@@ -3,11 +3,11 @@
   "title": "unknown field in a model block",
   "severity": "S3",
   "rubric": {
-    "location": 1,
+    "location": 2,
     "what": 2,
     "why": 1,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "Best-in-class today. Accurate line, PDL vocabulary. No column, no block path, no list of valid fields."
+  "notes": "Best-in-class today. Accurate line, PDL vocabulary. Location 1 -> 2 with phase-3 item 7: the previous note recorded 'No column, no block path', and `  in text[1].parameterss` supplies the path. The leading segments are the value -- they say the offending key is on the second block of `text:`, which `prog.pdl:5` alone does not. Still no column and no list of valid fields."
 }

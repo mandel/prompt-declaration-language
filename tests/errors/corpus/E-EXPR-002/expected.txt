@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:1 - Syntax error in ${ 1 + }: unexpected 'end of print statement'
+  in text

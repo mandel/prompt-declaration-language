@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:5 - Error during the evaluation of ${ nope }: 'nope' is undefined
+  in text[1]

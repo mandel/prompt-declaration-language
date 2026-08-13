@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:1 - Error during the evaluation of ${ {}['x'] }: 'dict object' has no attribute 'x'
+  in text

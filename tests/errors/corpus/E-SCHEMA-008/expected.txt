@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:3 - {'result': 1, 'context': 2} should be of type: {'anyOf': [{'$ref': '#/$defs/ContributeTarget'}, {'type': 'string'}, {'additionalProperties': {'$ref': '#/$defs/ContributeValue'}, 'type': 'object'}]}
+  in contribute[0]

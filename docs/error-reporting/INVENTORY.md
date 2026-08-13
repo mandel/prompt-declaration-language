@@ -248,7 +248,7 @@ every `process_*` function (41 `append()` call sites, plus a `loc` parameter on 
             └── model backends → printed correctly, then duplicated as a
                                  traceback by a futures callback            ← DROP #9
                     │
-   get_loc_string(loc) ──► "file:line - "   — `path` is **never rendered**      ← DROP #10
+   located_message(loc, msg) ──► "file:line - msg" + "\n  in <path>"      ← DROP #10 closed
 ```
 
 ### 3.2 Each drop, precisely
@@ -341,27 +341,36 @@ from a `concurrent.futures` done-callback that has no handler, so Python prints
 right answer and then a crash report for the same event. Fixing this is about the
 callback, not the printer.
 
-**DROP #10 — `path` is computed and then never shown.** `get_loc_string`
-(`pdl_location_utils.py:94-99`) renders only `file:line`. `loc.path` — the exact block
-path the rubric asks for, e.g. `['root','text','[2]','model','input']` — is carried all
-the way to the print site and dropped. Rendering it as `text[2].model.input` requires
-**no new plumbing whatsoever**. Cheapest high-value item in the project.
+**DROP #10 — `path` is computed and then never shown. CLOSED by Phase-3 item 7.**
+`get_loc_string` rendered only `file:line`; `loc.path` — the exact block path the rubric
+asks for — was carried all the way to the print site and dropped. It is now rendered by
+`located_message` (`pdl_location_utils.py`) as a `  in text[2].model.input` line under the
+header, the spelling `pdl_diagnostics.render` already used, and every legacy site calls it:
+`generate`, the retry banner, `pdl_schema_error_analyzer`'s nine sites,
+`pdl_schema_validator`, and `optimize/optimizer_evaluator`. It needed no new plumbing, as
+predicted. What it bought is measured in 7.9, and is less than §6 claimed.
 
 ### 3.3 What survives today
+
+The **Block path** column is current as of Phase-3 item 7; the other columns are the
+Phase-0 snapshot and belong to the items that own them. "in memory" meant the path was
+computed and never printed — DROP #10 — and every one of those cells is now a rendered
+`  in <path>` line, except where the path is `[]` (a single-block program, whose one block
+is the whole document) and nothing is rendered at all.
 
 | Path | File | Line | Column | Block path | Notes |
 | --- | --- | --- | --- | --- | --- |
 | YAML parse error | ✗ (says `<unicode string>`) | ✓ | ✓ | ✗ | Correct info, unreachable — traceback |
-| Schema error, same file | ✓ | ~ | ✗ | in memory | Approximate line (DROP #2) |
-| Runtime error, same file | ✓ | ~ | ✗ | in memory | `:0` at top level |
-| Runtime error via `include` | ✓ | ~ | ✗ | in memory | Correct file; **no "included from" chain** |
-| Runtime error via `import` + `call` | ✓ | **✗** | ✗ | in memory | **Wrong line** (DROP #6) |
-| Inside a function body | ✓ | ~ | ✗ | in memory | **No call stack** |
-| Jinja expression | ✓ | ~ (field-level) | ✗ | in memory | No offset inside the expression |
-| Output parser | **✗** | ✗ | ✗ | ✗ | Nothing |
-| Model call | ✓ | ~ | ✗ | in memory | Reaches the user as a traceback |
+| Schema error, same file | ✓ | ~ | ✗ | ✓ | Approximate line (DROP #2) |
+| Runtime error, same file | ✓ | ~ | ✗ | ✓ (`[]` at top level) | `:0` at top level |
+| Runtime error via `include` | ✓ | ~ | ✗ | ✓ | Correct file; **no "included from" chain** |
+| Runtime error via `import` + `call` | ✓ | **✗** | ✗ | ✓ | **Wrong line** (DROP #6) |
+| Inside a function body | ✓ | ~ | ✗ | ✓ | **No call stack** |
+| Jinja expression | ✓ | ~ (field-level) | ✗ | ✓ | No offset inside the expression |
+| Output parser | **✗** | ✗ | ✗ | ✗ | Nothing — raises with `loc=None` (DROP #8) |
+| Model call | ✓ | ~ | ✗ | ✓ | Reaches the user as a traceback |
 | Deprecated type warning | ✗ | ✗ | ✗ | ✗ | Nothing |
-| `pdl-lint` | ~ (inside a list repr) | ~ | ✗ | ✗ | — |
+| `pdl-lint` | ~ (inside a list repr) | ~ | ✗ | ✓ (schema errors) | — |
 | Rust interpreter | ✗ | ✗ | ✗ | ✗ | No location type exists |
 
 ---
@@ -520,8 +529,13 @@ Then, independent of each other and parallelisable across worktrees:
 6. **E-RUNTIME-007** — the missing `f`-prefix at `pdl_interpreter.py:1875` and `:1894`.
    Two characters.
 7. **Block paths everywhere** (DROP #10) — `get_loc_string` renders only `file:line` and
-   discards `loc.path`. Under the foundation this is a renderer change, and it satisfies
-   half of rubric item 1 across all ~70 IDs at once.
+   discards `loc.path`. Under the foundation this is a renderer change. *Delivered.*
+   ~~It satisfies half of rubric item 1 across all ~70 IDs at once.~~ **That claim was
+   wrong and is struck; the measured effect is in 7.9.** It cannot touch "all ~70 IDs":
+   19 of the 49 corpus entries never render a location prefix, and 6 of the 37 prefixes
+   that do have an empty path. It is not "half of rubric item 1" either — Location 2
+   needs an *accurate* line as well as a path, and a third of the entries it changed are
+   at 1 for a coarse line that no path can fix.
 
 Then, serialised on the foundation:
 
@@ -930,3 +944,74 @@ a change that leaves the contract alone.
 The clause is therefore struck from §6 item 0, so the plan stops asking for it.
 `docs/release-notes.md` never promised a bump — it says the opposite, that files written by
 `pdl --trace` do not change — and needed no correction.
+
+### 7.9 What block paths actually bought, measured
+
+**Item 7 is delivered. §6's estimate of it was wrong, in both directions of "wrong": it
+overstated the reach and it misread the rubric.** The numbers below are counted from the
+corpus after the change, not projected from it. §6 has now been wrong three times about
+this area — it claimed the viewer needed a matching change (it did not, 7.6), it claimed
+`PdlLocationType` is serialised into traces (it is not, 7.6), and it claimed this item
+"satisfies half of rubric item 1 across all ~70 IDs at once". Estimates in §6 should be
+read as intentions, not as findings.
+
+**Reach.** Of 49 corpus entries, **30** render a `get_loc_string`-style prefix at all;
+the other **19** never do, so nothing here can reach them. Those 30 entries render **37**
+prefixes between them (`E-SCHEMA-010` alone renders five, the three `E-TYPE-*` entries two
+each). **6 of the 37 have an empty path** and render no `  in` line: four entries whose
+program is one top-level block, so the block *is* the document at path `[]`
+(`E-CODE-003`, `E-RUNTIME-001`, `E-RUNTIME-004`, `E-RUNTIME-011`), and two complaints in
+`E-SCHEMA-010` that are about the program itself. **31 `  in <path>` lines** are now
+rendered, across **26** goldens.
+
+**Score movement: 17 entries move Location 1 → 2. 8 of the entries whose golden changed
+stay at 1**, and that is the part §6's "half of rubric item 1" hid. `RUBRIC.md` scores 2
+for "accurate `file:line`, **plus** either a column or the block path". A path is one of
+two conjuncts, not half of a disjunction: it does nothing for an entry whose *line* is
+coarse. The eight are
+
+| Entry | Line points at | Why a path does not lift it |
+| --- | --- | --- |
+| `E-CODE-001` | the `code:` key, line 2 | offending statement is on file line 3; the path `code` is the same key |
+| `E-CODE-002` | the `code:` key | same key again; here there is no single statement to point at |
+| `E-CODE-005` | the enclosing `text[0]` | failure is four lines further down, inside the nested program |
+| `E-CODE-006` | the second block's `code:` key, line 9 | offending statement is on file line 12 |
+| `E-RUNTIME-006` | the `for:` key | the mismatched lists are on lines 2 and 3 |
+| `E-SCHEMA-010` | the root, line 1, for two of five | those two have path `[]` and render nothing |
+| `E-TYPE-001` | the `spec:` key | names the rule violated, not the block whose result violated it |
+| `E-TYPE-003` | `text[0]`, via the ancestor walk | the rendered path `text[0].args` names a block the file does not contain — `args:` is missing, which *is* the error |
+
+The distinction applied throughout, and the one to reuse when rescoring: a location is
+accurate when the mark resolved is the mark of the construct the message is about. A
+Jinja expression that is the whole value of a mapping entry or the whole of a list item
+has no mark of its own, and the entry's mark is its position — one construct, one mark.
+It is coarse when the construct is strictly bigger than the offending element inside it,
+which is every row of the table above.
+
+**Recommendation, not implemented: rendering `:col` moves nothing on its own.** The
+foundation put a real column on every location and `get_loc_string` deliberately does not
+render it. Measured against the eight entries still at 1, the column comes off the *same
+mark as the coarse line*, so it is a horizontal coordinate for the wrong element:
+
+    E-CODE-001    prog.pdl:2:1   -> `code: |`            (the `c` of `code`)
+    E-CODE-002    prog.pdl:2:1   -> `code: |`
+    E-CODE-005    prog.pdl:3:3   -> `- lang: pdl`
+    E-CODE-006    prog.pdl:9:3   -> `  code: |`
+    E-RUNTIME-006 prog.pdl:1:1   -> `for:`
+    E-SCHEMA-010  prog.pdl:1:1   -> `description: x`
+    E-TYPE-001    prog.pdl:2:1   -> `spec: integer`
+    E-TYPE-003    prog.pdl:7:5   -> `  - call: ${ greet }` (the `c` of `call`)
+
+None of those becomes accurate by gaining a column, so **0 entries move 1 → 2**, and 0
+move 2 → 3 either, because Location 3 wants the column *together with* an excerpt, a
+caret span and the include/call chain. Turning `:col` on alone would rewrite the header
+of all 30 prefix-rendering goldens for no score movement at all. The column is worth
+having as part of the 2 → 3 package — the caret needs it — and the `Diagnostic` renderer
+already prints `file:line:col` where it has a span, which is why `E-PARSE-001`,
+`E-PARSE-002`, `E-PARSE-005`, `E-CLI-003` and `E-LINT-002` score Location 3 today. The
+decision belongs to whoever owns 5.6's renderer.
+
+**What would move the eight.** Not a coordinate but a finer *element*: for the four
+`E-CODE-*` entries, mapping a `code:N` gutter row back onto its file line; for
+`E-RUNTIME-006`, naming the offending list (which is also its Why 0); for `E-TYPE-001`,
+locating the result rather than the `spec:`. Each is that error ID's own work.

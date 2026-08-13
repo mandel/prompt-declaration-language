@@ -3,11 +3,11 @@
   "title": "contribute value fails its union",
   "severity": "S1",
   "rubric": {
-    "location": 1,
+    "location": 2,
     "what": 0,
     "why": 2,
     "fix": 0,
     "hygiene": 1
   },
-  "notes": "Same union-wall shape on a much smaller union, so the fix must generalise."
+  "notes": "Same union-wall shape on a much smaller union, so the fix must generalise. Location 1 -> 2 (phase-3 item 7): `  in contribute[0]` names the flow-sequence item, whose own mark is on line 3."
 }

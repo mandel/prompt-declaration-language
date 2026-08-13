@@ -25,6 +25,19 @@ def error(raw_data, assertion):
             assert set(errors) == set(assertion)
 
 
+# `line 0 - `, not `<file>:N - `: `empty_block_location` is a location with no
+# source at all, which is what a program handed to the interpreter as a dict
+# has. Nothing can be resolved against it, so the line stays 0 for every
+# complaint.
+#
+# The `  in <path>` second line is phase-3 item 7 (DROP #10). It is worth having
+# here precisely *because* there is no file and no line: the path is then the
+# only thing that says which block the complaint is about, and it is derived
+# from the data structure rather than from any source text. A complaint about
+# the program itself has path `[]` and gets no such line -- which is why the two
+# "missing required field" entries below have none.
+
+
 error1 = {
     "description": "Hello world!",
     "texts": ["Hello, world!\n", "This is your first prompt descriptor!\n"],
@@ -37,7 +50,7 @@ def test_error1():
         [
             "line 0 - Missing required field: return",
             "line 0 - Missing required field: function",
-            "line 0 - Field not allowed: texts",
+            "line 0 - Field not allowed: texts\n  in texts",
         ],
     )
 
@@ -63,7 +76,7 @@ def test_error2():
     error(
         error2,
         [
-            "line 0 - Field not allowed: parameterss",
+            "line 0 - Field not allowed: parameterss\n  in text[1].parameterss",
         ],
     )
 
@@ -140,7 +153,7 @@ def test_error5():
     error(
         error5,
         [
-            "line 0 - Field not allowed: lans",
+            "line 0 - Field not allowed: lans\n  in text[1].lans",
         ],
     )
 

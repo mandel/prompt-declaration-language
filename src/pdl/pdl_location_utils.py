@@ -420,7 +420,49 @@ def get_loc_string(loc: PdlLocationType) -> str:
     all: a program built as a dict, or a block reached before any file was
     known. A program parsed from a string has a source and says so, as
     `<program>:N - `, which is the label its YAML errors already used.
+
+    The block path is not here either, for a reason that is about shape rather
+    than policy: it is rendered on a line of its own (`  in text[0].code`), and a
+    prefix cannot place a line after the text it prefixes. `located_message`
+    below is the whole header, and is what a diagnostic site should call.
     """
     if loc.file == "":
         return "line " + str(loc.line) + " - "
     return loc.file + ":" + str(loc.line) + " - "
+
+
+def located_message(loc: PdlLocationType, message: str) -> str:
+    """One legacy diagnostic: its `file:line - ` header, its `  in <path>` line.
+
+    This is DROP #10. `loc.path` -- the block path the rubric asks for -- was
+    computed on every location, carried all the way to the print site, and
+    thrown away there, because `get_loc_string` renders only `file:line`.
+
+    The spelling is not a new one. `pdl_diagnostics.render` has emitted the path
+    as `  in <path>` under the header since the boundary diagnostics, using
+    `join_path`, and E-CLI-004 and E-RUNTIME-002 show it in the corpus today.
+    Legacy diagnostics join that convention rather than inventing a second one,
+    so a reader cannot tell from the shape of a location whether the diagnostic
+    behind it was built as a `Diagnostic` or as a string.
+
+    The path goes *after the first line* of `message`, not after all of it. A
+    legacy message is frequently a whole rendered document -- E-CODE-001's
+    excerpt and rule paragraphs arrive here as one string -- and the `in` line
+    belongs under the header it qualifies, as it does in `render`, not at the
+    foot of the evidence.
+
+    An empty path emits no line. That is a real case and not a degenerate one:
+    a diagnostic about the program as a whole has path `[]`, and `  in ` with
+    nothing after it would claim a location inside a block that does not exist.
+
+    It lives here rather than in `pdl_diagnostics` because it needs
+    `PdlLocationType`, and that module is deliberately free of PDL imports so
+    that it cannot form a cycle with the parser it serves. Here it also sits
+    next to the prefix it replaces.
+    """
+    head, newline, rest = message.partition("\n")
+    out = get_loc_string(loc) + head
+    path = join_path(loc.path)
+    if path:
+        out += "\n  in " + path
+    return out + newline + rest

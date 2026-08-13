@@ -1663,8 +1663,8 @@ class PDLException(Exception):
 class PDLImportError(PDLException):
     """Carries a fully rendered diagnostic out through the runtime-error path.
 
-    `generate` prefixes a `PDLRuntimeError` with `get_loc_string(exc.loc)`, which
-    would give an already-rendered diagnostic a second header. Passing `loc=None`
+    `generate` gives a `PDLRuntimeError` a header from `located_message`, which
+    would give an already-rendered diagnostic a second one. Passing `loc=None`
     does not avoid it: every re-wrap site substitutes the enclosing block's
     location (`exc.loc or loc`), so a nested import gets the prefix back on the
     way up. `PDLRuntimeError.__init__` collapses `source_exception` to the

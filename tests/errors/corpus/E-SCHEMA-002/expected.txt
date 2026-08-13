@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:1 - Field not allowed: descrption
+  in descrption

@@ -12,6 +12,15 @@ def do_test(t, capsys):
     assert set(output) == set(t["errors"])
 
 
+# The `  in <path>` lines are phase-3 item 7 (DROP #10): every diagnostic built
+# from a location now renders `loc.path` under its header, in the `  in
+# text[0].code` form `pdl_diagnostics.render` has always used. A diagnostic
+# whose path is empty -- the whole program, at path `[]` -- gets no such line,
+# which is why the two "missing required field" errors just below have none.
+#
+# `do_test` compares *sets* of lines, so a path line that repeats one already
+# expected (two complaints against the same location) appears once here.
+#
 # `:1`, twice, where this file used to assert `:0`. The two "missing required
 # field" errors are about the whole program, whose path is `[]`; `get_line`
 # returned a literal `0` for the empty path, so the file's own top-level block
@@ -24,6 +33,7 @@ line = {
         "tests/data/line/hello.pdl:1 - Missing required field: return",
         "tests/data/line/hello.pdl:1 - Missing required field: function",
         "tests/data/line/hello.pdl:2 - Field not allowed: texts",
+        "  in texts",
     ],
 }
 
@@ -37,6 +47,7 @@ line1 = {
     "errors": [
         "",
         "tests/data/line/hello1.pdl:7 - Field not allowed: num_iterations",
+        "  in text[2].num_iterations",
     ],
 }
 
@@ -50,6 +61,7 @@ line3 = {
     "errors": [
         "",
         "tests/data/line/hello3.pdl:7 - Type errors during spec checking:",
+        "  in text[1].spec",
         "tests/data/line/hello3.pdl:7 -  World! should be of type <class 'int'>",
     ],
 }
@@ -64,7 +76,9 @@ line4 = {
     "errors": [
         "",
         "tests/data/line/hello4.pdl:5 - Missing required field: repeat",
+        "  in text[2]",
         "tests/data/line/hello4.pdl:5 - Field not allowed: repeats",
+        "  in text[2].repeats",
     ],
 }
 
@@ -78,6 +92,7 @@ line7 = {
     "errors": [
         "",
         "tests/data/line/hello7.pdl:4 - Field not allowed: lans",
+        "  in text[1].lans",
     ],
 }
 
@@ -91,7 +106,9 @@ line8 = {
     "errors": [
         "",
         "tests/data/line/hello8.pdl:4 - Missing required field: code",
+        "  in text[1]",
         "tests/data/line/hello8.pdl:5 - Field not allowed: codea",
+        "  in text[1].codea",
     ],
 }
 
@@ -105,6 +122,7 @@ line9 = {
     "errors": [
         "",
         "tests/data/line/hello9.pdl:4 - Type errors during spec checking:",
+        "  in text[0].spec",
         "tests/data/line/hello9.pdl:4 - hello should be of type <class 'int'>",
     ],
 }
@@ -119,6 +137,7 @@ line10 = {
     "errors": [
         "",
         "tests/data/line/hello10.pdl:7 - QUESTION should be an object",
+        "  in text[1].defs",
     ],
 }
 
@@ -132,6 +151,7 @@ line11 = {
     "errors": [
         "",
         "tests/data/line/hello11.pdl:7 - Field not allowed: defss",
+        "  in text[1].defss",
     ],
 }
 
@@ -145,6 +165,7 @@ line12 = {
     "errors": [
         "",
         "tests/data/line/hello12.pdl:11 - Type errors during spec checking:",
+        "  in text[2].spec",
         "tests/data/line/hello12.pdl:11 - How are you? should be of type <class 'bool'>",
     ],
 }
@@ -159,6 +180,7 @@ line13 = {
     "errors": [
         "",
         "tests/data/line/hello13.pdl:12 - Type errors during spec checking:",
+        "  in text[2].repeat.text[0].spec",
         "tests/data/line/hello13.pdl:12 - 1 should be of type <class 'str'>",
     ],
 }
@@ -173,6 +195,7 @@ line14 = {
     "errors": [
         "",
         "tests/data/line/hello14.pdl:16 - Type errors in result of the function translate:",
+        "  in text[2].return",
         "tests/data/line/hello14.pdl:16 - Bonjour le monde! should be of type <class 'int'>",
     ],
 }
@@ -187,6 +210,7 @@ line15 = {
     "errors": [
         "",
         "tests/data/line/hello15.pdl:7 - Error during the evaluation of ${ boolean }: 'boolean' is undefined",
+        "  in text[0].return.lastOf[0].get",
     ],
 }
 
@@ -200,7 +224,9 @@ line16 = {
     "errors": [
         "",
         "tests/data/line/hello16.pdl:10 - Type errors during spec checking:",
+        "  in text[1].spec",
         "tests/data/line/hello16.pdl:10 - 30 should be of type <class 'str'>",
+        "  in text[1].spec.carol",
     ],
 }
 
@@ -214,6 +240,7 @@ line17 = {
     "errors": [
         "",
         "tests/data/line/hello17.pdl:4 - Type errors during spec checking:",
+        "  in text[0].spec",
         "tests/data/line/hello17.pdl:4 - hello should be of type <class 'int'>",
     ],
 }
@@ -228,6 +255,7 @@ line18 = {
     "errors": [
         "",
         "tests/data/line/hello18.pdl:13 - Error during the evaluation of ${ J == 5 }: 'J' is undefined",
+        "  in text[2].until",
     ],
 }
 
@@ -241,6 +269,7 @@ line19 = {
     "errors": [
         "",
         "tests/data/line/hello19.pdl:6 - Error during the evaluation of ${ models }: 'models' is undefined",
+        "  in text[1].model",
         # "tests/data/line/hello19.pdl:6 - Type errors during spec checking:",
         # "tests/data/line/hello19.pdl:6 -  should be of type <class 'int'>",
     ],
@@ -256,6 +285,7 @@ line20 = {
     "errors": [
         "",
         "tests/data/line/hello20.pdl:3 - Error during the evaluation of Who is${ NAME }?: 'NAME' is undefined",
+        "  in text[0]",
     ],
 }
 
@@ -269,6 +299,7 @@ line21 = {
     "errors": [
         "",
         "tests/data/line/hello21.pdl:3 - Error during the evaluation of ${ QUESTION }: 'QUESTION' is undefined",
+        "  in text[0].if",
     ],
 }
 
@@ -282,6 +313,7 @@ line22 = {
     "errors": [
         "",
         "tests/data/line/hello22.pdl:4 - Error during the evaluation of ${ I }: 'I' is undefined",
+        "  in text[0].then",
     ],
 }
 
@@ -295,6 +327,7 @@ line23 = {
     "errors": [
         "",
         "tests/data/line/hello23.pdl:5 - Error during the evaluation of ${ I }: 'I' is undefined",
+        "  in text[0].else",
     ],
 }
 
@@ -308,6 +341,7 @@ line24 = {
     "errors": [
         "",
         "tests/data/line/hello24.pdl:25 - Error during the evaluation of Hello,${ GEN1 }: 'GEN1' is undefined",
+        "  in text[3].args.sentence",
     ],
 }
 
@@ -336,6 +370,7 @@ line26 = {
     "errors": [
         "",
         "tests/data/line/hello26.pdl:12 - Lists inside the For block must be of the same length.",
+        "  in text[1].input.text[0].for",
     ],
 }
 
@@ -349,6 +384,7 @@ line27 = {
     "errors": [
         "",
         "tests/data/line/hello27.pdl:12 - Lists inside the For block must be of the same length.",
+        "  in text[1].input.text[0].for",
     ],
 }
 
@@ -362,6 +398,7 @@ line28 = {
     "errors": [
         "",
         "tests/data/line/hello28.pdl:9 - Error during the evaluation of ${ QUESTION1 }: 'QUESTION1' is undefined",
+        "  in text[2]",
     ],
 }
 
@@ -375,6 +412,7 @@ line29 = {
     "errors": [
         "",
         "tests/data/line/hello29.pdl:10 - Error during the evaluation of ${ QUESTION1 }: 'QUESTION1' is undefined",
+        "  in text[2].data.x",
     ],
 }
 
@@ -388,6 +426,7 @@ line30 = {
     "errors": [
         "",
         "tests/data/line/hello30.pdl:6 - Values inside the For block must be lists but got <class 'int'>.",
+        "  in for.k",
     ],
 }
 
@@ -401,10 +440,12 @@ line31 = {
     "errors": [
         "",
         # `:1` for the same reason as `test_line`: these are about the program
-        # itself, at path `[]`, which starts on line 1.
+        # itself, at path `[]`, which starts on line 1 -- and, being at path
+        # `[]`, they are also the two that get no `  in <path>` line at all.
         "tests/data/line/hello31.pdl:1 - Missing required field: function",
         "tests/data/line/hello31.pdl:1 - Missing required field: return",
         "tests/data/line/hello31.pdl:9 - Field not allowed: show_result",
+        "  in defs.get_current_weather.return.show_result",
     ],
 }
 
@@ -418,6 +459,7 @@ line32 = {
     "errors": [
         "",
         "tests/data/line/hello32.pdl:4 - Type errors during spec checking:",
+        "  in defs.x.spec",
         "tests/data/line/hello32.pdl:4 - 1 should be of type <class 'str'>",
     ],
 }

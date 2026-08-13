@@ -5,6 +5,7 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:9 - code block raised ZeroDivisionError: division by zero
+  in text[1].code
 
 code:3 | result = PDL_SESSION.embed(key)
        |          ^^^^^^^^^^^^^^^^^^^^^^

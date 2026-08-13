@@ -9,5 +9,5 @@
     "fix": 1,
     "hygiene": 2
   },
-  "notes": "'Missing required field: name' -- the user wrote a function ARGUMENT, not a field."
+  "notes": "'Missing required field: name' -- the user wrote a function ARGUMENT, not a field. Location stays 1 after phase-3 item 7, which added `  in text[0].args` to both lines. The path is the reason it stays rather than a reason to move: `args:` does not exist in this program -- that is the whole error -- so the rendered path names a block the file does not contain, resolved by `PdlSource.resolve`'s ancestor walk back to `text[0]`'s line. Contrast E-SCHEMA-003, which also reports a missing field but names `defs.f`, a block that is really there. A path that is right about where the thing *should* go is worth printing; it is not an accurate location for something that is not there."
 }

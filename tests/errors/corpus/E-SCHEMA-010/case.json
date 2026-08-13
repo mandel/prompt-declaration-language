@@ -10,5 +10,5 @@
     "hygiene": 0,
     "hygiene_unstable_order": true
   },
-  "notes": "NEW, found while building the harness. analyze_errors iterates set differences, so the five diagnostics come out in an order that varies with PYTHONHASHSEED. Goldens are only stable because the harness pins the seed."
+  "notes": "NEW, found while building the harness. analyze_errors iterates set differences, so the five diagnostics come out in an order that varies with PYTHONHASHSEED. Goldens are only stable because the harness pins the seed. Location stays 1 after phase-3 item 7: three of the five complaints gained a path (`  in foo`, `  in texts`, `  in bar`) and two did not, because `Missing required field: function` and `Missing required field: return` are about the program itself, at path `[]`, and an empty path renders no line. Those two are also the ones pointing at `prog.pdl:1`, the root node's mark, for a complaint whose real subject is the whole document -- coarse in the rubric's sense, and the entry is scored on its worst constituent."
 }

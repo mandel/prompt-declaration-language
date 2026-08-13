@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:2 - Missing required field: return
+  in defs.f

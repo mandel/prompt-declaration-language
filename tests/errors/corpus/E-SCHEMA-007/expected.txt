@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:3 - {'foo': 'bar'} should be of type: {'oneOf': [{'$ref': '#/$defs/ExpressionBlock'}, {'$ref': '#/$defs/FunctionBlock'}, {'$ref': '#/$defs/CallBlock'}, {'$ref': '#/$defs/ModelBlockType'}, {'$ref': '#/$defs/CodeBlockType'}, {'$ref': '#/$defs/GetBlock'}, {'$ref': '#/$defs/DataBlock'}, {'$ref': '#/$defs/MessageBlock'}, {'$ref': '#/$defs/ReadBlock'}, {'$ref': '#/$defs/FactorBlock'}, {'$ref': '#/$defs/AggregatorBlock'}, {'$ref': '#/$defs/ErrorBlock'}, {'$ref': '#/$defs/EmptyBlock'}, {'$ref': '#/$defs/SequenceBlock'}, {'$ref': '#/$defs/TextBlock'}, {'$ref': '#/$defs/LastOfBlock'}, {'$ref': '#/$defs/ArrayBlock'}, {'$ref': '#/$defs/ObjectBlock'}, {'$ref': '#/$defs/IfBlock'}, {'$ref': '#/$defs/MatchBlock'}, {'$ref': '#/$defs/RepeatBlock'}, {'$ref': '#/$defs/MapBlock'}, {'$ref': '#/$defs/IncludeBlock'}, {'$ref': '#/$defs/ImportBlock'}]}
+  in text[1]

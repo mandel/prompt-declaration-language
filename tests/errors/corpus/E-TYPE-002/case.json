@@ -9,5 +9,5 @@
     "fix": 0,
     "hygiene": 2
   },
-  "notes": "Unusually good: points at the argument, names the function. Still a doubled prefix and a <class 'str'> repr."
+  "notes": "Unusually good: points at the argument, names the function. Still a doubled prefix and a <class 'str'> repr. Location was already 2 and stays 2 under phase-3 item 7, which adds the other half of the criterion rather than a new point: `  in text[0].args` under the header and `  in text[0].args.name` under the detail. The two paths differing is the evidence that the second line is about the argument and not about the call."
 }

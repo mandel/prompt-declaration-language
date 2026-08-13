@@ -5,3 +5,4 @@ $ exit: 1
 
 --- stderr ---
 prog.pdl:5 - Field not allowed: parameterss
+  in text[1].parameterss

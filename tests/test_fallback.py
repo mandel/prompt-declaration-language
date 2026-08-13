@@ -75,9 +75,15 @@ fallback: "Error"
     # `<program>:4` where this used to say `line 4`: a program parsed from a
     # string now has a named source in the registry, under the same label its
     # YAML errors already used. The line is unchanged.
+    #
+    # `  in fallback.spec` is phase-3 item 7: the block path is rendered under
+    # the complaint's header. It says something the line alone does not -- that
+    # the value being type-checked is the *fallback's* result, not the model
+    # block's.
     assert (
-        str(exc.value.message)
-        == "Type errors during spec checking:\n<program>:4 - Error should be of type <class 'int'>"
+        str(exc.value.message) == "Type errors during spec checking:\n"
+        "<program>:4 - Error should be of type <class 'int'>\n"
+        "  in fallback.spec"
     )
 
 

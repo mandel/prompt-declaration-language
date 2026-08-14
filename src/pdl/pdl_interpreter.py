@@ -145,11 +145,29 @@ from .pdl_context import (
     deserialize,
     ensure_context,
 )
-from .pdl_diagnostics import Diagnostic, import_read_diagnostic
+from .pdl_diagnostics import (
+    Diagnostic,
+    import_read_diagnostic,
+    parser_csv_diagnostic,
+    parser_group_diagnostic,
+    parser_json_diagnostic,
+    parser_jsonl_diagnostic,
+    parser_not_implemented_diagnostic,
+    parser_not_text_diagnostic,
+    parser_regex_diagnostic,
+    parser_regex_match_diagnostic,
+    parser_yaml_diagnostic,
+)
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, located_message, nested_source_name
+from .pdl_location_utils import (
+    SOURCES,
+    append,
+    located_message,
+    nested_source_name,
+    source_text,
+)
 from .pdl_parser import (
     PDLParseError,
     parse_file,
@@ -712,7 +730,13 @@ def process_advance_block_retry(  # noqa: C901
             )
             trace = trace.model_copy(update={"pdl__result": result})
             if block.parser is not None:
-                parser_func = partial(parse_result, block.parser)
+                # The location travels into the callable, not around the call:
+                # `lazy_apply` defers the parser, so the exception surfaces at
+                # `future_result.result()` in `generate` and a `try` here would
+                # never see it. Same shape as the `spec` checker below.
+                parser_func = partial(
+                    parse_result, block.parser, loc=_marked_path(loc, "parser")
+                )
                 result = lazy_apply(parser_func, result)
                 if init_state.yield_result:
                     yield_result(result, block.kind)
@@ -4057,10 +4081,157 @@ def get_contribute_aggregator(
 JSONReturnType = dict[str, Any] | list[Any] | str | float | int | bool | None
 
 
-def parse_result(parser: ParserType, text: str) -> JSONReturnType:
+def _marked_path(loc: PdlLocationType | None, *segments: str) -> PdlLocationType | None:
+    """Descend into `loc`, but only as far as the source really has marks.
+
+    `append` carries the parent's line down on a mark miss and *still* extends
+    `loc.path`, so a program whose parser is written `spec: {object: {...}}`
+    would be told `  in parser.spec.second` -- a path that is nowhere in its
+    file. That is the E-TYPE-003 defect recorded in INVENTORY 7.9. Here the walk
+    stops at the last segment that has a mark of its own, so the path printed is
+    always one the reader can find by looking.
+
+    It also handles the two cases with no marks at all: a program built as a
+    dict through the SDK, and a caller that passed no location.
+    """
+    if loc is None:
+        return None
+    for segment in segments:
+        if SOURCES.mark(loc.file, list(loc.path) + [segment]) is None:
+            break
+        loc = append(loc, segment)
+    return loc
+
+
+def _require_parser_text(
+    text: Any,
+    loc: PdlLocationType | None,
+    *,
+    label: str,
+    remove: str,
+    accept_bytes: bool = False,
+) -> None:
+    """E-PARSER-001's pre-check: a `parser:` needs text to read.
+
+    The accepted set is exactly what each parser accepts *today*, measured
+    rather than assumed: `json_repair.loads` and `yaml.safe_load` take `bytes`,
+    while `str.split`, `io.StringIO` and a `str` regex pattern all reject it
+    with a `TypeError`. So no program that works today starts failing here --
+    the only thing that changes is the message a program that already failed
+    gets, from a Python `TypeError` about subscripting to a sentence about the
+    `parser:` the user wrote.
+    """
+    accepted: tuple[type, ...] = (str, bytes) if accept_bytes else (str,)
+    if isinstance(text, accepted):
+        return
+    raise PDLRuntimeParserError(
+        parser_not_text_diagnostic(label=label, remove=remove, value=text).text,
+        loc=loc,
+    )
+
+
+def _parser_source(text: Any) -> str | None:
+    """The block's output as excerpt-able text, or `None` if it is not text.
+
+    `None` and `""` are different answers and both are used: `""` is an output
+    that really was empty, which earns a `note:` of its own, and `None` is an
+    output no excerpt can be drawn from.
+    """
+    return text if isinstance(text, str) else None
+
+
+def _parser_detail(exc: BaseException) -> str:
+    """One line of an exception's own text, bounded.
+
+    Used only where the library's message is *about the format the user asked
+    for* -- `json`'s `Expecting value`, `csv`'s field limit -- never as a
+    substitute for a diagnosis.
+    """
+    text = str(exc).split("\n", 1)[0].strip()
+    return text if len(text) <= 120 else text[:120].rstrip() + "..."
+
+
+def _compiled_regex(regex: str, loc: PdlLocationType | None) -> re.Pattern[str]:
+    """Compile a parser's `regex:` as an explicit step. E-PARSER-005.
+
+    Explicit so that a bad pattern is diagnosed as a bad *pattern*, before the
+    block's output is looked at, and so that every mode gets the same
+    diagnostic: `split` and `findall` compiled inside `re.split`/`re.findall`
+    with no handler at all and reached the user as a raw traceback.
+
+    `re` caches compiled patterns, so doing it here costs nothing.
+    """
+    try:
+        return re.compile(regex, flags=re.M)
+    except KeyboardInterrupt as exc:
+        raise exc from exc
+    except re.error as exc:
+        raise PDLRuntimeParserError(
+            parser_regex_diagnostic(
+                pattern=regex,
+                detail=exc.msg or _parser_detail(exc),
+                pos=exc.pos,
+                line=exc.lineno,
+                col=exc.colno,
+            ).text,
+            loc=_marked_path(loc, "regex"),
+            source_exception=exc,
+        ) from exc
+
+
+def _regex_group_error(
+    name: str, m: re.Match[str], loc: PdlLocationType | None, exc: BaseException
+) -> PDLRuntimeParserError:
+    """E-PARSER-006, built where `m` -- and so the pattern's groups -- is in scope.
+
+    `m.re.groupindex` maps every named group to its group number; ordering by
+    that number is what keeps the list out of `PYTHONHASHSEED`'s reach.
+
+    The file excerpt is drawn only when the mark for `parser.spec.<name>` really
+    exists. Where it does not -- a `spec:` written as `spec: {object: {...}}` --
+    the location degrades to the enclosing key and the caret is dropped rather
+    than pointed at whatever happens to be there.
+    """
+    groups = [g for g, _ in sorted(m.re.groupindex.items(), key=lambda kv: kv[1])]
+    target = _marked_path(loc, "spec", name)
+    exact = target is not None and list(target.path[-2:]) == ["spec", name]
+    return PDLRuntimeParserError(
+        parser_group_diagnostic(
+            name=name,
+            pattern=m.re.pattern,
+            groups=groups,
+            source=(source_text(target.file) if exact and target is not None else None),
+            line=target.line if exact and target is not None else None,
+            col=target.col if exact and target is not None else None,
+        ).text,
+        loc=target,
+        source_exception=exc,
+    )
+
+
+def parse_result(
+    parser: ParserType, text: str, *, loc: PdlLocationType | None = None
+) -> JSONReturnType:
+    """Read a block's output with the block's `parser:`.
+
+    ``loc`` is keyword-only and defaults to `None` so that every existing caller
+    and any SDK import keeps working; the interpreter passes
+    `append(loc, "parser")`, which is the key the diagnostics are about and the
+    one the user edits to make them stop. It has to travel *into* this function
+    rather than be caught around the call: `process_advance_block_retry` applies
+    the parser through `lazy_apply`, so the exception surfaces in `generate`,
+    not at the call site.
+    """
     result: JSONReturnType
     match parser:
         case "json":
+            _require_parser_text(
+                text,
+                loc,
+                label="`parser: json`",
+                remove="remove `parser: json`",
+                accept_bytes=True,
+            )
             try:
                 if text == "False":
                     return json.loads("false")
@@ -4070,95 +4241,161 @@ def parse_result(parser: ParserType, text: str) -> JSONReturnType:
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
+                decode = exc if isinstance(exc, json.JSONDecodeError) else None
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed JSON: {repr(exc)}",
+                    parser_json_diagnostic(
+                        text=_parser_source(text),
+                        detail=decode.msg if decode else _parser_detail(exc),
+                        line=decode.lineno if decode else None,
+                        col=decode.colno if decode else None,
+                    ).text,
+                    loc=loc,
                     source_exception=exc,
                 ) from exc
         case "jsonl":
+            _require_parser_text(
+                text, loc, label="`parser: jsonl`", remove="remove `parser: jsonl`"
+            )
             result = []
-            try:
-                for line in text.split("\n"):
-                    if line == "":
-                        continue
+            # `enumerate` over the split the loop already performed: the failing
+            # line number is the one thing this branch has always known and
+            # always discarded, and it is why every message from here reads
+            # `line 1` whichever line actually failed.
+            for index, line in enumerate(text.split("\n"), start=1):
+                if line == "":
+                    continue
+                try:
                     result.append(json.loads(line))
-            except KeyboardInterrupt as exc:
-                raise exc from exc
-            except Exception as exc:
-                raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed JSON: {repr(exc)}",
-                    source_exception=exc,
-                ) from exc
+                except KeyboardInterrupt as exc:
+                    raise exc from exc
+                except Exception as exc:
+                    decode = exc if isinstance(exc, json.JSONDecodeError) else None
+                    raise PDLRuntimeParserError(
+                        parser_jsonl_diagnostic(
+                            text=text,
+                            line=index,
+                            col=decode.colno if decode else None,
+                            detail=decode.msg if decode else _parser_detail(exc),
+                            whole_is_json=_is_one_json_document(text),
+                        ).text,
+                        loc=loc,
+                        source_exception=exc,
+                    ) from exc
         case "yaml":
+            _require_parser_text(
+                text,
+                loc,
+                label="`parser: yaml`",
+                remove="remove `parser: yaml`",
+                accept_bytes=True,
+            )
             try:
                 result = yaml.safe_load(text)
             except KeyboardInterrupt as exc:
                 raise exc from exc
-            except Exception as exc:
+            except yaml.YAMLError as exc:
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed YAML: {repr(exc)}",
+                    parser_yaml_diagnostic(exc, _parser_source(text) or "").text,
+                    loc=loc,
                     source_exception=exc,
                 ) from exc
         case "csv":
+            _require_parser_text(
+                text, loc, label="`parser: csv`", remove="remove `parser: csv`"
+            )
+            result = []
+            reader = csv.reader(StringIO(text))
             try:
-                result = []
-                reader = csv.reader(StringIO(text))
                 for row in reader:
                     result.append(row)
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed CSV: {repr(exc)}",
+                    parser_csv_diagnostic(
+                        text=text,
+                        detail=_parser_detail(exc),
+                        limit=csv.field_size_limit(),
+                        row=reader.line_num,
+                    ).text,
+                    loc=loc,
                     source_exception=exc,
                 ) from exc
         case PdlParser():
-            assert False, "TODO"
+            # E-PARSER-007. `PdlParser` is a declared branch of `ParserType`, so
+            # this is reachable from user YAML; it used to be `assert False,
+            # "TODO"`, which escaped `generate`'s handlers as a raw traceback and
+            # under `python -O` vanished entirely, leaving `result` unbound.
+            raise PDLRuntimeParserError(
+                parser_not_implemented_diagnostic().text, loc=loc
+            )
         case RegexParser(mode="search" | "match" | "fullmatch"):
-            regex = parser.regex
+            compiled = _compiled_regex(parser.regex, loc)
+            _require_parser_text(
+                text, loc, label="the `regex:` parser", remove="remove the `parser:`"
+            )
             match parser.mode:
                 case "search":
-                    matcher = re.search
+                    matcher = compiled.search
                 case "match":
-                    matcher = re.match
+                    matcher = compiled.match
                 case "fullmatch":
-                    matcher = re.fullmatch
+                    matcher = compiled.fullmatch
                 case _:
                     assert False
             try:
-                m = matcher(regex, text, flags=re.M)
+                m = matcher(text)
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
-                msg = f"Fail to parse with regex {regex}: {repr(exc)}"
-                raise PDLRuntimeParserError(msg, source_exception=exc) from exc
+                raise PDLRuntimeParserError(
+                    parser_regex_match_diagnostic(detail=_parser_detail(exc)).text,
+                    loc=_marked_path(loc, "regex"),
+                    source_exception=exc,
+                ) from exc
             if m is None:
                 return None
             match parser.spec:
                 case ObjectPdlType(object=dict() as spec) | (dict() as spec):
-                    current_group_name = ""
-                    try:
-                        result = {}
-                        for x in spec.keys():
-                            current_group_name = x
+                    result = {}
+                    for x in spec.keys():
+                        try:
                             result[x] = m.group(x)
-                        return result
-                    except IndexError as exc:
-                        msg = f"No group named {current_group_name} found by {regex} in {text}"
-                        raise PDLRuntimeParserError(msg, source_exception=exc) from exc
+                        except IndexError as exc:
+                            raise _regex_group_error(x, m, loc, exc) from exc
+                    return result
                 case _:
                     result = list(m.groups())
         case RegexParser(mode="split" | "findall"):
-            regex = parser.regex
+            compiled = _compiled_regex(parser.regex, loc)
+            _require_parser_text(
+                text, loc, label="the `regex:` parser", remove="remove the `parser:`"
+            )
             match parser.mode:
                 case "split":
-                    result = re.split(regex, text, flags=re.M)
+                    result = compiled.split(text)
                 case "findall":
-                    result = re.findall(regex, text, flags=re.M)
+                    result = compiled.findall(text)
                 case _:
                     assert False
         case _:
             assert False
     return result
+
+
+def _is_one_json_document(text: str) -> bool:
+    """Whether the whole output is a single JSON value spanning several lines.
+
+    The one extra `json.loads` on the failure path that turns E-PARSER-002's
+    suggestion from a rule into an instruction: someone who wrote `jsonl` for a
+    pretty-printed document wants `json`, and nothing else this diagnostic can
+    say would help them.
+    """
+    try:
+        json.loads(text)
+    except (ValueError, TypeError, RecursionError):
+        return False
+    return True
 
 
 def get_var(var: str, scope: ScopeType, loc: PdlLocationType) -> Any:

@@ -165,19 +165,28 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 
 ### E-PARSER — output parsers (`parser:`)
 
-Every one of these is raised with **`loc=None`**, so `generate` prints a bare message
-with no file at all — no location prefix and no `  in <block path>` line. All six are now
-pinned by corpus goldens; the four rows previously marked `[src]` were executed and three
-of the four descriptions were wrong (see E-PARSER-002/003/004 below).
+**Phase-3 item 9 is delivered** (spec `specs/E-PARSER.md`). Every one of these used to be
+raised with **`loc=None`**, so `generate` printed a bare message with no file at all — no
+location prefix and no `  in <block path>` line — and none showed the offending text
+(issue #387). `parse_result` now takes a keyword-only `loc` and the call site passes
+`append(loc, "parser")`, threaded *into* the callable because `lazy_apply` defers the
+parser and the exception surfaces in `generate`. The series moved **29/90 → 80/90**, and
+`E-PARSER-007` is a seventh entry added by the same change.
+
+The rows below describe the diagnostics **after** the fix; `Current message` is what a
+user sees today. Three silent failures found while specifying this item are **not** fixed
+and are recorded in [7.10](#710-three-silent-failures-in-parse_result-left-open) — none of
+them may become an error without the owner's sign-off under 5.5.
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
-| E-PARSER-001 [obs] | `parser: json` on non-JSON (**issue #387**) | `Attempted to parse ill-formed JSON: TypeError("'int' object is not subscriptable")` — **does not show the offending text**, and reports a Python type error for a *parse* failure | **none** | **S1** |
-| E-PARSER-002 [obs] | `parser: jsonl` on non-JSONL | `Attempted to parse ill-formed JSON: JSONDecodeError('Expecting value: line 1 column 1 (char 0)')` — says **JSON** for a `jsonl` parser, and since each line is loaded as its own document the position is relative to that line: a failure on the *second* line still reports `line 1 column 1`. Offending line not shown | **none** | **S1** |
-| E-PARSER-003 [obs] | `parser: yaml` on non-YAML | `Attempted to parse ill-formed YAML: ParserError('while parsing a flow sequence', <yaml.error.Mark object at 0x...>, "expected ',' or ']', but got '<stream end>'", <yaml.error.Mark object at 0x...>)` — `repr(exc)` where `str(exc)` would have given PyYAML's readable report with `line 1, column 6` and a caret; the two `Mark` objects that hold that position are printed as **memory addresses**, which differ on every run | **none** | **S1** |
-| E-PARSER-004 [obs] | `parser: csv` — **not reachable on malformed CSV** | Malformed CSV does **not** raise: an unbalanced quote, ragged rows and embedded NULs are all accepted, yielding nonsense and **exit 0**. The only reachable trigger is a field over `csv.field_size_limit()` (131072), which PDL never sets and gives no way to raise: `Attempted to parse ill-formed CSV: Error('field larger than field limit (131072)')` — calls well-formed input `ill-formed`, and states the limit but not the size seen | **none** | **S1** |
-| E-PARSER-005 [obs] | invalid regex | `Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')` — regex position 0 given, PDL position absent | **none** | **S1** |
-| E-PARSER-006 [obs] | `spec` names a group the regex does not define | `No group named second found by (?P<first>\w+) in hello` — wording confirmed; the group is missing from the **pattern**, not from the text the message blames it on, the group the pattern *does* define is never listed, and the matched text is interpolated raw and untruncated. When the regex simply fails to match, the same path returns `None`: the program prints `null` and **exits 0** | **none** | S2 |
+| E-PARSER-001 [obs] | `parser:` on a value that is not text (the branch **issue #387**'s reproducer reaches) | `` prog.pdl:4 - `parser: json` needs text, but this block produced an integer ``, then the rule and `` help: remove `parser: json`; the block's result is already an integer. `` The type is named in PDL's vocabulary (`integer`, not `int`) and the value is shown inline only when `json.dumps` of it is ≤ 40 characters. Was `TypeError("'int' object is not subscriptable")` — `json_repair` subscripting a non-string, reported as a JSON parse failure | file:line + block path | S1 |
+| E-PARSER-002 [obs] | `parser: jsonl` on a line that is not JSON | `` prog.pdl:4 - `parser: jsonl` could not parse line 2 of the block's output ``, an `output:2 \| oops` excerpt row with a caret at `exc.colno` labelled `Expecting value`, the rule, the `output:N` caveat and an action. A second branch detects that the whole output is one JSON document and suggests `parser: json`. Was `Attempted to parse ill-formed JSON: JSONDecodeError('Expecting value: line 1 column 1 (char 0)')` — the wrong parser named, and a position that read `line 1` whichever line failed | file:line + block path | S1 |
+| E-PARSER-003 [obs] | `parser: yaml` on ill-formed YAML | `` prog.pdl:2 - `parser: yaml` could not parse the block's output `` with an `output:1` excerpt and a caret at PyYAML's `problem_mark`, labelled with its `problem`. The marks are read directly, as `yaml_diagnostic` already does for `.pdl` files; PyYAML's own snippet renderer — which names a nonexistent file, `in "<unicode string>"` — is never used. Was `repr(exc)`, printing the two `Mark` objects as memory addresses that differed on every run | file:line + block path | S1 |
+| E-PARSER-004 [obs] | `parser: csv` over the field-size limit. **Malformed CSV still does not raise** — see 7.10 | `` prog.pdl:2 - `parser: csv` cannot read a field longer than 131072 characters ``, an excerpt row with no caret (a `csv.Error` has a row and no column), a `note:` stating the size seen and why it is a single field, and a conditional action. Was `Attempted to parse ill-formed CSV: Error(...)`, which called a well-formed input `ill-formed` and misdiagnosed a resource limit as a syntax error | file:line + block path | S1 |
+| E-PARSER-005 [obs] | an invalid regular expression, in **any** of the five modes | `` prog.pdl:3 - `regex:` is not a valid regular expression ``, located at `parser.regex` rather than at `parser:`, with the pattern in a `regex:1 \| (` gutter and a caret from `re.error.lineno`/`.colno`. `` help: close the group, or write `regex: '\('` to match a literal `(`. `` — single quotes, because `\(` is not a valid escape in a double-quoted YAML scalar. Was `Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')`. **`mode: split` and `mode: findall` compiled inside `re.split`/`re.findall` with no handler at all and reached the user as a raw traceback**; `_compiled_regex` makes compilation an explicit step for all five modes, so they get this diagnostic too. That crash was found during implementation and has no corpus entry of its own | file:line of `parser.regex` + block path | S1 |
+| E-PARSER-006 [obs] | `spec:` names a group the regex does not define | `` prog.pdl:5 - the `regex:` pattern has no group named `second` ``, located at `parser.spec.second`, with a **file** excerpt and caret — the one entry in the series whose evidence is the file, because the fault is static and nothing about the output is relevant. The pattern's own groups are listed from `m.re.groupindex`, ordered by group number, and the `help:` has four branches (only group / near miss / list of alternatives / no named group). Was `No group named second found by (?P<first>\w+) in hello`, which blamed the matched *text* and never named the group the pattern does define. The neighbouring silent failure — a `regex:` that does not match returns `None` at exit 0 — is untouched; see 7.10 | file:line of `parser.spec.<name>` + block path | S2 |
+| E-PARSER-007 [obs] | `parser: {pdl: ...}` — a declared AST node whose implementation is a `TODO` | `` prog.pdl:2 - `parser:` with a `pdl:` sub-program is not implemented ``, the rule, `note: this is a gap in PDL itself, not a mistake in this program.` and the working alternatives. Was `assert False, "TODO"`: an `AssertionError` is neither a `PDLRuntimeError` nor a `PDLParseError`, so it escaped `generate`'s handlers as a **raw traceback** at exit 1. Under `python -O` the assertion is compiled out and the branch falls through to `return result` with `result` unbound — a different and worse failure, which is why the fix is a `raise` and not a better assertion. The diagnostic says the form is not implemented and nothing more: what it *would* do is not knowable from a `TODO` | file:line + block path | **S0** (was) |
 
 ### E-MODEL — model / tool calls
 
@@ -327,11 +336,15 @@ line *within* it. There is also no mapping from an offset inside the expression 
 back to a column in the `.pdl` file — which would need DROP #1 fixed first (the scalar's
 start column).
 
-**DROP #8 — output parsers raise with no location.** `parse_result`
-(`pdl_interpreter.py:3082-3156`) raises `PDLRuntimeParserError(msg, source_exception=exc)`
-— six sites, none passing `loc`. `generate` then prints the bare message. The whole
-E-PARSER class has *no file name at all*. The fix is mechanical: `parse_result` is called
-from sites that have `loc` in hand.
+**DROP #8 — output parsers raise with no location. *Fixed by Phase-3 item 9.***
+`parse_result` raised `PDLRuntimeParserError(msg, source_exception=exc)` — six sites, none
+passing `loc` — and `generate` printed the bare message, so the whole E-PARSER class had
+*no file name at all*. It was mechanical only in the sense that the caller had `loc` in
+hand: the parser runs through `lazy_apply`, so the exception surfaces at
+`future_result.result()` in `generate` and a `try` around the call site would never have
+seen it. The location had to travel *into* the callable, as
+`partial(parse_result, block.parser, loc=append(loc, "parser"))`, which is the shape the
+`spec:` checker four lines below already used.
 
 **DROP #9 — model errors are printed correctly and then dumped again as a traceback.**
 Corrected during Phase 1: my first reading of this path was wrong. `generate` *does*
@@ -386,7 +399,7 @@ is the whole document) and nothing is rendered at all.
 | [#203](https://github.com/IBM/prompt-declaration-language/issues/203) | Location tracking | — | Open. "location tracking code is sprinkled throughout the interpreter … would be good to factor [it] out". Confirmed: §3.2 DROP #5. |
 | [#202](https://github.com/IBM/prompt-declaration-language/issues/202) | Strengthen the error analyzer | E-SCHEMA-006/007 | Open. "We sometimes observe long error messages … the error analyzer is missing cases". Confirmed: the 700-char `oneOf` dump and the no-op fallback. |
 | [#386](https://github.com/IBM/prompt-declaration-language/issues/386) | Python code without `result` | E-CODE-002 [obs] | Open and **regressed**. Filed as `foo.pdl:0 - Code error: AttributeError(...)`; today it is an uncaught traceback. |
-| [#387](https://github.com/IBM/prompt-declaration-language/issues/387) | JSON parse errors should report the offending text | E-PARSER-001 [obs] | Open. Reproduces; message has also drifted to `TypeError("'int' object is not subscriptable")`. |
+| [#387](https://github.com/IBM/prompt-declaration-language/issues/387) | JSON parse errors should report the offending text | E-PARSER-001 [obs] | **Partly addressed by Phase-3 item 9.** Every parser that raises now shows the offending line in an `output:N` gutter with a caret. The issue's own `parser: json`-over-prose case is *not* a raise at all: `json_repair` repairs rather than raises and returns `''` at exit 0 (7.10, finding 3), which is a decision-5.5 semantic change and still open. |
 | [#383](https://github.com/IBM/prompt-declaration-language/issues/383) | `Invalid message type: <class 'str'>` | E-MODEL-005 [obs] | Open. Reproduces with drifted text: `TypeError("'<class 'str'>' object is not a valid context")`. |
 | [#410](https://github.com/IBM/prompt-declaration-language/issues/410) | Traces contain absolute, non-normalised paths | E-RUNTIME-003 [src] | Open. Relevant: golden files must normalise paths (Phase 1). |
 | [#411](https://github.com/IBM/prompt-declaration-language/issues/411) | ErrorBlocks lack timing information | E-GUI-002 [src] | Open. Adjacent. |
@@ -543,13 +556,17 @@ Then, serialised on the foundation:
 
 8. **E-EXPR-004 and E-EXPR-006** — the cross-file wrong-line bug and the comment-shift
    bug, both fixed by 5.1/5.2; this item is the regression tests proving it.
-9. **E-PARSER-001…006** — thread location into `parse_result` (six raise sites currently
-   passing `loc=None`), and include the offending text (issue #387). Three corrections
-   from pinning the series: `jsonl` reports `JSON` and a per-line position that always
-   reads `line 1`; `yaml` uses `repr(exc)` and so discards PyYAML's own readable
-   report — `str(exc)` alone would be an improvement; and the `csv` branch's `except`
-   is **unreachable on malformed CSV**, which parses to nonsense and exits 0, so the
-   real csv defect is a silent failure rather than a bad message.
+9. **E-PARSER-001…006** — thread location into `parse_result` (six raise sites
+   passing `loc=None`), and include the offending text (issue #387). *Delivered; spec
+   `specs/E-PARSER.md`.* Three corrections from pinning the series: `jsonl` reported
+   `JSON` and a per-line position that always read `line 1`; `yaml` used `repr(exc)` and
+   so discarded PyYAML's own readable report; and the `csv` branch's `except` is
+   **unreachable on malformed CSV**, which parses to nonsense and exits 0, so the real
+   csv defect is a silent failure rather than a bad message. Two things the estimate
+   missed, both found by running it: `parser: {pdl: ...}` was a raw traceback, now
+   **E-PARSER-007**; and an invalid `regex:` under `mode: split`/`findall` was a raw
+   traceback too, fixed by the same explicit compile step. The three silent failures the
+   item is *not* allowed to fix are in 7.10.
 10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
     **E-EXPR-001** ("in scope here").
 11. **E-PARSE-003 and E-RUNTIME-012** — the two semantic changes from 5.5. Deliberately
@@ -1022,3 +1039,30 @@ decision belongs to whoever owns 5.6's renderer.
 `E-CODE-*` entries, mapping a `code:N` gutter row back onto its file line; for
 `E-RUNTIME-006`, naming the offending list (which is also its Why 0); for `E-TYPE-001`,
 locating the result rather than the `spec:`. Each is that error ID's own work.
+
+---
+
+### 7.10 Three silent failures in `parse_result`, left open
+
+Found while specifying Phase-3 item 9 and **deliberately not fixed by it**. All three are
+programs that run to completion, print a wrong answer and exit **0**. Turning any of them
+into an error changes the exit code of programs that work today, which is a decision-5.5
+semantic change: it needs the owner's sign-off, a blast-radius measurement and a release
+note, and it belongs with §6 item 11 rather than with a diagnostics item. Item 9 improved
+the messages of the failures that already *were* errors and touched none of these.
+
+They are listed together, here, because each was previously buried in the notes of the
+corpus entry nearest to it, where a reader looking for "what does PDL silently get wrong"
+would not find them.
+
+| # | Trigger | What happens | Why item 9 could not fix it |
+| --- | --- | --- | --- |
+| 1 | `parser: csv` on malformed CSV | `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs. `"a,b,c\nunterminated,1\nx,y"` parses to `[["a","b","c"], ["unterminated,1\nx,y\n"]]` — a wrong parse, no diagnostic, exit 0. The `csv` branch's `except` is reachable **only** through `csv.field_size_limit()`, which is what `E-PARSER-004` actually pins | Nothing raises, so there is no raise site to improve. Detecting it means adding a validity rule that `csv.reader` does not have |
+| 2 | a `regex:` parser that does not match | `RegexParser.mode` defaults to `fullmatch`, so a near-miss pattern returns `None` and the program prints `null` at exit 0. A user who wrote `regex: '\('` on the advice of `E-PARSER-005`'s `help:` and whose text is `Hello` lands exactly here — which is why that suggestion is phrased conditionally | Same: the code path returns rather than raises. `m is None` would have to become an error, and a program may legitimately want the `null` |
+| 3 | `parser: json` over prose — **the case [#387](https://github.com/IBM/prompt-declaration-language/issues/387) actually names** | `json_repair` *repairs*: its parser returns `""` when it finds no value, so `parser: json` over a model's prose yields `''` at exit 0 rather than the parse error the taxonomy assumed. Measured: `'not json at all'`, `'the answer is 42'`, `''` and `'hello: world'` all return `''`; `'{"a": 1'` repairs to `{'a': 1}`. It raises only for a non-`str` input, which is the branch `E-PARSER-001` pins | The largest of the three by blast radius. `json_repair` is the dependency PDL chose *because* it repairs; making a repaired-to-empty result an error changes what every `parser: json` program does |
+
+`parse_result` also has a fourth gap that is not a silent failure but is not a diagnostic
+either: **a parser's `spec:` types are never checked.** `Parser.spec` is documented as
+"Expected type of the parsed value", but its only use is as a list of regex group names,
+so `spec: {first: integer}` returns a string and nothing complains. That is a
+documentation or a validation bug and wants its own item.

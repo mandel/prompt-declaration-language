@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-007",
+  "title": "parser with a pdl: sub-program is not implemented",
+  "severity": "S0",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 2,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Fixed (spec docs/error-reporting/specs/E-PARSER.md, added during implementation). `PdlParser` is a declared branch of `ParserType`, so `parser: {pdl: ...}` validates, loads and runs -- and then reached `assert False, \"TODO\"` in `parse_result`. An `AssertionError` is neither a `PDLRuntimeError` nor a `PDLParseError`, so it escaped `generate`'s handlers as a raw eight-frame traceback ending in `AssertionError: TODO`, at exit 1. Under `python -O` the assertion is compiled out entirely and the branch instead falls through to `return result` with `result` never bound, which raises `UnboundLocalError` -- a different and worse failure, and the reason the fix is a `raise` rather than a better assertion. `parser_not_implemented_diagnostic` says the parser is not implemented and nothing else: what the `pdl:` form would do if it were implemented is not knowable from a `TODO`, and inventing behaviour for it would be worse than the traceback. Location 2 rather than 3: `append(loc, \"parser\")` resolves the `parser:` key at line 2 and the block path is `parser`, but there is no column in the header and no file excerpt -- and no caret is possible on a construct whose whole subtree is the problem. Why 2: the rule is stated and the alternatives are named, but there is no offending value to show, because nothing about the block's output is at fault. Fix 2 and not 3: naming the four working parsers is the honest ceiling -- PDL cannot know which of them fits the shape the user described in the `pdl:` block, and a `did you mean` here would be a guess. The `note:` saying this is a gap in PDL rather than a mistake in the program is the part a user acts on: it tells them to stop editing their program."
+}

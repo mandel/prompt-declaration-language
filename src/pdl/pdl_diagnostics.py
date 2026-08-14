@@ -20,6 +20,11 @@ The rendering contract, from `docs/error-reporting/specs/E-BOUNDARY.md`:
   spaces plus ``^`` plus an optional label. Non-adjacent lines are elided with
   ``...``. Tabs are rendered as a single space so caret arithmetic stays trivial,
   and a message about a tab therefore names it in words.
+* A bare ``N |`` gutter means a line of the file named in the header. When the
+  excerpt is in some *other* coordinate system -- the output of a block, the
+  text of a `regex:` -- `Diagnostic.gutter` labels every row ``<label>:N |`` and
+  a ``note:`` says what those lines are counted in. Printing a runtime value
+  under a bare ``N |`` row would state a file location that is not true.
 * The rule paragraph is indented two spaces with no prefix; ``  note:`` carries
   context and ``  help:`` the action, with continuations aligned under the text.
 * No ANSI, no absolute paths, no severity token.
@@ -35,7 +40,7 @@ import json
 import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import yaml
 
@@ -98,6 +103,21 @@ class Diagnostic:  # pylint: disable=too-many-instance-attributes
     suggestions: list[Suggestion] = field(default_factory=list)
     source: str | None = None
     """The text the spans point into. Not part of the record."""
+    gutter: str = ""
+    """Label for a coordinate system that is not the file.
+
+    Empty -- the default, and every diagnostic that existed before the
+    `parser:` series -- renders excerpt rows as ``N | <source>``, which reads as
+    line N of the `.pdl` file. When it is set, rows read
+    ``<gutter>:N | <source>`` and the caller is expected to say in a ``note:``
+    what those lines are counted in. The distinction is load-bearing: a bare
+    ``2 |`` over a line of a *model's output* is a confidently-stated wrong
+    location, which `RUBRIC.md` ranks below showing nothing.
+
+    Setting it also narrows the excerpt's width budget to what is left of
+    `WIDTH` after the label, and folds control characters, because a gutter
+    excerpt is the only one whose text is a runtime value rather than a file the
+    user wrote."""
     show_location: bool = True
     """False when the diagnostic is about the origin rather than inside it."""
 
@@ -122,6 +142,7 @@ class Diagnostic:  # pylint: disable=too-many-instance-attributes
                 {"text": s.text, "replacement": s.replacement or None}
                 for s in self.suggestions
             ],
+            "gutter": self.gutter or None,
         }
 
 
@@ -240,6 +261,78 @@ def _clip(line: str, col: int | None) -> tuple[str, int | None]:
     return clipped, new_col
 
 
+def _clip_within(line: str, col: int | None, budget: int) -> tuple[str, int | None]:
+    """`_clip`, with the ` ... ` markers counted against the budget.
+
+    `_clip` spends `EXCERPT_MAX` on *source* and then adds up to ten more
+    columns of markers, which is fine for a row whose prefix is a two-digit line
+    number and is not fine for one prefixed `output:1 | `. Here the budget is
+    the whole row minus its prefix, so it has to include the markers or the
+    bound it promises is not a bound.
+
+    Separate from `_clip` rather than a flag on it, so that not one byte of an
+    existing golden can move.
+    """
+    if len(line) <= budget:
+        return line, col
+    marker = " ... "
+    room = max(budget - len(marker), 1)
+    anchor = max((col or 1) - 1, 0)
+    if anchor < room:
+        # The caret is inside the head window, so only the tail is cut.
+        return line[:room] + marker, col
+    keep = max(budget - 2 * len(marker), 1)
+    start = max(0, anchor - keep // 2)
+    end = min(len(line), start + keep)
+    start = max(0, end - keep)
+    head = marker if start > 0 else ""
+    tail = marker if end < len(line) else ""
+    new_col = None if col is None else col - start + len(head)
+    return head + line[start:end] + tail, new_col
+
+
+_CONTROL_NAMES = {
+    "\t": "tab",
+    "\r": "carriage return",
+    "\x00": "NUL byte",
+    "\x1b": "escape character",
+}
+
+
+def _control_name(char: str) -> str:
+    return _CONTROL_NAMES.get(char) or f"control character U+{ord(char):04X}"
+
+
+def _is_control(char: str) -> bool:
+    """C0 and C1, minus the `\\n` the caller already split on."""
+    return char != "\n" and (ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F)
+
+
+def _fold_controls(line: str) -> str:
+    """Every control character as one space, so one character is one column.
+
+    The same contract this module already states for tabs, applied to the whole
+    C0/C1 range because a gutter excerpt quotes a *runtime* value: a model's
+    output can contain an ANSI escape, and nothing PDL prints may hand one to a
+    terminal.
+    """
+    return "".join(" " if _is_control(ch) else ch for ch in line)
+
+
+def _control_label(line: str, col: int | None, label: str) -> str:
+    """Name a control character sitting under the caret, since it renders blank.
+
+    Silent when the label already names it: `_recognize` labels a YAML tab
+    `tab character`, and "tab character; this is a tab" says it twice.
+    """
+    if col is None or not 1 <= col <= len(line) or not _is_control(line[col - 1]):
+        return label
+    name = _control_name(line[col - 1])
+    if name in label:
+        return label
+    return f"{label}; this is {_with_article(name)}" if label else f"{name} here"
+
+
 def _excerpt(diag: Diagnostic) -> list[str]:
     """Source lines plus caret lines, in source order, at most two annotated."""
     if diag.source is None or not diag.spans:
@@ -258,18 +351,30 @@ def _excerpt(diag: Diagnostic) -> list[str]:
     if not spans:
         return []
 
-    gutter = max(len(str(s.line)) for s in spans)
+    def _label(line: int) -> str:
+        return f"{diag.gutter}:{line}" if diag.gutter else str(line)
+
+    width = max(len(_label(s.line)) for s in spans)
+    budget = WIDTH - width - len(" | ")
     out: list[str] = []
     previous: int | None = None
     for span in spans:
         if previous is not None and span.line > previous + 1:
             out.append("...")
-        text, col = _clip(src[span.line - 1].replace("\t", " "), span.col)
-        out.append(f"{str(span.line).rjust(gutter)} | {text}".rstrip())
+        raw = src[span.line - 1]
+        if diag.gutter:
+            # Named from the *unfolded* line: folding is what makes the
+            # character invisible, so the label has to be decided first.
+            label = _control_label(raw, span.col, span.label)
+            text, col = _clip_within(_fold_controls(raw), span.col, budget)
+        else:
+            label = span.label
+            text, col = _clip(raw.replace("\t", " "), span.col)
+        out.append(f"{_label(span.line).rjust(width)} | {text}".rstrip())
         if col is not None and col >= 1:
-            caret = " " * gutter + " | " + " " * (col - 1) + "^"
-            if span.label:
-                caret += " " + span.label
+            caret = " " * width + " | " + " " * (col - 1) + "^"
+            if label:
+                caret += " " + label
             out.append(caret.rstrip())
         previous = span.line
     return out
@@ -869,6 +974,7 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
     problem_col: int | None,
     origin: str,
     source: str,
+    line_phrase: Callable[[str], str] = lambda phrase: phrase,
 ) -> _Recognized:
     """Map PyYAML's `problem` string onto PDL's vocabulary.
 
@@ -876,6 +982,13 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
     `yaml/scanner.py`), so this is a table rather than a parser. The fallback is
     deliberate: PyYAML's own text is preserved when there is nothing better, so
     an unrecognized failure still gets a file, a line, a column and a caret.
+
+    ``line_phrase`` rewrites every "line N" this table puts in a ``help:``. The
+    same YAML is parsed from two coordinate systems -- a `.pdl` file, and the
+    *output* of a block for `parser: yaml` -- and "line 1" means a different
+    thing in each. It takes the rendered phrase rather than the number so that
+    the one range case ("lines 1-3") goes through it too; the default is the
+    identity, so every existing golden is byte-identical.
     """
     if problem.startswith("found character '\\t'"):
         prefix = lines[problem_line - 1][: (problem_col or 1) - 1] if lines else ""
@@ -884,13 +997,13 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
                 headline="tab character used for indentation",
                 primary_label="tab character",
                 rule="YAML allows only spaces for indentation.",
-                help_text=f"replace the leading tab on line {problem_line} with spaces.",
+                help_text=f"replace the leading tab on {line_phrase(f'line {problem_line}')} with spaces.",
             )
         return _Recognized(
             headline="a tab character cannot start a YAML value",
             primary_label="tab character",
             rule="YAML allows only spaces between tokens.",
-            help_text=f"replace the tab on line {problem_line} with a space.",
+            help_text=f"replace the tab on {line_phrase(f'line {problem_line}')} with a space.",
         )
 
     if problem.startswith("expected <block end>, but found"):
@@ -915,11 +1028,11 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
             # which YAML accepts as a plain scalar beginning with a backslash.
             # That trades a parse error for a silently wrong value, which is
             # worse than the error it replaces.
-            found.help_text = f"close the string on line {index + 1}"
+            found.help_text = f"close the string on {line_phrase(f'line {index + 1}')}"
             return found
         found.primary_label = "unexpected value"
         found.context_label = f"while parsing the {kind} that starts here"
-        span = (
+        span = line_phrase(
             f"lines {context_line}-{problem_line}"
             if context_line and context_line != problem_line
             else f"line {problem_line}"
@@ -932,7 +1045,7 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
             headline="a quoted string is never closed",
             primary_label="the input ends here, with the string still open",
             context_label="this quote is never closed",
-            help_text=f"close the quote opened on line {context_line or problem_line}.",
+            help_text=f"close the quote opened on {line_phrase(f'line {context_line or problem_line}')}.",
         )
 
     if problem == "expected the node content, but found '<stream end>'":
@@ -951,14 +1064,16 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
             tail = " and close the brace" if brace else ""
             recognized.help_text = f"give the key a value{tail}, e.g. {completed}"
         else:
-            recognized.help_text = f"complete the value on line {problem_line}."
+            recognized.help_text = (
+                f"complete the value on {line_phrase(f'line {problem_line}')}."
+            )
         return recognized
 
     if problem.startswith("mapping values are not allowed here"):
         return _Recognized(
             headline="unexpected `:` in a value",
             primary_label="this `:` is read as a mapping key separator",
-            help_text=f"quote the value on line {problem_line}.",
+            help_text=f"quote the value on {line_phrase(f'line {problem_line}')}.",
         )
 
     if problem.startswith("could not find expected ':'"):
@@ -966,12 +1081,12 @@ def _recognize(  # pylint: disable=too-many-return-statements,too-many-branches,
             headline="a mapping key has no `:`",
             primary_label="a `:` is expected before here",
             context_label="this key is never given a value",
-            help_text=f"add `:` after the key on line {context_line or problem_line}.",
+            help_text=f"add `:` after the key on {line_phrase(f'line {context_line or problem_line}')}.",
         )
 
     return _Recognized(
         headline=problem,
-        help_text=f"check the syntax at line {problem_line}.",
+        help_text=f"check the syntax at {line_phrase(f'line {problem_line}')}.",
     )
 
 
@@ -1195,4 +1310,549 @@ def model_defaults_diagnostic(  # pylint: disable=too-many-arguments
                 _defaults_example(pattern, value, origin, reason),
             )
         ],
+    )
+
+
+# --------------------------------------------------------------------------
+# Output parsers: E-PARSER-001 .. E-PARSER-007
+# --------------------------------------------------------------------------
+#
+# A `parser:` reads a *runtime* value -- usually a model's output -- so the text
+# these diagnostics quote is unbounded, may contain control characters, and may
+# not be text at all. Every line of it is therefore printed inside an
+# `output:N | ` gutter row, never as a bare `N | ` row that would read as a line
+# of the `.pdl` file, and the note that says so is emitted exactly when a row
+# was printed. E-PARSER-006 is the one entry whose evidence really is a file
+# line, and it is the one entry with a bare gutter.
+
+_OUTPUT_GUTTER = "output"
+_REGEX_GUTTER = "regex"
+
+_OUTPUT_CAVEAT = "`output:N` counts lines of the block's output, not of the PDL file."
+_REGEX_CAVEAT = "`regex:N` counts lines of the pattern, not of the PDL file."
+_EMPTY_OUTPUT = "the block's output was empty."
+
+_PARSER_IS_TEXT = "A `parser:` reads the text a block produced."
+
+_VALUE_MAX = 40
+"""How much of a non-text value is shown inline. Beyond this the sentence names
+the type alone: the whole point of E-PARSER-006's correction is that a runtime
+value must not be interpolated raw and untruncated into a message."""
+
+_PATTERN_MAX = 60
+"""How long a `regex:` may be before the prose stops quoting it. The pattern is
+the user's own text and is short in every realistic case, but it is still text
+from outside and still needs a wall."""
+
+
+_PDL_TYPES: tuple[tuple[type | tuple[type, ...], str], ...] = (
+    # Ordered, and `bool` before `int` because it is a subclass of it.
+    (bool, "boolean"),
+    (int, "integer"),
+    (float, "number"),
+    (str, "string"),
+    ((list, tuple), "array"),
+    (dict, "object"),
+)
+
+
+def _pdl_type(value: Any) -> str:
+    """The name `spec:` would use for this value's type, or `""` if it has none.
+
+    PDL's own vocabulary (`pdl_ast.BasePdlType`), not Python's: a user who wrote
+    `parser: json` has never met `int` and has met `integer`.
+    """
+    if value is None:
+        return "null"
+    for kinds, name in _PDL_TYPES:
+        if isinstance(value, kinds):
+            return name
+    return ""
+
+
+def _with_article(name: str) -> str:
+    return ("an " if name[:1] in "aeiou" else "a ") + name
+
+
+def _inline_value(value: Any) -> str:
+    """`json.dumps(value)` when it is short enough to read, else `""`."""
+    try:
+        dumped = json.dumps(value)
+    except (TypeError, ValueError):
+        return ""
+    return dumped if len(dumped) <= _VALUE_MAX else ""
+
+
+def _parser_diagnostic(  # pylint: disable=too-many-arguments
+    code: str,
+    *,
+    headline: str,
+    rule: str,
+    notes: Sequence[str] = (),
+    suggestion: Suggestion | None = None,
+    gutter: str = "",
+    gutter_note: str = "",
+    empty_note: str = "",
+    source: str | None = None,
+    spans: Sequence[Span] = (),
+) -> Diagnostic:
+    """Assemble one entry of the series. One shape, seven callers.
+
+    The gutter caveat is appended only when a gutter row is really going to be
+    printed -- the source is non-empty and at least one span lands inside it --
+    so a diagnostic that degrades to no excerpt does not explain a gutter the
+    reader cannot see. `render` drops out-of-range spans silently, which is why
+    the test is made here rather than assumed.
+    """
+    body = list(notes)
+    shown: Sequence[Span] = ()
+    if source:
+        height = len(source.split("\n"))
+        shown = [s for s in spans if 1 <= s.line <= height]
+    if source == "" and empty_note:
+        body.append(empty_note)
+    if shown and gutter_note:
+        body.append(gutter_note)
+    return Diagnostic(
+        code=code,
+        message=headline,
+        # No `file` and no `block_path`: the header prefix and the `  in <path>`
+        # line are added by `located_message` at print time, from the location
+        # threaded into `parse_result`. Setting them here would print each of
+        # them twice.
+        spans=list(shown),
+        source=source,
+        gutter=gutter,
+        notes=[Note("rule", rule)] + [Note("note", n) for n in body],
+        suggestions=[suggestion] if suggestion is not None else [],
+    )
+
+
+def parser_not_text_diagnostic(*, label: str, remove: str, value: Any) -> Diagnostic:
+    """E-PARSER-001. A `parser:` applied to a value that is already structured.
+
+    Not a parse failure, and saying so is the whole of the fix: today this
+    branch reports `TypeError("'int' object is not subscriptable")`, which is
+    `json_repair` subscripting a value that is not a string, described in
+    Python's vocabulary and attributed to JSON.
+    """
+    name = _pdl_type(value)
+    if not name:
+        produced = "a value that is not text"
+        described = "not text"
+        already = ""
+    elif name == "null":
+        produced = "`null`"
+        described = "`null`, which is not text"
+        already = "`null`"
+    else:
+        article = _with_article(name)
+        produced = article
+        inline = _inline_value(value)
+        described = (
+            f"the {name} `{inline}`, which is not text"
+            if inline
+            else f"{article}, which is not text"
+        )
+        already = article
+
+    tail = f"; the block's result is already {already}." if already else "."
+    return _parser_diagnostic(
+        "E-PARSER-001",
+        headline=f"{label} needs text, but this block produced {produced}",
+        rule=(
+            f"{_PARSER_IS_TEXT} This block's result is {described}, so there is "
+            "nothing to parse."
+        ),
+        suggestion=Suggestion(f"{remove}{tail}"),
+    )
+
+
+def parser_json_diagnostic(
+    *, text: str | None, detail: str, line: int | None, col: int | None
+) -> Diagnostic:
+    """E-PARSER-001, the branch where the output *is* text and JSON rejected it.
+
+    Unreachable through `json_repair`, which repairs rather than raises (see
+    INVENTORY 7.10) -- kept because the repairing parser is a dependency choice
+    and this is what the diagnostic must be if it ever raises.
+    """
+    spans = (
+        [Span(line=line, col=col, label=detail, primary=True)]
+        if line is not None
+        else []
+    )
+    return _parser_diagnostic(
+        "E-PARSER-001",
+        headline="`parser: json` could not parse the block's output",
+        rule="`parser: json` reads the block's output as a single JSON value.",
+        notes=[] if spans else [f"the JSON reader reported: {detail}."],
+        suggestion=Suggestion(
+            "make the output a complete JSON value, or remove the parser to "
+            "keep the output as text."
+        ),
+        gutter=_OUTPUT_GUTTER,
+        gutter_note=_OUTPUT_CAVEAT,
+        empty_note=_EMPTY_OUTPUT,
+        source=text,
+        spans=spans,
+    )
+
+
+def parser_jsonl_diagnostic(
+    *, text: str, line: int, col: int | None, detail: str, whole_is_json: bool
+) -> Diagnostic:
+    """E-PARSER-002. One line of the output is not a complete JSON value.
+
+    `line` is the index of the failing line in the block's output, which the
+    loop already has and today throws away: every `JSONDecodeError` here reads
+    `line 1` because each line is loaded as its own document, so the position
+    the user sees is stated confidently and is wrong for every line but the
+    first. `col` is `exc.colno`, which *is* correct within that line.
+
+    ``detail`` is `exc.msg` verbatim. That is the JSON parser's vocabulary about
+    JSON -- the format the user asked for -- not an internal leak, and it is
+    reproduced without transformation so there is no case rule to get wrong.
+    """
+    suggestion = (
+        "this output is one JSON document, not one per line; use `parser: json`."
+        if whole_is_json
+        else "make every non-empty line a complete JSON value, or remove the "
+        "parser to keep the output as text."
+    )
+    return _parser_diagnostic(
+        "E-PARSER-002",
+        headline=(f"`parser: jsonl` could not parse line {line} of the block's output"),
+        rule=(
+            "`parser: jsonl` reads the block's output as one JSON value per "
+            "line; every non-empty line must be a complete JSON value on its own."
+        ),
+        suggestion=Suggestion(suggestion),
+        gutter=_OUTPUT_GUTTER,
+        gutter_note=_OUTPUT_CAVEAT,
+        empty_note=_EMPTY_OUTPUT,
+        source=text,
+        spans=[Span(line=line, col=col, label=detail, primary=True)],
+    )
+
+
+_PARSER_YAML_RULE = "`parser: yaml` reads the block's output as a single YAML document."
+
+
+def parser_yaml_diagnostic(exc: yaml.YAMLError, text: str) -> Diagnostic:
+    """E-PARSER-003. PyYAML's marks, read directly, in the output's coordinates.
+
+    Today's message is `repr(exc)`, which prints the two `Mark` objects holding
+    the position as memory addresses that differ on every run. `str(exc)` would
+    recover the position, but renders it as ``in "<unicode string>", line 1,
+    column 6`` -- a file that does not exist. So the marks are read the way
+    `yaml_diagnostic` already reads them for `.pdl` files, and rendered in a
+    gutter that says whose line 1 it is.
+
+    `_recognize` is shared with the file-level YAML diagnostics rather than
+    duplicated, with `line_phrase` rewriting its "line N" into "line N of the
+    block's output" -- one table of YAML wordings, two coordinate systems.
+    """
+    if not isinstance(exc, yaml.MarkedYAMLError) or exc.problem_mark is None:
+        detail = str(getattr(exc, "problem", "") or exc).strip().replace("\n", " ")
+        return _parser_diagnostic(
+            "E-PARSER-003",
+            headline="`parser: yaml` could not parse the block's output",
+            rule=_PARSER_YAML_RULE,
+            notes=[f"the YAML reader reported: {detail}."],
+            empty_note=_EMPTY_OUTPUT,
+            source=text,
+        )
+
+    problem_line = exc.problem_mark.line + 1
+    problem_col = exc.problem_mark.column + 1
+    context_line = exc.context_mark.line + 1 if exc.context_mark is not None else None
+    context_col = exc.context_mark.column + 1 if exc.context_mark is not None else None
+    recognized = _recognize(
+        exc.problem or "",
+        exc.context,
+        text.split("\n"),
+        context_line,
+        problem_line,
+        problem_col,
+        ORIGIN_PROGRAM,
+        text,
+        line_phrase=lambda phrase: f"{phrase} of the block's output",
+    )
+
+    spans = [
+        Span(
+            line=problem_line,
+            col=problem_col,
+            # The recognized branches carry a short label and put their own
+            # sentence in the headline; the generic arm has no label, and there
+            # PyYAML's `problem` string is the most precise thing anyone has.
+            label=recognized.primary_label or recognized.headline,
+            primary=True,
+        )
+    ]
+    if context_line is not None and recognized.context_label:
+        spans.append(
+            Span(
+                line=recognized.context_line or context_line,
+                col=recognized.context_col or context_col,
+                label=recognized.context_label,
+            )
+        )
+
+    rule = _PARSER_YAML_RULE
+    if recognized.rule:
+        rule += " " + recognized.rule
+    return _parser_diagnostic(
+        "E-PARSER-003",
+        headline="`parser: yaml` could not parse the block's output",
+        rule=rule,
+        suggestion=(
+            Suggestion(recognized.help_text, recognized.help_replacement)
+            if recognized.help_text
+            else None
+        ),
+        gutter=_OUTPUT_GUTTER,
+        gutter_note=_OUTPUT_CAVEAT,
+        empty_note=_EMPTY_OUTPUT,
+        source=text,
+        spans=spans,
+    )
+
+
+_CSV_LIMIT_MARKER = "field larger than field limit"
+
+_PARSER_CSV_RULE = "`parser: csv` reads the block's output as comma-separated rows."
+
+
+def parser_csv_diagnostic(
+    *, text: str, detail: str, limit: int, row: int
+) -> Diagnostic:
+    """E-PARSER-004. Almost always a size limit rather than a syntax error.
+
+    Malformed CSV does not raise at all -- `csv.reader` accepts an unbalanced
+    quote, ragged rows and embedded NULs -- so the only text that reaches this
+    handler is text over `csv.field_size_limit()`. Calling that "ill-formed
+    CSV", as the message does today, misdiagnoses a resource limit as a syntax
+    error.
+
+    No caret: a `csv.Error` carries a row (`reader.line_num`) and no column, and
+    a caret at column 1 would be a coordinate PDL invented.
+    """
+    if _CSV_LIMIT_MARKER in detail:
+        headline = f"`parser: csv` cannot read a field longer than {limit} characters"
+        rule = (
+            f"{_PARSER_CSV_RULE} Python's `csv` module refuses any single field "
+            f"longer than {limit} characters. This is a size limit, not a syntax "
+            "error."
+        )
+        # Stated as a fact only when it *is* one. A field can also run over the
+        # limit inside a well-formed multi-row file, and there the honest note
+        # is which row it was.
+        if "," not in text and "\n" not in text and "\r" not in text:
+            note = (
+                f"the block's output is {len(text)} characters with no `,` and "
+                "no line break, so it is a single field."
+            )
+            line = 1
+        else:
+            note = f"the failure is in row {row} of the block's output."
+            line = max(row, 1)
+        suggestion = Suggestion("if this output is not CSV, remove `parser: csv`.")
+    else:
+        headline = "`parser: csv` could not read the block's output"
+        rule = _PARSER_CSV_RULE
+        note = f"the `csv` reader reported: {detail}."
+        line = max(row, 1)
+        suggestion = Suggestion(
+            "check the block's output, or remove `parser: csv` if it is not CSV."
+        )
+
+    return _parser_diagnostic(
+        "E-PARSER-004",
+        headline=headline,
+        rule=rule,
+        notes=[note],
+        suggestion=suggestion,
+        gutter=_OUTPUT_GUTTER,
+        gutter_note=_OUTPUT_CAVEAT,
+        empty_note=_EMPTY_OUTPUT,
+        source=text,
+        spans=[Span(line=line, primary=True)],
+    )
+
+
+_UNCLOSED_GROUP = ("missing )", "unbalanced parenthesis")
+
+
+def parser_regex_diagnostic(
+    *, pattern: str, detail: str, pos: int | None, line: int | None, col: int | None
+) -> Diagnostic:
+    """E-PARSER-005. The pattern is shown, in the pattern's own coordinates.
+
+    Not a caret on the `.pdl` line: the mark recorded for `["parser","regex"]`
+    is the *key*'s start and the *value*'s end, so PDL knows where `regex`
+    begins and not where `(` begins inside the quoted scalar. Locating the
+    pattern's character 0 in the file would mean re-scanning the line through
+    YAML's quoting, which is a heuristic. `re`'s own coordinates are exact, so
+    they are the ones shown, in a gutter that says which text they index.
+
+    The single quotes in the `missing )` suggestion are the point: `\\(` is not a
+    valid escape in a double-quoted YAML scalar, so ``regex: "\\("`` would trade
+    a regex error for a YAML error. In a single-quoted scalar the backslash is
+    literal and reaches `re` intact. The clause is conditional because `\\(`
+    matches a literal `(` and nothing else, which may not be what the user meant.
+    """
+    if any(marker in detail for marker in _UNCLOSED_GROUP):
+        suggestion = Suggestion(
+            "close the group, or write `regex: '\\('` to match a literal `(`."
+        )
+    elif pos is not None:
+        suggestion = Suggestion(f"check the pattern at position {pos}.")
+    else:
+        suggestion = Suggestion("check the pattern.")
+    return _parser_diagnostic(
+        "E-PARSER-005",
+        headline="`regex:` is not a valid regular expression",
+        rule=(
+            "The `regex:` of a parser is a Python regular expression. It is "
+            "compiled before the block's output is read, so the fault is in the "
+            "pattern, not in the output."
+        ),
+        suggestion=suggestion,
+        gutter=_REGEX_GUTTER,
+        gutter_note=_REGEX_CAVEAT,
+        source=pattern,
+        spans=(
+            [Span(line=line, col=col, label=detail, primary=True)]
+            if line is not None
+            else []
+        ),
+    )
+
+
+def parser_regex_match_diagnostic(*, detail: str) -> Diagnostic:
+    """E-PARSER-005, for a pattern that compiles and then fails to run.
+
+    No reproducer in the corpus and none expected: with the pattern compiled up
+    front and the input known to be text, what is left is `RecursionError` on a
+    deeply nested pattern. It exists so that the one path in `parse_result` that
+    could still reach the user as a traceback does not.
+    """
+    return _parser_diagnostic(
+        "E-PARSER-005",
+        headline="`regex:` could not be matched against the block's output",
+        rule=(
+            "The `regex:` of a parser is a Python regular expression. This one "
+            "is valid, but matching it against the block's output failed."
+        ),
+        notes=[f"the `re` module reported: {detail}."],
+        suggestion=Suggestion("simplify the pattern."),
+    )
+
+
+def _group_rule(name: str, pattern: str, groups: Sequence[str]) -> str:
+    """Why no output could have supplied the group, naming what the pattern has."""
+    quoted = (
+        f"The pattern `{pattern}` defines"
+        if len(pattern) <= _PATTERN_MAX
+        else ("The pattern defines")
+    )
+    if not groups:
+        defines = "no named groups,"
+    elif len(groups) == 1:
+        defines = f"one group, `{groups[0]}`,"
+    else:
+        listed = ", ".join(f"`{g}`" for g in groups[:-1]) + f" and `{groups[-1]}`"
+        defines = f"the groups {listed},"
+    return (
+        "For a `regex:` parser, each key of `spec:` names a capture group to "
+        f"take from the match. {quoted} {defines} so no output could have "
+        f"supplied `{name}`."
+    )
+
+
+def _group_suggestion(name: str, groups: Sequence[str]) -> Suggestion:
+    """Four branches, chosen by what the pattern defines.
+
+    The near miss is `difflib` over an *ordered* list, never a set, so it cannot
+    move with `PYTHONHASHSEED`. It does not fire for `second` against `first`,
+    which scores well under the cutoff -- the one-group branch is what the
+    corpus reproducer takes.
+    """
+    if not groups:
+        return Suggestion(
+            f"name the group in the pattern, e.g. `(?P<{name}>...)`, or remove "
+            "`spec:` to get the groups as a list."
+        )
+    if len(groups) == 1:
+        return Suggestion(
+            f"rename the key to `{groups[0]}`, the only group this pattern defines."
+        )
+    near = difflib.get_close_matches(name, list(groups), n=1, cutoff=0.7)
+    if near:
+        return Suggestion(f"did you mean `{near[0]}`?")
+    listed = ", ".join(f"`{g}`" for g in groups[:5])
+    return Suggestion(f"use one of the groups the pattern defines: {listed}.")
+
+
+def parser_group_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    name: str,
+    pattern: str,
+    groups: Sequence[str],
+    source: str | None,
+    line: int | None,
+    col: int | None,
+) -> Diagnostic:
+    """E-PARSER-006. A static fault, so the evidence is the file and not the output.
+
+    Today's message says the group was not found `in hello` -- in the matched
+    *text*, which had nothing to do with it -- and never names the group the
+    pattern does define, which is the whole of the fix. Both come from
+    `m.re.groupindex`, a dict on the compiled pattern that is in scope at the
+    raise site.
+
+    The one entry in the series with a file excerpt and a bare `N |` gutter, and
+    the only one that has earned it: the offending construct really is at
+    `parser.spec.<name>` in the user's file, and nothing about the block's
+    output is relevant.
+    """
+    return _parser_diagnostic(
+        "E-PARSER-006",
+        headline=f"the `regex:` pattern has no group named `{name}`",
+        rule=_group_rule(name, pattern, groups),
+        suggestion=_group_suggestion(name, groups),
+        source=source,
+        spans=[Span(line=line, col=col, primary=True)] if line is not None else [],
+    )
+
+
+def parser_not_implemented_diagnostic() -> Diagnostic:
+    """E-PARSER-007. `parser: {pdl: ...}` reaches `assert False, "TODO"`.
+
+    `PdlParser` is a declared branch of `ParserType`, so the program validates
+    and runs, and then the interpreter aborts on an assertion that is neither a
+    `PDLRuntimeError` nor a `PDLParseError` and so escapes `generate`'s handlers
+    as a raw traceback. Under `python -O` the assertion vanishes and `result` is
+    returned unbound instead, which is worse.
+
+    The diagnostic says the parser is not implemented and nothing more. Nothing
+    here may invent behaviour for the form: what it would do if it were
+    implemented is not knowable from a `TODO`.
+    """
+    return _parser_diagnostic(
+        "E-PARSER-007",
+        headline="`parser:` with a `pdl:` sub-program is not implemented",
+        rule=(
+            "A `parser:` may be `json`, `jsonl`, `yaml`, `csv`, or a `regex:` "
+            "parser. The `pdl:` form is part of PDL's schema, so a program using "
+            "it loads, but the interpreter has no implementation for it and "
+            "cannot run this block."
+        ),
+        notes=["this is a gap in PDL itself, not a mistake in this program."],
+        suggestion=Suggestion(
+            "use `json`, `jsonl`, `yaml`, `csv` or a `regex:` parser, or parse "
+            "the output in a `code:` block."
+        ),
     )

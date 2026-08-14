@@ -4,6 +4,7 @@ import pytest
 
 from pdl.pdl import exec_file, exec_str
 from pdl.pdl_interpreter import PDLRuntimeError
+from pdl.pdl_location_utils import located_message
 
 
 def test_jinja_undefined():
@@ -42,6 +43,18 @@ ${ {}[ }
     )
 
 
+# The two parser tests below assert the *located* message rather than
+# `exc.value.message`, which is what they used to assert. Phase-3 item 9 threads
+# a location into `parse_result`, and the location is half of what changed: the
+# body travels on the exception and `generate` renders the `<file>:<line> - `
+# header and the `  in <path>` line through `located_message` at print time. An
+# assertion on the body alone would leave the part these tests exist to pin --
+# that a parser failure now has a location at all -- unchecked.
+#
+# `<program>` rather than a filename because `exec_str` has no file; see the
+# same spelling in `test_type_result` below.
+
+
 def test_parser_jsonl():
     prog_str = """
 text: "{ x: 1 + 1 }"
@@ -49,9 +62,19 @@ parser: jsonl
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
-    assert (
-        str(exc.value.message)
-        == "Attempted to parse ill-formed JSON: JSONDecodeError('Expecting property name enclosed in double quotes: line 1 column 3 (char 2)')"
+    assert located_message(exc.value.loc, exc.value.message) == (
+        "<program>:3 - `parser: jsonl` could not parse line 1 of the block's output\n"
+        "  in parser\n"
+        "\n"
+        "output:1 | { x: 1 + 1 }\n"
+        "         |   ^ Expecting property name enclosed in double quotes\n"
+        "\n"
+        "  `parser: jsonl` reads the block's output as one JSON value per line; every\n"
+        "  non-empty line must be a complete JSON value on its own.\n"
+        "\n"
+        "  note: `output:N` counts lines of the block's output, not of the PDL file.\n"
+        "  help: make every non-empty line a complete JSON value, or remove the parser\n"
+        "        to keep the output as text."
     )
 
 
@@ -63,12 +86,26 @@ parser:
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
-    assert (
-        str(exc.value.message)
-        == "Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')"
-    ) or (
-        str(exc.value.message)
-        == "Fail to parse with regex (: PatternError('missing ), unterminated subpattern at position 0')"
+    # `:4`, not `:3`: the fault is entirely in the pattern, so the location
+    # descends to `parser.regex` rather than stopping at the `parser:` key.
+    #
+    # The version-dependent alternative this assertion used to carry is gone
+    # with the `repr(exc)` that needed it: Python 3.13 renamed `re.error` to
+    # `re.PatternError`, which changed the class name inside the old message.
+    # `exc.msg` is the same string on both.
+    assert located_message(exc.value.loc, exc.value.message) == (
+        "<program>:4 - `regex:` is not a valid regular expression\n"
+        "  in parser.regex\n"
+        "\n"
+        "regex:1 | (\n"
+        "        | ^ missing ), unterminated subpattern\n"
+        "\n"
+        "  The `regex:` of a parser is a Python regular expression. It is compiled\n"
+        "  before the block's output is read, so the fault is in the pattern, not in\n"
+        "  the output.\n"
+        "\n"
+        "  note: `regex:N` counts lines of the pattern, not of the PDL file.\n"
+        "  help: close the group, or write `regex: '\\('` to match a literal `(`."
     )
 
 

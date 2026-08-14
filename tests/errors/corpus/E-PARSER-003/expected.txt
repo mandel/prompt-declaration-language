@@ -4,4 +4,13 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Attempted to parse ill-formed YAML: ParserError('while parsing a flow sequence', <yaml.error.Mark object at 0xADDR>, "expected ',' or ']', but got '<stream end>'", <yaml.error.Mark object at 0xADDR>)
+prog.pdl:2 - `parser: yaml` could not parse the block's output
+  in parser
+
+output:1 | [1, 2
+         |      ^ expected ',' or ']', but got '<stream end>'
+
+  `parser: yaml` reads the block's output as a single YAML document.
+
+  note: `output:N` counts lines of the block's output, not of the PDL file.
+  help: check the syntax at line 1 of the block's output.

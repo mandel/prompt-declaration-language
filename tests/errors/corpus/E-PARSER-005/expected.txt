@@ -4,4 +4,15 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')
+prog.pdl:3 - `regex:` is not a valid regular expression
+  in parser.regex
+
+regex:1 | (
+        | ^ missing ), unterminated subpattern
+
+  The `regex:` of a parser is a Python regular expression. It is compiled
+  before the block's output is read, so the fault is in the pattern, not in
+  the output.
+
+  note: `regex:N` counts lines of the pattern, not of the PDL file.
+  help: close the group, or write `regex: '\('` to match a literal `(`.

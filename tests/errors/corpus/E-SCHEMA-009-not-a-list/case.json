@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-009-not-a-list",
+  "title": "a list in a union with no array member",
+  "severity": "S2",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "The third shape message, and the only one of the three that states no expectation at all. It comes from the `found is None` branch of the union arm of `analyze_errors`: when the data is a list, the arm scans the union for an alternative `is_array` accepts, and `is_array` reads a literal `type: array` and therefore never sees an array that arrives behind a `$ref`. `fallback:` is a `$ref` to `OptionalBlockType`, which is `anyOf[{$ref: BlockType}, {type: null}]`; the two-member nullable unwrap in the union arm follows it to `BlockType`, and all 24 of `BlockType`'s alternatives are `$ref`s -- zero of them a bare array -- so a list there produces `should not be a list`. The reproducer is the mistake the language invites: `text:` takes a sequence of blocks, so a user writes `fallback:` the same way. What the golden demonstrates: PDL says only what the value may *not* be. It does not say a `fallback:` takes one block, it does not say that a sequence of recovery steps is spelled `fallback: {text: [...]}` -- which runs and exits 0, checked, so the suggestion PDL is withholding is a known one -- and the value it does show is `[{'text': 'recovering'}]` -- a Python repr of the parsed YAML rather than the user's two lines. Why 1 and not 2: the found value is shown and the expectation is not, which is the dimension's definition of one of the two. Location 1: `prog.pdl:2` is the mark of the `fallback` key while the offending list begins on line 3, so the header names a line that reads `fallback:` and looks correct; `_walk` in `pdl_location_utils` records a mapping entry at its key by design and `get_loc_string` renders only the start line. Hygiene 1 for the Python list repr. Not to be confused with the crash in `E-SCHEMA-009-items-crash`: that one is the array arm reaching `schema[\"items\"]` after `is_array` said yes, this one is the union arm never finding an array to descend into."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-009-object",
+  "title": "a list where the schema wants a mapping",
+  "severity": "S2",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 1,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 1
+  },
+  "notes": "The object arm of `analyze_errors`, `not isinstance(data, dict)` branch: `located_message(loc, str(data) + \" should be an object\")`. `defs:` renders as `{\"type\": \"object\", \"additionalProperties\": {\"$ref\": \"#/$defs/BlockType\"}}`, and the reproducer writes it as a list of one-key mappings -- the shape a user reaches for when they read `defs:` as \"a list of definitions\". The corrected program, `defs: {greeting: {text: hello}}`, runs and exits 0; PDL knows that and says none of it. What the golden demonstrates, beyond the missing expectation and the missing suggestion the sibling entry shows: two defects this reproducer adds. (1) The value is `str(data)` on a *structure*, so the user is shown `[{'greeting': 'hi'}]` -- a Python repr of the parsed YAML, with Python's quoting and Python's brackets, not the three words they wrote. That is a raw internal dump and holds Hygiene at 1. (2) `object` is JSON-Schema's word, taken straight from the schema's `type`, and it is not the word the PDL documentation uses for a `defs:` mapping; a reader looking for `object` in the docs will not find this rule. That is recorded rather than scored: What stays in the same band as its two siblings, because band 1 is for implementation vocabulary of the `<class 'str'>` kind and `an object` is a leaked noun, not a `repr`. Location 1, not 2: `prog.pdl:2` is the mark of the `defs` key, and the offending value begins on line 3 -- `_walk` in `pdl_location_utils` records a mapping entry at its key, pairing it with the value's end, and `get_loc_string` renders only the start line, so the header names a line that reads `defs:` and looks perfectly correct. Coarse rather than wrong, hence 1 rather than 0."
+}

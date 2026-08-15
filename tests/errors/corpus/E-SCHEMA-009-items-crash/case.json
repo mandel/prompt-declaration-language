@@ -1,0 +1,15 @@
+{
+  "id": "E-SCHEMA-009-items-crash",
+  "title": "the schema error analyzer crashes with KeyError: 'items'",
+  "severity": "S0",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_traceback_expected": true
+  },
+  "notes": "PDL crashes while reporting the user's error, which is the one thing decision 5.8 forbids, and it crashes inside the error reporter -- so nothing is left to fall back on and what reaches the user instead is the raw pydantic `ValidationError` the reporter was called to translate. The mechanism is two lines of `analyze_errors` apart: the array arm decides it is looking at an array with `is_array`, which tests only `schema[\"type\"] == \"array\"`, and then reads `schema[\"items\"]` unconditionally for every element. JSON Schema does not require the two to travel together. `RetryConfiguration.jitter` is `ExpressionFloatOrFloatFloat`, one alternative of which is a fixed-length pair and renders as `{\"type\": \"array\", \"prefixItems\": [...], \"minItems\": 2, \"maxItems\": 2}` -- `type: array` and no `items` key at all. The union arm selects that alternative as `found`, because it is the only member `is_array` accepts, hands it to the array arm, and the subscript raises. Any `prefixItems` schema reached with a list of the wrong length or the wrong element types does the same: `jitter: [1, 2]` is a valid program, `jitter: [1, 2, 3]` is not, and that difference is the whole of the reproducer. What the golden demonstrates, checked line by line: exit 1, stdout empty, and 76 lines of stderr holding two chained tracebacks and 18 frames, ending in `KeyError: 'items'` under a caret on `schema[\"items\"]`. `prog.pdl` is named nowhere -- not in a header, not in a frame -- so Location is 0 outright; the nearest thing to a location is pydantic's `text.retry.RetryConfiguration.jitter`, a model path with a class name in it. What is 0 by the dimension's own wording, an internal exception repr, and twice over: the chained context is a `ValidationError` and the exception that actually killed the process is a `KeyError` about PDL's own schema, which says nothing about the user's program. Why is 2 rather than 0 for the same reason `E-LINT-003` scores 2: the leaked pydantic block does show the offending value (`input_value=[1, 2, 3]`) and does contain the real rule (`Tuple should have at most 2 items after validation, not 3`) -- raw, in pydantic vocabulary, and buried among five mutually contradictory alternatives the reader has to choose between. The exit code is 1, which is correct, but by accident: it is the shell's code for an unhandled exception, not a decision PDL took. Not introduced by the Phase-3 discriminator work -- it is present at `f0d91a1` and at this HEAD, and it appeared 30 times in the 10 920-mutation sweep recorded in INVENTORY.md 7.11. `hygiene_traceback_expected` is set, so `test_no_traceback` xfails; whoever guards the subscript must delete the flag in that commit or the suite fails on XPASS."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-009",
+  "title": "a scalar where the schema wants a list",
+  "severity": "S2",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "The array arm of `analyze_errors`, `not isinstance(data, list)` branch: `located_message(loc, str(data) + \" should be a list\")`. `contribute:` renders as `{\"type\": \"array\", \"items\": {\"$ref\": \"#/$defs/ContributeElement\"}}`, so writing the single target a user means -- `contribute: result` rather than `contribute: [result]` -- reaches it. What the golden demonstrates: the whole diagnostic is the value pasted in front of a four-word shape assertion. Three defects, none of them the location. (1) The value is `str(data)`, undelimited, so the message reads `result should be a list` and the offending value is indistinguishable from prose -- a reader cannot tell whether PDL is complaining about the word `result` or about something called result. (2) Nothing says what a list of *what* was expected; `ContributeTarget`'s four values (`result`, `context`, `stdout`, `stderr`) are one `$ref` below the `items` this arm was about to descend into, and `scalar_value_diagnostic` already reads exactly that list out for a scalar union one level down. (3) No suggestion, though the edit is mechanical and verified: `contribute: [result]` runs and exits 0. Location 2 rather than 3: `prog.pdl:2` plus `  in contribute` and no column, excerpt or caret. Note that the line comes from the mark of the *key*, not of the value -- `_walk` in `pdl_location_utils` records a mapping entry at its key deliberately -- so the two coincide here only because the entry is one line; see `E-SCHEMA-009-object`, whose golden points at the key's line while the offending value begins on the next one. Hygiene 3 and not 1: this reproducer's value is a bare string, so no Python `repr` reaches the user. Give the same branch a non-scalar and one does; that is the sibling entry."
+}

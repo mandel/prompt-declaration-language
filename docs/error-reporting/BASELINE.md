@@ -6,24 +6,24 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **55 corpus entries**, covering 54 of the **69** error IDs in the taxonomy.
-- **493 / 825** rubric points (**60%**).
-- **2 entries leak a Python traceback** to the user.
+- **59 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
+- **515 / 885** rubric points (**58%**).
+- **3 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
-**15 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
+**14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
-> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-SCHEMA-009`, `E-TYPE-004`, `E-TYPE-005`
+> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-TYPE-004`, `E-TYPE-005`
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 85 | 165 | 1.55 |
-| What | 109 | 165 | 1.98 |
-| Why | 107 | 165 | 1.95 |
-| Fix | 58 | 165 | 1.05 |
-| Hygiene | 134 | 165 | 2.44 |
+| Location | 89 | 177 | 1.51 |
+| What | 115 | 177 | 1.95 |
+| Why | 114 | 177 | 1.93 |
+| Fix | 58 | 177 | 0.98 |
+| Hygiene | 139 | 177 | 2.36 |
 
 ## By error class
 
@@ -37,7 +37,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 7 | 92 | 105 | 13.1 |
 | E-RUNTIME | 7 | 54 | 105 | 7.7 |
-| E-SCHEMA | 9 | 76 | 135 | 8.4 |
+| E-SCHEMA | 13 | 98 | 195 | 7.5 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
 ## Every entry, worst first
@@ -48,12 +48,15 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
+| `E-SCHEMA-009-items-crash` | S0 | 0 | 0 | 2 | 0 | 0 | **2** | `█░░░░░░░░░` | TB | the schema error analyzer crashes with KeyError: 'items' |
 | `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
 | `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
 | `E-RUNTIME-011` | S0 | 1 | 2 | 2 | 0 | 0 | **5** | `███░░░░░░░` | TB | Retry succeeds on the second attempt and prints a traceback anyway (exit 0) |
 | `E-SCHEMA-008` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute value fails its union |
+| `E-SCHEMA-009-not-a-list` | S2 | 1 | 2 | 1 | 0 | 1 | **5** | `███░░░░░░░` |  | a list in a union with no array member |
 | `E-SCHEMA-010` | S1 | 2 | 2 | 1 | 0 | 0 | **5** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
+| `E-SCHEMA-009-object` | S2 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | a list where the schema wants a mapping |
 | `E-TYPE-003` | S2 | 1 | 1 | 1 | 1 | 2 | **6** | `████░░░░░░` |  | missing function argument |
 | `E-CLI-005` | S0 | 2 | 1 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | python -m pdl.pdl reports success on failure |
 | `E-EXPR-001` | S2 | 2 | 1 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | undefined variable in an expression |
@@ -75,6 +78,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-MODEL-001` | S0 | 2 | 1 | 2 | 1 | 3 | **9** | `██████░░░░` |  | unrecognised model provider |
 | `E-SCHEMA-003` | S3 | 2 | 2 | 1 | 1 | 3 | **9** | `██████░░░░` |  | missing required field |
+| `E-SCHEMA-009` | S2 | 2 | 2 | 2 | 0 | 3 | **9** | `██████░░░░` |  | a scalar where the schema wants a list |
 | `E-CODE-001` | S1 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Python exception inside a code block |
 | `E-CODE-006` | S2 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Exception raised inside a function another `code:` block defined |
 | `E-MODEL-002` | S2 | 2 | 2 | 2 | 1 | 3 | **10** | `███████░░░` |  | model endpoint unreachable |
@@ -251,6 +255,18 @@ Fixed (spec docs/error-reporting/specs/E-SCHEMA-UNION.md, decision 5.3). Was a 7
 
 **`E-SCHEMA-008`** — contribute value fails its union  
 Same union-wall shape on a much smaller union, so the fix must generalise. Location 1 -> 2 (phase-3 item 7): `  in contribute[0]` names the flow-sequence item, whose own mark is on line 3.
+
+**`E-SCHEMA-009`** — a scalar where the schema wants a list  
+The array arm of `analyze_errors`, `not isinstance(data, list)` branch: `located_message(loc, str(data) + " should be a list")`. `contribute:` renders as `{"type": "array", "items": {"$ref": "#/$defs/ContributeElement"}}`, so writing the single target a user means -- `contribute: result` rather than `contribute: [result]` -- reaches it. What the golden demonstrates: the whole diagnostic is the value pasted in front of a four-word shape assertion. Three defects, none of them the location. (1) The value is `str(data)`, undelimited, so the message reads `result should be a list` and the offending value is indistinguishable from prose -- a reader cannot tell whether PDL is complaining about the word `result` or about something called result. (2) Nothing says what a list of *what* was expected; `ContributeTarget`'s four values (`result`, `context`, `stdout`, `stderr`) are one `$ref` below the `items` this arm was about to descend into, and `scalar_value_diagnostic` already reads exactly that list out for a scalar union one level down. (3) No suggestion, though the edit is mechanical and verified: `contribute: [result]` runs and exits 0. Location 2 rather than 3: `prog.pdl:2` plus `  in contribute` and no column, excerpt or caret. Note that the line comes from the mark of the *key*, not of the value -- `_walk` in `pdl_location_utils` records a mapping entry at its key deliberately -- so the two coincide here only because the entry is one line; see `E-SCHEMA-009-object`, whose golden points at the key's line while the offending value begins on the next one. Hygiene 3 and not 1: this reproducer's value is a bare string, so no Python `repr` reaches the user. Give the same branch a non-scalar and one does; that is the sibling entry.
+
+**`E-SCHEMA-009-items-crash`** — the schema error analyzer crashes with KeyError: 'items'  
+PDL crashes while reporting the user's error, which is the one thing decision 5.8 forbids, and it crashes inside the error reporter -- so nothing is left to fall back on and what reaches the user instead is the raw pydantic `ValidationError` the reporter was called to translate. The mechanism is two lines of `analyze_errors` apart: the array arm decides it is looking at an array with `is_array`, which tests only `schema["type"] == "array"`, and then reads `schema["items"]` unconditionally for every element. JSON Schema does not require the two to travel together. `RetryConfiguration.jitter` is `ExpressionFloatOrFloatFloat`, one alternative of which is a fixed-length pair and renders as `{"type": "array", "prefixItems": [...], "minItems": 2, "maxItems": 2}` -- `type: array` and no `items` key at all. The union arm selects that alternative as `found`, because it is the only member `is_array` accepts, hands it to the array arm, and the subscript raises. Any `prefixItems` schema reached with a list of the wrong length or the wrong element types does the same: `jitter: [1, 2]` is a valid program, `jitter: [1, 2, 3]` is not, and that difference is the whole of the reproducer. What the golden demonstrates, checked line by line: exit 1, stdout empty, and 76 lines of stderr holding two chained tracebacks and 18 frames, ending in `KeyError: 'items'` under a caret on `schema["items"]`. `prog.pdl` is named nowhere -- not in a header, not in a frame -- so Location is 0 outright; the nearest thing to a location is pydantic's `text.retry.RetryConfiguration.jitter`, a model path with a class name in it. What is 0 by the dimension's own wording, an internal exception repr, and twice over: the chained context is a `ValidationError` and the exception that actually killed the process is a `KeyError` about PDL's own schema, which says nothing about the user's program. Why is 2 rather than 0 for the same reason `E-LINT-003` scores 2: the leaked pydantic block does show the offending value (`input_value=[1, 2, 3]`) and does contain the real rule (`Tuple should have at most 2 items after validation, not 3`) -- raw, in pydantic vocabulary, and buried among five mutually contradictory alternatives the reader has to choose between. The exit code is 1, which is correct, but by accident: it is the shell's code for an unhandled exception, not a decision PDL took. Not introduced by the Phase-3 discriminator work -- it is present at `f0d91a1` and at this HEAD, and it appeared 30 times in the 10 920-mutation sweep recorded in INVENTORY.md 7.11. `hygiene_traceback_expected` is set, so `test_no_traceback` xfails; whoever guards the subscript must delete the flag in that commit or the suite fails on XPASS.
+
+**`E-SCHEMA-009-not-a-list`** — a list in a union with no array member  
+The third shape message, and the only one of the three that states no expectation at all. It comes from the `found is None` branch of the union arm of `analyze_errors`: when the data is a list, the arm scans the union for an alternative `is_array` accepts, and `is_array` reads a literal `type: array` and therefore never sees an array that arrives behind a `$ref`. `fallback:` is a `$ref` to `OptionalBlockType`, which is `anyOf[{$ref: BlockType}, {type: null}]`; the two-member nullable unwrap in the union arm follows it to `BlockType`, and all 24 of `BlockType`'s alternatives are `$ref`s -- zero of them a bare array -- so a list there produces `should not be a list`. The reproducer is the mistake the language invites: `text:` takes a sequence of blocks, so a user writes `fallback:` the same way. What the golden demonstrates: PDL says only what the value may *not* be. It does not say a `fallback:` takes one block, it does not say that a sequence of recovery steps is spelled `fallback: {text: [...]}` -- which runs and exits 0, checked, so the suggestion PDL is withholding is a known one -- and the value it does show is `[{'text': 'recovering'}]` -- a Python repr of the parsed YAML rather than the user's two lines. Why 1 and not 2: the found value is shown and the expectation is not, which is the dimension's definition of one of the two. Location 1: `prog.pdl:2` is the mark of the `fallback` key while the offending list begins on line 3, so the header names a line that reads `fallback:` and looks correct; `_walk` in `pdl_location_utils` records a mapping entry at its key by design and `get_loc_string` renders only the start line. Hygiene 1 for the Python list repr. Not to be confused with the crash in `E-SCHEMA-009-items-crash`: that one is the array arm reaching `schema["items"]` after `is_array` said yes, this one is the union arm never finding an array to descend into.
+
+**`E-SCHEMA-009-object`** — a list where the schema wants a mapping  
+The object arm of `analyze_errors`, `not isinstance(data, dict)` branch: `located_message(loc, str(data) + " should be an object")`. `defs:` renders as `{"type": "object", "additionalProperties": {"$ref": "#/$defs/BlockType"}}`, and the reproducer writes it as a list of one-key mappings -- the shape a user reaches for when they read `defs:` as "a list of definitions". The corrected program, `defs: {greeting: {text: hello}}`, runs and exits 0; PDL knows that and says none of it. What the golden demonstrates, beyond the missing expectation and the missing suggestion the sibling entry shows: two defects this reproducer adds. (1) The value is `str(data)` on a *structure*, so the user is shown `[{'greeting': 'hi'}]` -- a Python repr of the parsed YAML, with Python's quoting and Python's brackets, not the three words they wrote. That is a raw internal dump and holds Hygiene at 1. (2) `object` is JSON-Schema's word, taken straight from the schema's `type`, and it is not the word the PDL documentation uses for a `defs:` mapping; a reader looking for `object` in the docs will not find this rule. That is recorded rather than scored: What stays in the same band as its two siblings, because band 1 is for implementation vocabulary of the `<class 'str'>` kind and `an object` is a leaked noun, not a `repr`. Location 1, not 2: `prog.pdl:2` is the mark of the `defs` key, and the offending value begins on line 3 -- `_walk` in `pdl_location_utils` records a mapping entry at its key, pairing it with the value's end, and `get_loc_string` renders only the start line, so the header names a line that reads `defs:` and looks perfectly correct. Coarse rather than wrong, hence 1 rather than 0.
 
 **`E-SCHEMA-010`** — several schema faults report in unstable order  
 The reproducer changed with the E-SCHEMA-UNION work and the flag did not, which is the whole point of the change to this entry. The old reproducer was `description: x / texts: [a] / foo: 1 / bar: 2`; under the new discriminator that program is one no-block diagnostic, and one message cannot come out in the wrong order. The ordering defect was only *hidden* by that, never fixed: it lives in the `set` differences in `analyze_errors`' object arm -- `set(required) - set(data)` and `set(data) - set(properties)` -- which decision 5.3 does not touch. This reproducer is the old one with the near-miss key corrected, which is what the old program's new `help:` tells the user to do, plus a third unknown field: follow the fix and PDL goes back to reporting several `Field not allowed` messages in `PYTHONHASHSEED` order. `test_order_instability_is_real` re-proves that across six seeds on every run, so the flag cannot go stale in either direction -- and two unknown fields were not enough to make it move, which is why there are three. Location 1 -> 2: the two `Missing required field` complaints that used to point at `prog.pdl:1` for a fault whose real subject was the whole document were the `FunctionBlock` misselection, and they are gone; every message left names an offending key with its own line and its own `  in <path>`. What, Why and Fix are E-SCHEMA-001's, because the messages are E-SCHEMA-001's. Hygiene stays 0 while the order stays unstable, whatever the rest of the row says.

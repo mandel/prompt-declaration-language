@@ -44,13 +44,33 @@ error1 = {
 }
 
 
+# Decision 5.3. This used to assert three messages, two of them false: the
+# analyzer scored the union by counting shared field names, `description` is
+# shared by every branch, `FunctionBlock` won the tie, and a program containing
+# no function was told it was missing `function:` and `return:`. One message
+# now, from the discriminator pydantic already uses.
+#
+# It is also the one place the degraded rendering is pinned. `error()` validates
+# a dict, so there is no source text and no marks: `empty_block_location` keeps
+# the `line 0 - ` header, no excerpt is drawn, and the rule and the help carry
+# the diagnostic on their own.
 def test_error1():
     error(
         error1,
         [
-            "line 0 - Missing required field: return",
-            "line 0 - Missing required field: function",
-            "line 0 - Field not allowed: texts\n  in texts",
+            "line 0 - this is not a PDL block: nothing here says what it does\n"
+            "\n"
+            "  Every block is named by the one field that says what it does. "
+            "This mapping\n"
+            "  has none of them: `model`, `code`, `text`, `data`, `call`, `if`, "
+            "`repeat`,\n"
+            "  `read`, `get`, `function`, `include`, `import`, `array`, "
+            "`object`, `lastOf`,\n"
+            "  `sequence`, `match`, `map`, `content`, `args`, `factor`, "
+            "`aggregator`,\n"
+            "  `platform` or `processor`.\n"
+            "\n"
+            "  help: did you mean `text:` instead of `texts:`?",
         ],
     )
 

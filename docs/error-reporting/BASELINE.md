@@ -6,8 +6,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **54 corpus entries**, covering 54 of the **69** error IDs in the taxonomy.
-- **466 / 810** rubric points (**58%**).
+- **55 corpus entries**, covering 54 of the **69** error IDs in the taxonomy.
+- **493 / 825** rubric points (**60%**).
 - **2 entries leak a Python traceback** to the user.
 - **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
@@ -19,11 +19,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 82 | 162 | 1.52 |
-| What | 101 | 162 | 1.87 |
-| Why | 102 | 162 | 1.89 |
-| Fix | 53 | 162 | 0.98 |
-| Hygiene | 128 | 162 | 2.37 |
+| Location | 85 | 165 | 1.55 |
+| What | 109 | 165 | 1.98 |
+| Why | 107 | 165 | 1.95 |
+| Fix | 58 | 165 | 1.05 |
+| Hygiene | 134 | 165 | 2.44 |
 
 ## By error class
 
@@ -37,7 +37,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 7 | 92 | 105 | 13.1 |
 | E-RUNTIME | 7 | 54 | 105 | 7.7 |
-| E-SCHEMA | 8 | 49 | 120 | 6.1 |
+| E-SCHEMA | 9 | 76 | 135 | 8.4 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
 ## Every entry, worst first
@@ -48,13 +48,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
-| `E-SCHEMA-006` | S1 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | analyzer produces nothing, useless fallback |
 | `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
 | `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
-| `E-SCHEMA-010` | S1 | 1 | 2 | 1 | 0 | 0 | **4** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
 | `E-RUNTIME-011` | S0 | 1 | 2 | 2 | 0 | 0 | **5** | `███░░░░░░░` | TB | Retry succeeds on the second attempt and prints a traceback anyway (exit 0) |
-| `E-SCHEMA-007` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | dict fails every block union branch |
 | `E-SCHEMA-008` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute value fails its union |
+| `E-SCHEMA-010` | S1 | 2 | 2 | 1 | 0 | 0 | **5** | `███░░░░░░░` | ORD | several schema faults report in unstable order |
 | `E-CODE-003` | S1 | 1 | 2 | 2 | 0 | 1 | **6** | `████░░░░░░` |  | shell command exits non-zero |
 | `E-TYPE-003` | S2 | 1 | 1 | 1 | 1 | 2 | **6** | `████░░░░░░` |  | missing function argument |
 | `E-CLI-005` | S0 | 2 | 1 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | python -m pdl.pdl reports success on failure |
@@ -66,6 +64,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-006` | S1 | 2 | 1 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | comment lines before the error |
 | `E-LINT-001` | S1 | 2 | 2 | 1 | 0 | 2 | **7** | `█████░░░░░` |  | pdl-lint reports a schema error as a list repr |
 | `E-RUNTIME-001` | S0 | 1 | 1 | 2 | 1 | 2 | **7** | `█████░░░░░` |  | include names a missing file |
+| `E-SCHEMA-006-fallback` | S1 | 0 | 2 | 1 | 1 | 3 | **7** | `█████░░░░░` |  | validator rejected the program and the analyzer could not localise it |
 | `E-TYPE-001` | S2 | 1 | 2 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | block result violates its spec |
 | `E-CODE-005` | S1 | 1 | 2 | 2 | 2 | 1 | **8** | `█████░░░░░` |  | a `lang: pdl` block whose program does not parse |
 | `E-RUNTIME-004` | S2 | 1 | 2 | 2 | 0 | 3 | **8** | `█████░░░░░` |  | read of a missing file |
@@ -89,6 +88,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
 | `E-PARSER-002` | S1 | 2 | 3 | 3 | 2 | 3 | **13** | `█████████░` |  | jsonl parser on non-JSONL text |
 | `E-PARSER-004` | S1 | 2 | 3 | 3 | 2 | 3 | **13** | `█████████░` |  | csv parser exceeding the field size limit |
+| `E-SCHEMA-006` | S1 | 2 | 3 | 3 | 2 | 3 | **13** | `█████████░` |  | value not accepted by the field it was written under |
+| `E-SCHEMA-007` | S1 | 2 | 3 | 3 | 2 | 3 | **13** | `█████████░` |  | dict fails every block union branch |
 | `E-CLI-003` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | malformed inline YAML passed to -d |
 | `E-LINT-002` | S0 | 3 | 3 | 3 | 3 | 2 | **14** | `█████████░` |  | pdl-lint dumps a traceback for a YAML error |
 | `E-PARSE-005` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | non-UTF-8 bytes in source |
@@ -239,17 +240,20 @@ Names the missing field. 'field' is schema vocabulary for what the user experien
 **`E-SCHEMA-004`** — scalar type mismatch  
 "42 should be of type <class 'str'>" -- a Python type repr in a user-facing message. Location 1 -> 2 (phase-3 item 7): `  in role` is rendered and `prog.pdl:2` is that entry's own mark, so line and path both name the offending element.
 
-**`E-SCHEMA-006`** — analyzer produces nothing, useless fallback  
-'The file PDL prog.pdl does not respect the schema.' No line, no field, no reason. The worst message in the taxonomy: it tells the user only that they already knew.
+**`E-SCHEMA-006`** — value not accepted by the field it was written under  
+Fixed (spec docs/error-reporting/specs/E-SCHEMA-UNION.md, decision 5.3). This entry no longer pins the fallback it was named for; it pins the check whose absence caused the fallback, and the fallback moved to `E-SCHEMA-006-fallback`. The defect was not a missing analyzer case but a dead one: `ParserType`'s first alternative carries both `type: string` and an `enum`, `scalar_matches`' predecessor set its "matched" flag from the `type` test and then broke out of the loop, so the `enum` test below could never reject anything and any string at all passed. `analyze_errors` returned `[]` and the caller printed `The file PDL prog.pdl does not respect the schema.` -- no line, no field, no reason, the worst message in the taxonomy. Every alternative's constraints are now required to hold together, and `scalar_union_message` reads the accepted values out of the schema rather than hardcoding them, so this list cannot drift from `ParserType`. The rule paragraph names the `regex:` and `pdl:` mapping forms from the `required` list of each object alternative, which is how a user spells them. Fix is 2, not 3: `xml` has no correct answer, so the honest help is "remove it, or pick one of four". The near-miss branch is a 3 and a different reproducer reaches it -- `parser: jsn` gives ``did you mean `parser: json`?`` -- and it is pinned by `tests/test_line_table.py` rather than here. Location is 2 rather than 3 for the one reason it is 2 across this whole series: `get_loc_string` does not render `:col` (INVENTORY 7.6, 7.9). The excerpt, the caret and the block path are all present; the header is one colon and a number short. The caret carries no label because `_walk` records a mapping entry at its **key**, so the caret sits under `parser` while the offending token is `xml` beside it; a label there would name the wrong word, and the whole entry is eleven characters and visible on the excerpt line. `Diagnostic.code` for this message is `E-SCHEMA-005`, which is the taxonomy row for "value not in enum" -- INVENTORY recorded that row as unreachable in practice, and this change is what made it reachable. The code is carried and never rendered, so no user-visible text depends on it.
+
+**`E-SCHEMA-006-fallback`** — validator rejected the program and the analyzer could not localise it  
+The `errors == []` branch of `parse_dict`, which is the defect E-SCHEMA-006 is named for and which E-SCHEMA-006's own reproducer no longer reaches. Both of that entry's stated triggers now get a located message -- `parser: xml` through the enum check the discriminator work brought back to life, `lang: ruby` through `_code_block_tag`'s miss branch -- so the branch needed a reproducer of its own or it would have been left unpinned while still being reachable. This is the one found by mutating every program under `tests/data` and `examples`: `RetryConfiguration.exceptions` is `ExpressionType[type[BaseException] | str | list[...]]`, and one arm of it renders in JSON Schema as the empty schema `{}`, which matches anything. The analyzer is therefore right by the schema and wrong by the validator, and that gap is exactly what the message now admits to. Location stays 0 deliberately: `RUBRIC.md` scores 1 for file *and* line, and this branch has no line it can honestly claim -- naming line 1 would be a confidently-stated wrong location, which the rubric ranks below none. 7/15 is the ceiling for an honest rendering of "I do not know", so this entry is not expected to move; what should move is the *number* of programs that reach it.
 
 **`E-SCHEMA-007`** — dict fails every block union branch  
-700-character single-line dump of 24 raw JSON-Schema $refs. Decision 5.3 fixes this via the existing pydantic discriminator. Location 1 -> 2 (phase-3 item 7): `  in text[1]` names the offending list item, and `prog.pdl:3` is that item's own mark. Worth noting that the path is the only legible thing on the screen once the union wall starts -- the header scrolls off the right edge, and `  in text[1]` is on its own line.
+Fixed (spec docs/error-reporting/specs/E-SCHEMA-UNION.md, decision 5.3). Was a 700-character single line of 24 raw `$ref`s: the union printed at the reader instead of read for them. `match()` scored a union by counting how many field names a branch shared with the data, `{foo: bar}` shares none with any of them, so `match_ref` stayed empty and the analyzer fell back to `str(schema)`. `analyze_discriminated` now asks `_block_tag` -- the discriminator pydantic itself uses, so the analyzer and the validator can no longer disagree about which branch was meant. The trap the implementation has to avoid is that `_block_tag` answers `empty` both for `{foo: bar}`, which is not a block, and for `{description: d}`, which is a good one; the signal is therefore the keys, not the tag, and `EmptyBlock`'s properties are read from the schema. The rule paragraph is the 24 entries of `_BLOCK_KIND_OF_FIELD` minus `program`, which selects `ErrorBlock` and is built by the interpreter rather than written by hand. It is deliberately not truncated: "one of `model`, `code`, ..." leaves a reader who wanted the twenty-fifth with nowhere to go, and the codebase has no documentation URL to send them to -- a `see the documentation` line scores Fix 1, the list scores 2. The `help:` was executed, not reasoned about: `- data: {foo: bar}` runs and exits 0. The rejected alternative, dropping the `- ` so `foo:` becomes a field of the enclosing block, produces a YAML error, which trades a schema error for a parse error. Location 2 rather than 3 for the series-wide reason: the caret and the block path are both there and `get_loc_string` does not render `:col` (INVENTORY 7.9).
 
 **`E-SCHEMA-008`** — contribute value fails its union  
 Same union-wall shape on a much smaller union, so the fix must generalise. Location 1 -> 2 (phase-3 item 7): `  in contribute[0]` names the flow-sequence item, whose own mark is on line 3.
 
 **`E-SCHEMA-010`** — several schema faults report in unstable order  
-NEW, found while building the harness. analyze_errors iterates set differences, so the five diagnostics come out in an order that varies with PYTHONHASHSEED. Goldens are only stable because the harness pins the seed. Location stays 1 after phase-3 item 7: three of the five complaints gained a path (`  in foo`, `  in texts`, `  in bar`) and two did not, because `Missing required field: function` and `Missing required field: return` are about the program itself, at path `[]`, and an empty path renders no line. Those two are also the ones pointing at `prog.pdl:1`, the root node's mark, for a complaint whose real subject is the whole document -- coarse in the rubric's sense, and the entry is scored on its worst constituent.
+The reproducer changed with the E-SCHEMA-UNION work and the flag did not, which is the whole point of the change to this entry. The old reproducer was `description: x / texts: [a] / foo: 1 / bar: 2`; under the new discriminator that program is one no-block diagnostic, and one message cannot come out in the wrong order. The ordering defect was only *hidden* by that, never fixed: it lives in the `set` differences in `analyze_errors`' object arm -- `set(required) - set(data)` and `set(data) - set(properties)` -- which decision 5.3 does not touch. This reproducer is the old one with the near-miss key corrected, which is what the old program's new `help:` tells the user to do, plus a third unknown field: follow the fix and PDL goes back to reporting several `Field not allowed` messages in `PYTHONHASHSEED` order. `test_order_instability_is_real` re-proves that across six seeds on every run, so the flag cannot go stale in either direction -- and two unknown fields were not enough to make it move, which is why there are three. Location 1 -> 2: the two `Missing required field` complaints that used to point at `prog.pdl:1` for a fault whose real subject was the whole document were the `FunctionBlock` misselection, and they are gone; every message left names an offending key with its own line and its own `  in <path>`. What, Why and Fix are E-SCHEMA-001's, because the messages are E-SCHEMA-001's. Hygiene stays 0 while the order stays unstable, whatever the rest of the row says.
 
 **`E-TYPE-001`** — block result violates its spec  
 Two lines, each carrying its own file:line prefix for one logical diagnostic. Second line leaks a Python type repr. Location stays 1 after phase-3 item 7, which added `  in spec` to *both* lines: the location names the `spec:` key -- the rule that was violated -- and not the block whose result violated it (`text:`, line 1), so it is the enclosing declaration rather than the offending element. The doubled path also makes the doubled-prefix defect the note already records slightly louder; hygiene stays 2 because that is the defect it was already scored for, not a new one.

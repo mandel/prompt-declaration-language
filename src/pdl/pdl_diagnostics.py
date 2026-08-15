@@ -1856,3 +1856,334 @@ def parser_not_implemented_diagnostic() -> Diagnostic:
             "the output in a `code:` block."
         ),
     )
+
+
+# --------------------------------------------------------------------------
+# Block unions: E-SCHEMA-005, E-SCHEMA-006, E-SCHEMA-007
+#
+# Decision 5.3. `analyze_errors` used to answer a union by counting how many
+# field names a candidate branch shared with the data, which says nothing when
+# the count is zero (E-SCHEMA-007) and says something false when every branch
+# ties on `description:` (E-SCHEMA-010). PDL already carries a discriminator --
+# pydantic uses it to validate a program in linear rather than exponential time
+# -- so the analyzer asks it instead.
+#
+# The builders below take their vocabulary as arguments. `pdl_ast` owns the
+# lists; this module states in its own docstring that it imports nothing from
+# PDL, and an argument is cheaper than the cycle.
+# --------------------------------------------------------------------------
+
+_NEAR_MISS_CUTOFF = 0.7
+"""`difflib` cutoff, the same one `_near_miss` and `_import_missing` use."""
+
+_BLOCK_KIND_RULE = (
+    "Every block is named by the one field that says what it does. This mapping "
+    "has none of them: {names}."
+)
+
+_NOT_A_BLOCK = "this is not a PDL block: nothing here says what it does"
+
+_NOT_A_FIELD = "{names} are not fields any block accepts."
+
+
+def _oxford(names: Sequence[Any], conjunction: str = "or") -> str:
+    """``\\`a\\`, \\`b\\` or \\`c\\```, from an ordered sequence and never a set.
+
+    The list is part of a diagnostic, so its order has to be a property of the
+    program rather than of `PYTHONHASHSEED`; that is the defect E-SCHEMA-010
+    exists to record and it must not be reintroduced by the code that fixes it.
+    """
+    quoted = [f"`{name}`" for name in names]
+    if not quoted:
+        return ""
+    if len(quoted) == 1:
+        return quoted[0]
+    return ", ".join(quoted[:-1]) + f" {conjunction} " + quoted[-1]
+
+
+def prefer(names: Sequence[str], preference: Sequence[str]) -> list[str]:
+    """`names` in `preference` order, with anything unlisted kept at the end.
+
+    A diagnostic that lists PDL's own vocabulary wants the common words first,
+    and a hand-written order rots the moment a field is added to `pdl_ast`.
+    Deriving the membership and preferring the order gets both: a new field
+    appears at the end of the list on the day it is added, and a test pins that
+    the preference names nothing PDL does not have.
+    """
+    listed = [p for p in preference if p in names]
+    return listed + [n for n in names if n not in preference]
+
+
+def _first_near_miss(
+    names: Sequence[str], pool: Sequence[str]
+) -> tuple[str, str] | None:
+    """The first ``(written, meant)`` pair in `names` with a plausible correction."""
+    for name in names:
+        close = difflib.get_close_matches(
+            name, list(pool), n=1, cutoff=_NEAR_MISS_CUTOFF
+        )
+        if close:
+            return name, close[0]
+    return None
+
+
+def _flow_value(value: Any) -> str:
+    """A mapping as a one-line YAML flow value, or `""` if it is too long to show.
+
+    `_VALUE_MAX` is the same wall the `parser:` series puts between a message
+    and a value that came from outside it: a suggestion the user is meant to
+    type has to fit on the line it is printed on.
+    """
+    try:
+        dumped = yaml.safe_dump(
+            value, default_flow_style=True, width=10**6, sort_keys=False
+        ).strip()
+    except yaml.YAMLError:
+        return ""
+    if "\n" in dumped or len(dumped) > _VALUE_MAX:
+        return ""
+    return dumped
+
+
+def no_block_kind_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    value: Any,
+    unrecognised: Sequence[tuple[str, int | None, int | None]],
+    kind_fields: Sequence[str],
+    near_miss_pool: Sequence[str],
+    in_list: bool,
+    source: str | None,
+) -> Diagnostic:
+    """E-SCHEMA-007. A mapping that names no kind of block.
+
+    Today this is a 700-character single line of 24 raw `$ref`s -- the union
+    printed at the reader instead of read for them. The replacement says the
+    rule (a block is named by the field that says what it does), shows which of
+    the user's own keys broke it, and lists the twenty-four words that would
+    have worked.
+
+    The list is deliberately not truncated. "expected one of `model`, `code`,
+    ..." leaves a reader who wanted the twenty-fifth with nowhere to go, and
+    this codebase has no documentation URL to send them to.
+
+    `unrecognised` is in **document order** and carries each key's own mark, so
+    the caret lands on the key rather than on the block. At most the first two
+    are annotated -- `_excerpt` shows two -- and the rest are named in a note.
+    """
+    keys = [key for key, _, _ in unrecognised]
+    spans = [
+        Span(
+            line=line,
+            col=col,
+            label=f"`{key}` does not name a block kind",
+            primary=i == 0,
+        )
+        for i, (key, line, col) in enumerate(unrecognised)
+        if line is not None
+    ][:2]
+    if source is not None:
+        height = len(source.split("\n"))
+        spans = [s for s in spans if 1 <= s.line <= height]
+
+    notes = [Note("rule", _BLOCK_KIND_RULE.format(names=_oxford(kind_fields)))]
+    if len(keys) > 1:
+        notes.append(Note("note", _NOT_A_FIELD.format(names=_oxford(keys, "and"))))
+
+    near = _first_near_miss(keys, near_miss_pool)
+    if near is not None:
+        written, meant = near
+        suggestion = Suggestion(f"did you mean `{meant}:` instead of `{written}:`?")
+    else:
+        suggestion = _data_block_suggestion(value, in_list)
+
+    return Diagnostic(
+        code="E-SCHEMA-007",
+        message=_NOT_A_BLOCK,
+        # No `file` and no `block_path`: `located_message` adds the header
+        # prefix and the `  in <path>` line at the call site, from the location
+        # the analyzer is walking. Setting them here would print both twice.
+        spans=spans,
+        source=source,
+        notes=notes,
+        suggestions=[suggestion],
+    )
+
+
+def _data_block_suggestion(value: Any, in_list: bool) -> Suggestion:
+    """The edit that turns a mapping the user meant as a value into a block.
+
+    `data:` is the block whose job is to be a value, so this is the one
+    rewriting that cannot change what the program means. Dropping the `- `
+    instead -- making the mapping a field of the enclosing block -- was
+    considered and rejected: applied to a list item it produces a YAML error,
+    which trades a schema error for a parse error.
+    """
+    flow = _flow_value(value)
+    subject = "item" if in_list else "block"
+    if not flow:
+        return Suggestion(
+            f"if this {subject} is meant to produce a value rather than run a "
+            "block, put it under a `data:` key."
+        )
+    return Suggestion(
+        f"if this {subject} is meant to produce the value `{flow}`, write it as",
+        replacement=("- " if in_list else "") + f"data: {flow}",
+    )
+
+
+def unknown_tag_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    written: Any,
+    key: str,
+    headline: str,
+    rule: str,
+    known: Sequence[str],
+    line: int | None,
+    col: int | None,
+    source: str | None,
+) -> Diagnostic:
+    """A discriminator field whose value names no branch of its union.
+
+    `_block_tag` returns `v.get("kind")` verbatim, so the tag can be any string
+    a user cares to type. A table lookup with no miss branch would be a
+    `KeyError` reaching the user as a traceback, which decision 5.8 forbids
+    outright; this is that miss branch, and it is also the only thing that says
+    `lang: ruby` is not a language rather than saying nothing at all.
+    """
+    shown = written if isinstance(written, str) else _yaml_scalar(written)
+    spans = []
+    if line is not None and source is not None and 1 <= line <= len(source.split("\n")):
+        spans = [Span(line=line, col=col, primary=True)]
+    # A near miss is the only suggestion offered. There is no correct answer to
+    # `lang: ruby` -- PDL does not run Ruby -- and "use one of the languages
+    # above" would restate the rule paragraph one line further down.
+    close = difflib.get_close_matches(
+        str(shown), list(known), n=1, cutoff=_NEAR_MISS_CUTOFF
+    )
+    return Diagnostic(
+        code="E-SCHEMA-006",
+        message=headline.format(value=shown, key=key),
+        spans=spans,
+        source=source,
+        notes=[Note("rule", rule.format(names=_oxford(known, "and"), key=key))],
+        suggestions=(
+            [Suggestion(f"did you mean `{key}: {close[0]}`?")] if close else []
+        ),
+    )
+
+
+def scalar_value_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    value: Any,
+    field_name: str | None,
+    accepted: Sequence[Any],
+    mapping_keys: Sequence[str],
+    removal_effect: str,
+    line: int | None,
+    col: int | None,
+    source: str | None,
+) -> Diagnostic:
+    """E-SCHEMA-005. A scalar that is not one of the values its field accepts.
+
+    INVENTORY records E-SCHEMA-005 as unreachable in practice, and it was: the
+    `is_any_of` scalar arm set its "matched" flag from an alternative's `type`
+    and then never unset it, so `ParserType`'s first alternative --
+    `{"enum": [...], "type": "string"}`, which carries both -- accepted every
+    string. The analyzer returned nothing and the caller printed the fallback
+    that E-SCHEMA-006 records. This is that check made live.
+
+    The caret carries no label. The mark PDL holds for a mapping entry is its
+    **key** (`_walk`), so the caret sits under `parser` while the offending
+    token is the value beside it; a label there would name the wrong word. The
+    whole entry is on the excerpt line and visible.
+    """
+    if field_name:
+        message = f"`{_scalar_text(value)}` is not a valid value for `{field_name}:`"
+        rule_subject = f"`{field_name}:` accepts"
+        removal = f"remove `{field_name}:`{removal_effect}, or use"
+    else:
+        message = f"`{_scalar_text(value)}` is not a valid value here"
+        rule_subject = "This field accepts"
+        removal = "use"
+
+    rule = f"{rule_subject} {_oxford(accepted)}"
+    if mapping_keys:
+        # `regex:` with the colon, because that is how the user types it and
+        # because a bare `regex` reads as a value rather than as a key.
+        rule += f", or a mapping with a {_oxford([k + ':' for k in mapping_keys])} key"
+    rule += "."
+
+    close = difflib.get_close_matches(
+        str(value), [str(a) for a in accepted], n=1, cutoff=_NEAR_MISS_CUTOFF
+    )
+    if close and field_name:
+        suggestion = Suggestion(f"did you mean `{field_name}: {close[0]}`?")
+    elif close:
+        suggestion = Suggestion(f"did you mean `{close[0]}`?")
+    else:
+        suggestion = Suggestion(f"{removal} one of {_oxford(accepted)}.")
+
+    spans = []
+    if line is not None and source is not None and 1 <= line <= len(source.split("\n")):
+        spans = [Span(line=line, col=col, primary=True)]
+    return Diagnostic(
+        code="E-SCHEMA-005",
+        message=message,
+        spans=spans,
+        source=source,
+        notes=[Note("rule", rule)],
+        suggestions=[suggestion],
+    )
+
+
+def _scalar_text(value: Any) -> str:
+    """A scalar as the user wrote it, without JSON's quotes around a string."""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return _yaml_scalar(value)
+
+
+_UNLOCATED_SCHEMA_FAILURE = (
+    "the program does not match the PDL schema, and PDL cannot say where"
+)
+_UNLOCATED_SCHEMA_FAILURE_UNNAMED = (
+    "the PDL program does not match the PDL schema, and PDL cannot say where"
+)
+_UNLOCATED_RULE = (
+    "PDL's validator rejected this program, but the analyzer that turns a "
+    "rejection into a located message did not recognise the failure, so nothing "
+    "more precise can be said about it."
+)
+_UNLOCATED_NOTE = (
+    "reaching this message is a gap in PDL's error reporting rather than extra "
+    "information about your program. Reporting the program that produced it is "
+    "the only way that gap gets closed."
+)
+_UNLOCATED_HELP = "remove blocks until the message changes, to find the one at fault."
+
+
+def unlocated_schema_diagnostic(file: str) -> Diagnostic:
+    """E-SCHEMA-006. The validator said no and the analyzer could not say where.
+
+    Today this reads `The file PDL prog.pdl does not respect the schema.`, which
+    states the one thing the user already knows and hides the fact that PDL, not
+    the program, is what ran out of things to say.
+
+    No span. Claiming line 1 would put a confidently wrong location on a
+    diagnostic whose entire content is that no location is known, and
+    `RUBRIC.md` ranks that below showing none.
+    """
+    named = bool(file)
+    return Diagnostic(
+        code="E-SCHEMA-006",
+        message=(
+            _UNLOCATED_SCHEMA_FAILURE if named else _UNLOCATED_SCHEMA_FAILURE_UNNAMED
+        ),
+        file=file,
+        notes=[Note("rule", _UNLOCATED_RULE), Note("note", _UNLOCATED_NOTE)],
+        suggestions=[Suggestion(_UNLOCATED_HELP)],
+    )

@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl - the program does not match the PDL schema, and PDL cannot say where
+
+  PDL's validator rejected this program, but the analyzer that turns a
+  rejection into a located message did not recognise the failure, so nothing
+  more precise can be said about it.
+
+  note: reaching this message is a gap in PDL's error reporting rather than
+        extra information about your program. Reporting the program that
+        produced it is the only way that gap gets closed.
+  help: remove blocks until the message changes, to find the one at fault.

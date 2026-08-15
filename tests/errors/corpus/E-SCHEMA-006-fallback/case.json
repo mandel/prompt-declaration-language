@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-006-fallback",
+  "title": "validator rejected the program and the analyzer could not localise it",
+  "severity": "S1",
+  "rubric": {
+    "location": 0,
+    "what": 2,
+    "why": 1,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "The `errors == []` branch of `parse_dict`, which is the defect E-SCHEMA-006 is named for and which E-SCHEMA-006's own reproducer no longer reaches. Both of that entry's stated triggers now get a located message -- `parser: xml` through the enum check the discriminator work brought back to life, `lang: ruby` through `_code_block_tag`'s miss branch -- so the branch needed a reproducer of its own or it would have been left unpinned while still being reachable. This is the one found by mutating every program under `tests/data` and `examples`: `RetryConfiguration.exceptions` is `ExpressionType[type[BaseException] | str | list[...]]`, and one arm of it renders in JSON Schema as the empty schema `{}`, which matches anything. The analyzer is therefore right by the schema and wrong by the validator, and that gap is exactly what the message now admits to. Location stays 0 deliberately: `RUBRIC.md` scores 1 for file *and* line, and this branch has no line it can honestly claim -- naming line 1 would be a confidently-stated wrong location, which the rubric ranks below none. 7/15 is the ceiling for an honest rendering of \"I do not know\", so this entry is not expected to move; what should move is the *number* of programs that reach it."
+}

@@ -106,12 +106,12 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 | E-SCHEMA-002 [obs] | near-miss key (`descrption`) | `nearmiss.pdl:1 - Field not allowed: descrption` — identical to E-SCHEMA-001, **no "did you mean `description`?"** | file:line | S2 |
 | E-SCHEMA-003 [obs] | missing required field | `missing_req.pdl:2 - Missing required field: return` | file:line | S3 |
 | E-SCHEMA-004 [obs] | scalar type mismatch | `wrong_type.pdl:2 - 42 should be of type <class 'str'>` — **Python `repr` of a type object** in a user-facing message | file:line | S2 |
-| E-SCHEMA-005 [src] | value not in enum | see E-SCHEMA-006 — in practice the enum branch is unreachable for block fields | — | — |
-| E-SCHEMA-006 [obs] | analyzer finds nothing (e.g. `parser: xml`, `lang: ruby`) | `The file PDL enum_bad.pdl does not respect the schema.` — **no line, no field name, no explanation** | none | **S1** |
-| E-SCHEMA-007 [obs] | dict fails every union branch (`- foo: bar` in a `text`) | `union_wall.pdl:3 - {'foo': 'bar'} should be of type: {'oneOf': [{'$ref': '#/$defs/ExpressionBlock'}, ... 24 refs ...]}` — a **1-line, 700-char dump of raw JSON Schema** | file:line | **S1** |
+| E-SCHEMA-005 [obs] | value not in enum | **reachable since Phase-3 item 10**, and pinned by `tests/errors/corpus/E-SCHEMA-006/`. The branch was unreachable because the analyzer's scalar-union arm set its "matched" flag from an alternative's `type` and stopped there, and `ParserType`'s first alternative carries both `type: string` and the `enum`, so any string passed. Now: ``prog.pdl:2 - `xml` is not a valid value for `parser:` `` with a caret, the accepted values read out of the schema, and a `help:` | file:line, block path, excerpt, caret | S1 |
+| E-SCHEMA-006 [obs] | analyzer finds nothing | **Fixed by Phase-3 item 10** for both of the triggers this row named. `parser: xml` is now E-SCHEMA-005 above; `lang: ruby` is now ``prog.pdl:1 - `ruby` is not a language PDL can run``, from `_code_block_tag`'s miss branch, and `tests/test_schema_unions.py` pins that an arbitrary tag (`kind: totally-made-up`, `platform: bedrock`, `lang: [a]`) can never reach a bare table lookup and raise `KeyError`. The `errors == []` branch itself survives, is still reachable, and now says so instead of `The file PDL enum_bad.pdl does not respect the schema.`: it is pinned by `tests/errors/corpus/E-SCHEMA-006-fallback/`, whose reproducer is `retry: {exceptions: 5}` — one arm of `RetryConfiguration.exceptions` renders as the empty schema `{}`, which matches anything, so the analyzer is right by the schema and wrong by the validator. Found by mutating every program under `tests/data` and `examples`: 6 hits in 10 920 mutations, all on that one field | none, deliberately — see the entry's notes | **S1** |
+| E-SCHEMA-007 [obs] | dict fails every union branch (`- foo: bar` in a `text`) | **Fixed by Phase-3 item 10.** Was a 1-line, 700-char dump of 24 raw `$ref`s. Now `this is not a PDL block: nothing here says what it does`, a caret on each unrecognised key, the 24 fields that do name a block kind, and either a near-miss or the `data:` rewriting. Reached through the discriminator `pdl_ast` already defines, including where `BlockType` is behind an inline union (`text: {a: 1}`) | file:line, block path, excerpt, caret | **S1** |
 | E-SCHEMA-008 [obs] | same, for `contribute` | `contrib_bad.pdl:3 - {'result': 1, 'context': 2} should be of type: {'anyOf': [{'$ref': '#/$defs/ContributeTarget'}, ...]}` | file:line | **S1** |
 | E-SCHEMA-009 [src] | list/object shape mismatch | `<value> should be a list` / `should be an object` / `should not be a list` | file:line | S2 |
-| E-SCHEMA-010 [obs] | a program with several schema faults | the same diagnostics, **in an order that changes between processes**. `analyze_errors` builds its list by iterating `set` differences (`pdl_schema_error_analyzer.py:139`, `:145`), so message order depends on `PYTHONHASHSEED`. Verified across six seeds | file:line | **S1** |
+| E-SCHEMA-010 [obs] | a program with several schema faults | **Open.** The same diagnostics, **in an order that changes between processes**: `analyze_errors`' object arm builds its list from `set(required) - set(data)` and `set(data) - set(properties)`, so message order depends on `PYTHONHASHSEED`. Verified across six seeds, re-verified on every run by `test_order_instability_is_real`. Phase-3 item 10 did **not** fix this; it changed the corpus reproducer, because the old one (`texts`/`foo`/`bar` at the top level) is now answered by one no-block diagnostic and one message cannot come out in the wrong order. The reproducer is that program with the near-miss key corrected — which is what its own `help:` tells the user to do — plus a third unknown field, two not being enough to make the order move | file:line, block path | **S1** |
 
 ### E-EXPR — Jinja expression evaluation
 
@@ -146,7 +146,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 | E-RUNTIME-005 [src] | `call:` target is not a function | `Type error: <x> is of type <class 'str'> but should be a function.` (+ `You might want to call \`${ x }\`.`) — the only **"did you mean"-style hint in the codebase** | file:line | S3 |
 | E-RUNTIME-006 [obs] | `for:` lists of unequal length | `for_len.pdl:1 - Lists inside the For block must be of the same length.` — does not say **which** lists or **what** lengths | file:line | S2 |
 | E-RUNTIME-007 [src] | malformed `contribute` entry | `Contributions are expected to be strings or dictionaries of length 1 but got {elem}` — **missing `f`-prefix at `pdl_interpreter.py:1875` and `:1894`; the literal text `{elem}` is printed** | file:line | **S1** |
-| E-RUNTIME-008 [src] | `lang:` unsupported at runtime | `Unsupported language: <lang>` — usually shadowed by E-SCHEMA-006 first | file:line | S2 |
+| E-RUNTIME-008 [src] | `lang:` unsupported at runtime | `Unsupported language: <lang>` — **unreachable from a `.pdl` file**: the schema check rejects an unknown `lang:` first, and since Phase-3 item 10 it does so with a message of its own (see E-SCHEMA-006). Still reachable from a `Block` built in Python | file:line | S2 |
 | E-RUNTIME-009 [src] | bad aggregator | `An aggregator was expected but got a value of type <class ...>.` | file:line | S2 |
 | E-RUNTIME-010 [src] | Ctrl-D / Ctrl-C | `EOF` / `Keyboard Interrupt` as *errors* with exit 1 | file:line | S2 |
 | E-RUNTIME-011 [src] | retry exhausted | `[Retry 1/3] <loc> An error occurred in a PDL block. Error details: <full Python traceback>` in **ANSI red**, to stderr | file:line + traceback | **S1** |
@@ -215,8 +215,9 @@ them may become an error without the owner's sign-off under 5.5.
 | E-GUI-001 [src] | any failure in the viewer's Run panel | `String(err)` written verbatim to an xterm, tracebacks included | **S1** |
 | E-GUI-002 [src] | error blocks in a loaded trace | dropped from the timeline — `// TODO show errors in trace` (`view/timeline/model.ts:157`) | **S1** |
 
-**Counts:** 18 × S0, 22 × S1, 24 × S2, 3 × S3, plus 1 unclassifiable
-(E-SCHEMA-005, whose branch is unreachable in practice) — 68 rows.
+**Counts:** 18 × S0, 23 × S1, 24 × S2, 3 × S3 — 68 rows. E-SCHEMA-005 was the one
+unclassifiable row, on the grounds that its branch was unreachable in practice; Phase-3
+item 10 made it reachable, and it is scored S1 with the rest of its class.
 
 These were `14 / 21 / 22 / 4` until they were re-counted: wrong on every number, and
 summing to 61 against a table that had 67 rows at the time. Two severity cells carried
@@ -568,7 +569,18 @@ Then, serialised on the foundation:
    traceback too, fixed by the same explicit compile step. The three silent failures the
    item is *not* allowed to fix are in 7.10.
 10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
-    **E-EXPR-001** ("in scope here").
+    **E-EXPR-001** ("in scope here"). *E-SCHEMA-006/007 delivered; spec
+    `specs/E-SCHEMA-UNION.md`.* Four things the estimate missed, all found by running
+    it. The E-SCHEMA-006 defect is not a missing analyzer case but a **dead** one — the
+    `enum` test could never fire because a `type` test above it had already said yes —
+    and the same loop *assigned* its flag from a `$ref` alternative rather than
+    accumulating, so a later member could reset an earlier match. `BlockType` is reached
+    through an inline `anyOf` for `text:`/`lastOf:`/`sequence:` and so is not recognised
+    by identity on `$defs`; that needed a second, narrower dispatch. `parser:`, `lang:`
+    and `mode:` are lower-cased by a `BeforeValidator` that JSON Schema cannot express,
+    so a stricter analyzer starts contradicting the validator about `parser: JSON` unless
+    it is told. And the fallback the item was named for is still reachable (7.11), which
+    the spec predicted it would not be.
 11. **E-PARSE-003 and E-RUNTIME-012** — the two semantic changes from 5.5. Deliberately
     last: they are the only items that can break a working user program, so they land
     after everything else is green and get their own release note.
@@ -1066,3 +1078,46 @@ either: **a parser's `spec:` types are never checked.** `Parser.spec` is documen
 "Expected type of the parsed value", but its only use is as a list of regex group names,
 so `spec: {first: integer}` returns a string and nothing complains. That is a
 documentation or a validation bug and wants its own item.
+
+### 7.11 What Phase-3 item 10 found, and the two questions it did not take
+
+**The `errors == []` fallback is still reachable, and it needed its own reproducer.**
+`specs/E-SCHEMA-UNION.md` predicted that after the discriminator work "nothing in the
+corpus reaches it". Measured rather than assumed: every program under `tests/data` and
+`examples` was loaded and mutated field-by-field — 10 920 invalid programs — and 6 of
+them reach it, all through `retry: {exceptions: ...}`. One arm of
+`RetryConfiguration.exceptions` is `type[BaseException]`, which pydantic validates and
+JSON Schema renders as the empty schema `{}`; `{}` matches anything, so the analyzer is
+correct by the schema and silent about a program the validator rejected. That is exactly
+the state the new wording admits to, and `tests/errors/corpus/E-SCHEMA-006-fallback/`
+pins it at 7/15 — the ceiling for an honest rendering of "I do not know", and not an
+entry that is expected to move. What should move is the number of programs reaching it.
+
+**A pre-existing traceback in the same function, not fixed here.** `analyze_errors`'
+array arm reads `schema["items"]` unconditionally. `ExpressionFloatOrFloatFloat` — the
+type of `retry: {jitter: ...}` — renders one alternative as `prefixItems` with **no**
+`items`, so `retry: {jitter: [1, 2, 3]}` raises `KeyError: 'items'` out of the error
+reporter itself and reaches the user as a raw traceback. It is a breach of decision 5.8,
+it is present at `f0d91a1` and was not introduced by this item, and it appeared 30 times
+in the same 10 920-mutation sweep. It belongs to **E-SCHEMA-009** (list/object shape
+mismatch), which has no corpus entry, and it wants a spec and a golden of its own rather
+than a silent two-line guard folded into an unrelated commit.
+
+**`:col` is still not rendered, and this item does not take that decision either.** 7.9
+declined the column because it came off the same coarse mark as the line and bought
+nothing without a caret. E-SCHEMA-005/006/007 all now *have* a caret, which is the
+strongest argument yet for taking it — but adding `:col` to `get_loc_string` rewrites the
+header of every prefix-rendering golden in the corpus in one step, and that is the
+renderer owner's call, not a side effect of a schema item. Recorded here so the argument
+does not have to be reconstructed.
+
+**The E-SCHEMA-010 flag was kept by changing the reproducer, not by annotating a stale
+one.** `test_order_instability_is_real` re-proves the `hygiene_unstable_order`
+annotation across six hash seeds on every run, for the same reason
+`hygiene_traceback_expected` fails on XPASS: an entry may not carry a flag for a defect it
+no longer demonstrates. The discriminator hides the old reproducer's instability without
+fixing it, so the reproducer moved to one that still shows it and the flag stayed true.
+The old program's new output — the largest single rubric movement in the item, 4/15 to
+14/15 — is the same diagnostic `E-SCHEMA-007`'s golden pins, and its two branches that
+entry does not exercise (the near-miss `help:` and a two-caret excerpt with an elision)
+are pinned by `tests/test_line_table.py::test_line`, `::test_line4` and `::test_line8`.

@@ -21,19 +21,30 @@ def do_test(t, capsys):
 # `do_test` compares *sets* of lines, so a path line that repeats one already
 # expected (two complaints against the same location) appears once here.
 #
-# `:1`, twice, where this file used to assert `:0`. The two "missing required
-# field" errors are about the whole program, whose path is `[]`; `get_line`
-# returned a literal `0` for the empty path, so the file's own top-level block
-# was the one thing in the file that could not be located. The document's root
-# node has a mark like any other node and it is line 1.
+# The two "missing required field" lines this file used to assert here are
+# gone, and their disappearance is decision 5.3 (E-SCHEMA-007). `analyze_errors`
+# used to answer a block union by counting shared field names; `{description,
+# texts}` shares `description` with every branch, the first one won, and the
+# reader was told a program with no function in it was missing `function:` and
+# `return:`. The analyzer now asks the same discriminator pydantic uses, which
+# answers `empty` -- and `texts` is a field no block has, so there is one
+# complaint about one thing.
 line = {
     "file": "tests/data/line/hello.pdl",
     "errors": [
         "",
-        "tests/data/line/hello.pdl:1 - Missing required field: return",
-        "tests/data/line/hello.pdl:1 - Missing required field: function",
-        "tests/data/line/hello.pdl:2 - Field not allowed: texts",
-        "  in texts",
+        "tests/data/line/hello.pdl:2 - this is not a PDL block: nothing here "
+        "says what it does",
+        "",
+        "2 | texts:",
+        "  | ^ `texts` does not name a block kind",
+        "",
+        "  Every block is named by the one field that says what it does. This mapping",
+        "  has none of them: `model`, `code`, `text`, `data`, `call`, `if`, `repeat`,",
+        "  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,",
+        "  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,",
+        "  `platform` or `processor`.",
+        "  help: did you mean `text:` instead of `texts:`?",
     ],
 }
 
@@ -71,14 +82,28 @@ def test_line3(capsys: CaptureFixture[str]):
     do_test(line3, capsys)
 
 
+# Two unrecognised keys, so two carets and a `note:` naming both. The elision
+# `...` between them is `render`'s, for lines that are not adjacent.
 line4 = {
     "file": "tests/data/line/hello4.pdl",
     "errors": [
         "",
-        "tests/data/line/hello4.pdl:5 - Missing required field: repeat",
+        "tests/data/line/hello4.pdl:5 - this is not a PDL block: nothing here "
+        "says what it does",
         "  in text[2]",
-        "tests/data/line/hello4.pdl:5 - Field not allowed: repeats",
-        "  in text[2].repeats",
+        "",
+        "5 |     - repeats:",
+        "  |       ^ `repeats` does not name a block kind",
+        "...",
+        "7 |       maxIterations: 3",
+        "  |       ^ `maxIterations` does not name a block kind",
+        "  Every block is named by the one field that says what it does. This mapping",
+        "  has none of them: `model`, `code`, `text`, `data`, `call`, `if`, `repeat`,",
+        "  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,",
+        "  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,",
+        "  `platform` or `processor`.",
+        "  note: `repeats` and `maxIterations` are not fields any block accepts.",
+        "  help: did you mean `repeat:` instead of `repeats:`?",
     ],
 }
 
@@ -101,14 +126,27 @@ def test_line7(capsys: CaptureFixture[str]):
     do_test(line7, capsys)
 
 
+# `lang:` on its own does not make a code block -- `code:` does -- so both keys
+# of this item are unrecognised and the item names no kind at all.
 line8 = {
     "file": "tests/data/line/hello8.pdl",
     "errors": [
         "",
-        "tests/data/line/hello8.pdl:4 - Missing required field: code",
+        "tests/data/line/hello8.pdl:4 - this is not a PDL block: nothing here "
+        "says what it does",
         "  in text[1]",
-        "tests/data/line/hello8.pdl:5 - Field not allowed: codea",
-        "  in text[1].codea",
+        "",
+        "4 | - lang: python",
+        "  |   ^ `lang` does not name a block kind",
+        "5 |   codea: |",
+        "  |   ^ `codea` does not name a block kind",
+        "  Every block is named by the one field that says what it does. This mapping",
+        "  has none of them: `model`, `code`, `text`, `data`, `call`, `if`, `repeat`,",
+        "  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,",
+        "  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,",
+        "  `platform` or `processor`.",
+        "  note: `lang` and `codea` are not fields any block accepts.",
+        "  help: did you mean `code:` instead of `codea:`?",
     ],
 }
 
@@ -439,11 +477,11 @@ line31 = {
     "file": "tests/data/line/hello31.pdl",
     "errors": [
         "",
-        # `:1` for the same reason as `test_line`: these are about the program
-        # itself, at path `[]`, which starts on line 1 -- and, being at path
-        # `[]`, they are also the two that get no `  in <path>` line at all.
-        "tests/data/line/hello31.pdl:1 - Missing required field: function",
-        "tests/data/line/hello31.pdl:1 - Missing required field: return",
+        # The two `Missing required field` lines this used to assert were the
+        # same `FunctionBlock` misselection as `test_line`: a program whose root
+        # is `{defs: ...}` shares nothing with any block but `defs`, which every
+        # block has. The discriminator answers `empty`, every key is one a block
+        # accepts, and the only real fault is the one inside `defs`.
         "tests/data/line/hello31.pdl:9 - Field not allowed: show_result",
         "  in defs.get_current_weather.return.show_result",
     ],

@@ -16,7 +16,12 @@ corpus/<ERROR-ID>/
 ```
 
 `<ERROR-ID>` is a taxonomy ID from the inventory, so a corpus entry and its
-analysis are always findable from each other.
+analysis are always findable from each other. One ID may need more than one
+entry, in which case the extras take the ID plus a hyphenated suffix naming the
+branch they pin — `E-SCHEMA-006-fallback` is the "the analyzer could not
+localise it" branch of `E-SCHEMA-006`, which that ID's first reproducer stopped
+reaching once the analyzer learned to localise it. `report.py` counts entries
+and covered IDs separately for exactly this reason.
 
 ## Running
 

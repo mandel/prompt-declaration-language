@@ -90,8 +90,13 @@ def render(cases: list[Case]) -> str:
     taxonomy = taxonomy_ids()
     uncovered = sorted(taxonomy - {c.id for c in cases})
     if taxonomy:
+        # Entries and IDs are not the same count. One taxonomy ID can need more
+        # than one reproducer -- `E-SCHEMA-006` needs a second for the fallback
+        # branch its first reproducer stopped reaching -- and printing the entry
+        # count as the coverage figure overstates coverage by exactly that many.
+        covered = len(taxonomy & {c.id for c in cases})
         w(
-            f"- **{len(cases)} corpus entries**, covering {len(cases)} of the "
+            f"- **{len(cases)} corpus entries**, covering {covered} of the "
             f"**{len(taxonomy)}** error IDs in the taxonomy."
         )
     else:  # pragma: no cover - the doc is committed

@@ -12,6 +12,7 @@ from .pdl_diagnostics import (
     Diagnostic,
     source_read_diagnostic,
     undecodable_diagnostic,
+    unlocated_schema_diagnostic,
     yaml_diagnostic,
 )
 from .pdl_location_utils import (
@@ -331,13 +332,15 @@ def parse_dict(pdl_dict: dict[str, Any], loc: PdlLocationType | None = None) -> 
             loc = empty_block_location
         errors = analyze_errors(defs, defs["Program"], pdl_dict, loc)
         if errors == []:
-            # `<program>` is a display name, not a file name: a fallback reading
-            # `The file PDL <program> does not respect the schema.` would invite
-            # the user to go and look for it.
-            if is_unnamed(loc.file):
-                errors = ["The PDL program does not respect the schema."]
-            else:
-                errors = [f"The file PDL {loc.file} does not respect the schema."]
+            # `<program>` is a display name, not a file name: a fallback naming
+            # it as a file would invite the user to go and look for it. Since
+            # decision 5.3 the analyzer answers block unions from PDL's own
+            # discriminator, and no program in the corpus reaches this branch;
+            # it stays because "the analyzer had nothing to say" is a state the
+            # analyzer can still be in, and saying so is better than pretending
+            # the program was merely wrong in some unstated way.
+            file = "" if is_unnamed(loc.file) else loc.file
+            errors = [unlocated_schema_diagnostic(file).text]
         raise PDLParseError(errors) from exc
     return prog
 

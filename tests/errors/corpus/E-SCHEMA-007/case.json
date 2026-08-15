@@ -4,10 +4,10 @@
   "severity": "S1",
   "rubric": {
     "location": 2,
-    "what": 0,
-    "why": 2,
-    "fix": 0,
-    "hygiene": 1
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
   },
-  "notes": "700-character single-line dump of 24 raw JSON-Schema $refs. Decision 5.3 fixes this via the existing pydantic discriminator. Location 1 -> 2 (phase-3 item 7): `  in text[1]` names the offending list item, and `prog.pdl:3` is that item's own mark. Worth noting that the path is the only legible thing on the screen once the union wall starts -- the header scrolls off the right edge, and `  in text[1]` is on its own line."
+  "notes": "Fixed (spec docs/error-reporting/specs/E-SCHEMA-UNION.md, decision 5.3). Was a 700-character single line of 24 raw `$ref`s: the union printed at the reader instead of read for them. `match()` scored a union by counting how many field names a branch shared with the data, `{foo: bar}` shares none with any of them, so `match_ref` stayed empty and the analyzer fell back to `str(schema)`. `analyze_discriminated` now asks `_block_tag` -- the discriminator pydantic itself uses, so the analyzer and the validator can no longer disagree about which branch was meant. The trap the implementation has to avoid is that `_block_tag` answers `empty` both for `{foo: bar}`, which is not a block, and for `{description: d}`, which is a good one; the signal is therefore the keys, not the tag, and `EmptyBlock`'s properties are read from the schema. The rule paragraph is the 24 entries of `_BLOCK_KIND_OF_FIELD` minus `program`, which selects `ErrorBlock` and is built by the interpreter rather than written by hand. It is deliberately not truncated: \"one of `model`, `code`, ...\" leaves a reader who wanted the twenty-fifth with nowhere to go, and the codebase has no documentation URL to send them to -- a `see the documentation` line scores Fix 1, the list scores 2. The `help:` was executed, not reasoned about: `- data: {foo: bar}` runs and exits 0. The rejected alternative, dropping the `- ` so `foo:` becomes a field of the enclosing block, produces a YAML error, which trades a schema error for a parse error. Location 2 rather than 3 for the series-wide reason: the caret and the block path are both there and `get_loc_string` does not render `:col` (INVENTORY 7.9)."
 }

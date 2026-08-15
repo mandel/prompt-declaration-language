@@ -4,79 +4,12 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_dict
-    prog = Program.model_validate(pdl_dict)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<VENV><SITE>/pydantic/main.py", line <LINE>, in model_validate
-    return cls.__pydantic_validator__.validate_python(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-pydantic_core._pydantic_core.ValidationError: 5 validation errors for Program
-text.retry.nullable[int]
-  Input should be a valid integer [type=int_type, input_value={'jitter': [1, 2, 3]}, input_type=dict]
-    For further information visit https://errors.pydantic.dev/2.13/v/int_type
-text.retry.RetryConfiguration.jitter.LocalizedExpression[~ExpressionTypeT]
-  Input should be a valid dictionary or instance of LocalizedExpression[~ExpressionTypeT] [type=model_type, input_value=[1, 2, 3], input_type=list]
-    For further information visit https://errors.pydantic.dev/2.13/v/model_type
-text.retry.RetryConfiguration.jitter.float
-  Input should be a valid number [type=float_type, input_value=[1, 2, 3], input_type=list]
-    For further information visit https://errors.pydantic.dev/2.13/v/float_type
-text.retry.RetryConfiguration.jitter.tuple[float, float]
-  Tuple should have at most 2 items after validation, not 3 [type=too_long, input_value=[1, 2, 3], input_type=list]
-    For further information visit https://errors.pydantic.dev/2.13/v/too_long
-text.retry.RetryConfiguration.jitter.str
-  Input should be a valid string [type=string_type, input_value=[1, 2, 3], input_type=list]
-    For further information visit https://errors.pydantic.dev/2.13/v/string_type
+prog.pdl:3 - the list in `jitter:` should have exactly 2 items, but it has 3
+  in retry.jitter
 
-During handling of the above exception, another exception occurred:
+3 |   jitter: [1, 2, 3]
+  |                  ^ one item too many
 
-Traceback (most recent call last):
-  File "<VENV>/bin/pdl", line <LINE>, in <module>
-    sys.exit(main())
-             ^^^^^^
-  File "<REPO>/src/pdl/pdl.py", line <LINE>, in main
-    exit_code = pdl_interpreter.generate(
-                ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in generate
-    prog, loc = parse_file(pdl_file)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_file
-    return parse_str(prog_str, file_name=str(pdl_file))
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_str
-    prog, loc, marks = _parse_str_cached(pdl_str, file_name)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in _parse_str_cached
-    prog = parse_dict(prog_dict, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_parser.py", line <LINE>, in parse_dict
-    errors = analyze_errors(defs, defs["Program"], pdl_dict, loc)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(defs, ref_type, data, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    return ret + analyze_discriminated(defs, union, data, loc)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_discriminated
-    return analyze_errors(defs, defs[ref_string], data, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(
-           ^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(defs, match_ref, data, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(
-           ^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(defs, ref_type, data, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(defs, found, data, loc)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<REPO>/src/pdl/pdl_schema_error_analyzer.py", line <LINE>, in analyze_errors
-    ret += analyze_errors(defs, schema["items"], item, newloc)
-                                ~~~~~~^^^^^^^^^
-KeyError: 'items'
+  A list here has exactly 2 items, written `[number, number]`.
+
+  help: keep the first 2 items: jitter: [1, 2]

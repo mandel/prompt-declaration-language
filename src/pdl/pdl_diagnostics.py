@@ -2147,6 +2147,373 @@ def _scalar_text(value: Any) -> str:
     return _yaml_scalar(value)
 
 
+# --------------------------------------------------------------------------
+# Shapes: E-SCHEMA-009
+#
+# Four diagnostics about the *shape* of a value rather than its contents: a
+# list where a mapping belongs, a mapping where a list belongs, a list in a
+# field that takes one value, and a list of the wrong length. They share a
+# vocabulary and a set of rules, so they share a module section.
+#
+# Two conventions run through all four.
+#
+# The offending value is rendered as **YAML**, through `_yaml_value`, and never
+# as `str(data)`. What `analyze_errors` holds is `yaml.safe_load`'s output, so
+# `str()` on it is a Python `repr`: the user who wrote two indented lines was
+# shown `[{'text': 'recovering'}]`, in Python's quoting and Python's brackets.
+# That is the leak RUBRIC.md scores Hygiene 1, and `_yaml_value` is the whole of
+# the fix -- the same wall (`_VALUE_MAX`) applies, so a large value is described
+# rather than dumped.
+#
+# Every suggestion carrying a `replacement` is a **mechanical rewrite of the
+# user's own value**, checked against the schema before it is offered (see
+# `_suggestable` in `pdl_schema_error_analyzer`). None of them is a fixed
+# example: `contribute: [result]` is the user's `result` in a list,
+# `defs: {greeting: hi}` is the user's own list items merged, and
+# `jitter: [1, 2]` is the user's own first two items. An illustration invented
+# here could not be checked and would be a confidently-stated wrong edit, which
+# the rubric ranks below saying nothing.
+# --------------------------------------------------------------------------
+
+_SHAPE_CODE = "E-SCHEMA-009"
+
+_YAML_SHAPES: tuple[tuple[type | tuple[type, ...], str], ...] = (
+    # Ordered, and `bool` before `int` because it is a subclass of it.
+    (bool, "boolean"),
+    (int, "integer"),
+    (float, "number"),
+    (str, "string"),
+    ((list, tuple), "list"),
+    (dict, "mapping"),
+)
+"""YAML's shapes in the words PDL's own prose uses for them.
+
+Not `_PDL_TYPES`, which answers `array` and `object` because it names the types
+a `spec:` declares. These messages are about the text the user typed, and there
+they wrote a list and a mapping; `object` is JSON Schema's noun and appears
+nowhere in the PDL documentation a reader would go and look in.
+"""
+
+
+def _yaml_shape(value: Any) -> str:
+    if value is None:
+        return "null"
+    for kinds, name in _YAML_SHAPES:
+        if isinstance(value, kinds):
+            return name
+    return "value"
+
+
+def yaml_value(value: Any) -> str:
+    """The value as YAML, on one line, or `""` when it is too long to show."""
+    if isinstance(value, (dict, list, tuple)):
+        return _flow_value(value)
+    text = _scalar_text(value)
+    return text if text and len(text) <= _VALUE_MAX and "\n" not in text else ""
+
+
+def _subject(field_name: str | None, subject: str) -> str:
+    """What the claim is about.
+
+    A field name comes from the location the analyzer is walking and is right
+    whenever the schema being walked is PDL's own. It is *not* right for a
+    `spec:` or an `args:` check, where the same walk validates a value the
+    program produced against a schema the program declared: there `loc.path`
+    ends in `spec`, and "`spec:` should be a list" would blame the declaration
+    for the result. Those callers pass `subject` instead, and it wins.
+    """
+    if subject:
+        return subject
+    if field_name:
+        return f"`{field_name}:`"
+    return "this value"
+
+
+def _found(value: Any) -> str:
+    """``\\`result\\` is a string``, or the shape alone when the value is too big.
+
+    The subject is not repeated in the fallback. It is already the head of the
+    sentence, so `` `defs:` should be a mapping, but `defs:` is a list`` names
+    the same thing twice and reads as a claim about the word.
+    """
+    shown = yaml_value(value)
+    shape = _with_article(_yaml_shape(value))
+    return f"`{shown}` is {shape}" if shown else f"it is {shape}"
+
+
+def _shape_diagnostic(
+    *,
+    headline: str,
+    rule: str,
+    suggestion: Suggestion | None,
+    spans: Sequence[Span],
+    source: str | None,
+) -> Diagnostic:
+    """Assemble one shape diagnostic. One shape, four callers.
+
+    No `file` and no `block_path`: `located_message` adds the header prefix and
+    the `  in <path>` line at the call site, as it does for every other
+    diagnostic the analyzer builds.
+    """
+    shown: Sequence[Span] = ()
+    if source:
+        height = len(source.split("\n"))
+        shown = [s for s in spans if 1 <= s.line <= height]
+    return Diagnostic(
+        code=_SHAPE_CODE,
+        message=headline,
+        spans=list(shown),
+        source=source,
+        notes=[Note("rule", rule)] if rule else [],
+        suggestions=[suggestion] if suggestion is not None else [],
+    )
+
+
+def list_expected_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    field_name: str | None,
+    subject: str = "",
+    value: Any,
+    item_values: Sequence[Any] = (),
+    item_values_exhaustive: bool = False,
+    wrapped: str = "",
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """A value where the schema wants a list of them.
+
+    ``wrapped`` is the one-element list the user's own value makes, rendered as
+    YAML, and it is set only when the analyzer has checked that it satisfies the
+    schema. `contribute: result` is the shape this exists for: the value is a
+    perfectly good *item* and the only thing missing is the brackets.
+
+    ``item_values_exhaustive`` is the difference between "is one of" and "may
+    be". `ContributeElement` enumerates four targets and *also* admits a mapping,
+    so listing the four as the accepted set would be false; naming them as
+    possibilities is not.
+    """
+    subj = _subject(field_name, subject)
+    headline = f"{subj} should be a list, but {_found(value)}"
+
+    # The rule paragraph is emitted only when it carries something the headline
+    # does not: what the items are, or that a single value still needs brackets.
+    # "the block's result is a list." under "the block's result should be a
+    # list" is a second copy of the claim, not evidence for it.
+    rule = ""
+    if wrapped or item_values:
+        if subject or field_name:
+            rule = f"{subj} is a list"
+        else:
+            rule = "A list is expected here"
+        rule += ", even when it has only one element." if wrapped else "."
+        if item_values:
+            opener = (
+                "Each item is one of" if item_values_exhaustive else "Each item may be"
+            )
+            rule += f" {opener} {_oxford(item_values)}."
+
+    suggestion = None
+    if wrapped and field_name:
+        suggestion = Suggestion("put the value in a list:", f"{field_name}: {wrapped}")
+    elif wrapped:
+        suggestion = Suggestion(f"put the value in a list: `{wrapped}`.")
+    return _shape_diagnostic(
+        headline=headline,
+        rule=rule,
+        suggestion=suggestion,
+        spans=spans,
+        source=source,
+    )
+
+
+def mapping_expected_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    field_name: str | None,
+    subject: str = "",
+    value: Any,
+    key_names: Sequence[str] = (),
+    open_keys: bool = False,
+    merged: str = "",
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """A list, or a scalar, where the schema wants a mapping.
+
+    ``merged`` is the user's own list of single-entry mappings folded into one
+    mapping, rendered as YAML, and set only when the analyzer has checked that
+    the result satisfies the schema. Writing `defs:` as a list of definitions is
+    the mistake this exists for, and the edit that repairs it is exactly that
+    fold -- no key and no value is invented.
+    """
+    subj = _subject(field_name, subject)
+    headline = f"{subj} should be a mapping, but {_found(value)}"
+
+    rule = (
+        f"{subj} is a mapping of `key: value` entries"
+        if subject or field_name
+        else "A mapping of `key: value` entries is expected here"
+    )
+    if key_names:
+        rule += f". Its keys are {_oxford(key_names)}."
+    elif open_keys:
+        rule += ", and its keys are names you choose."
+    else:
+        rule += "."
+
+    suggestion = None
+    if merged and field_name:
+        suggestion = Suggestion(
+            "write the entries as one mapping:", f"{field_name}: {merged}"
+        )
+    elif merged:
+        suggestion = Suggestion(f"write the entries as one mapping: `{merged}`.")
+    return _shape_diagnostic(
+        headline=headline,
+        rule=rule,
+        suggestion=suggestion,
+        spans=spans,
+        source=source,
+    )
+
+
+def single_value_diagnostic(  # pylint: disable=too-many-arguments,too-many-branches
+    *,
+    field_name: str | None,
+    subject: str = "",
+    value: Any,
+    takes_a_block: bool = False,
+    accepted: Sequence[Any] = (),
+    mapping_keys: Sequence[str] = (),
+    only: str = "",
+    in_order: str = "",
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """A list in a field that takes one value.
+
+    The message this replaces said `should not be a list` and stopped there: a
+    prohibition with no expectation, which is Why 1 by the dimension's own
+    wording. What the field *does* take is knowable in both of the shapes that
+    reach here -- a block, when the union is `BlockType`, and otherwise whatever
+    the union's members enumerate -- so it is said.
+
+    ``only`` is the list's single element when it has exactly one, and
+    ``in_order`` the `text:` block that runs several in sequence. Both are
+    rendered YAML and both are set only after the analyzer has checked them
+    against the schema.
+    """
+    subj = _subject(field_name, subject)
+    expected = "one block" if takes_a_block else "a single value"
+    headline = f"{subj} should be {expected}, but {_found(value)}"
+
+    if takes_a_block:
+        rule = (
+            f"{subj} is one block, not a list of blocks."
+            if subject or field_name
+            else "One block is expected here, not a list of blocks."
+        )
+        if in_order:
+            rule += " A block that runs several blocks in order is a `text:` block."
+    elif accepted:
+        opener = (
+            f"{subj} accepts" if subject or field_name else "The accepted values are"
+        )
+        rule = f"{opener} {_oxford(accepted)}"
+        if mapping_keys:
+            rule += (
+                f", or a mapping with a {_oxford([k + ':' for k in mapping_keys])} key"
+            )
+        rule += "."
+    elif subject or field_name:
+        rule = f"{subj} takes a single value, not a list."
+    else:
+        rule = "A single value is expected here, not a list."
+
+    suggestion = None
+    if only and field_name:
+        what = "block" if takes_a_block else "value"
+        suggestion = Suggestion(
+            f"write the one {what} on its own:", f"{field_name}: {only}"
+        )
+    elif in_order and field_name:
+        suggestion = Suggestion(
+            "run them in order from one block:", f"{field_name}: {in_order}"
+        )
+    return _shape_diagnostic(
+        headline=headline,
+        rule=rule,
+        suggestion=suggestion,
+        spans=spans,
+        source=source,
+    )
+
+
+def list_length_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    field_name: str | None,
+    subject: str = "",
+    count: int,
+    minimum: int | None,
+    maximum: int | None,
+    positions: Sequence[str] = (),
+    kept: str = "",
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """A list whose length the schema constrains. E-SCHEMA-009's S0 entry.
+
+    Reached by `retry: {jitter: [1, 2, 3]}`, which until this diagnostic existed
+    crashed the analyzer: `jitter:` is a number or a `[min, max]` pair, pydantic
+    renders the pair as `prefixItems` with `minItems` and `maxItems` and **no**
+    `items` key, and the array arm subscripted `schema["items"]` for every
+    element. A `prefixItems` schema is a tuple -- fixed length, a type per
+    position -- so guarding the subscript alone would have answered a length
+    error with silence. The length is the error, and it is what is said.
+
+    ``positions`` names the type at each position when the schema fixes them, so
+    the rule can show the shape (`[number, number]`) rather than assert a count.
+    ``kept`` is the user's own list truncated to the maximum, set only when the
+    analyzer has checked that the truncation satisfies the schema.
+
+    The subject is **the list**, never the field. `jitter:` is a number *or* a
+    pair, and the pair is the alternative the union arm selected because it is
+    the one the user wrote; "`jitter:` is a fixed-length list" would be a claim
+    about the field that the schema next door contradicts. What is true, and
+    what is said, is that the list they wrote has a length.
+    """
+    if field_name:
+        subj = f"the list in `{field_name}:`"
+    elif subject:
+        subj = subject
+    else:
+        subj = "this list"
+    if minimum is not None and minimum == maximum:
+        want = f"exactly {minimum} items" if minimum != 1 else "exactly one item"
+    elif maximum is not None and count > maximum:
+        want = f"at most {maximum} items" if maximum != 1 else "at most one item"
+    else:
+        want = f"at least {minimum} items" if minimum != 1 else "at least one item"
+    headline = f"{subj} should have {want}, but it has {count}"
+
+    # Without the positions the rule would be the headline again.
+    rule = ""
+    if positions:
+        shape = "[" + ", ".join(positions) + "]"
+        rule = f"A list here has {want}, written `{shape}`."
+
+    suggestion = None
+    if kept and field_name and maximum is not None:
+        keep = f"the first {maximum} items" if maximum != 1 else "the first item"
+        suggestion = Suggestion(f"keep {keep}:", f"{field_name}: {kept}")
+    return _shape_diagnostic(
+        headline=headline,
+        rule=rule,
+        suggestion=suggestion,
+        spans=spans,
+        source=source,
+    )
+
+
 _UNLOCATED_SCHEMA_FAILURE = (
     "the program does not match the PDL schema, and PDL cannot say where"
 )

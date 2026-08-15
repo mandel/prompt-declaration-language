@@ -4,5 +4,12 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - [{'text': 'recovering'}] should not be a list
+prog.pdl:3 - `fallback:` should be one block, but `[{text: recovering}]` is a list
   in fallback
+
+3 |   - text: recovering
+  |     ^
+
+  `fallback:` is one block, not a list of blocks.
+
+  help: write the one block on its own: fallback: {text: recovering}

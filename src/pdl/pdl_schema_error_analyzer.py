@@ -15,10 +15,16 @@ from .pdl_ast import (  # noqa: PLC2701
     _model_block_tag,
 )
 from .pdl_diagnostics import (
+    Span,
+    list_expected_diagnostic,
+    list_length_diagnostic,
+    mapping_expected_diagnostic,
     no_block_kind_diagnostic,
     prefer,
     scalar_value_diagnostic,
+    single_value_diagnostic,
     unknown_tag_diagnostic,
+    yaml_value,
 )
 from .pdl_location_utils import append, get_source, located_message, source_text
 from .pdl_schema_utils import convert_to_json_type, json_types_convert
@@ -53,10 +59,45 @@ def is_base_type(schema):
     return False
 
 
+def is_of_type(the_type, data) -> bool:
+    """Whether `data` is of a JSON Schema base type, as pydantic reads it.
+
+    One relaxation over a bare `isinstance`, and it is a relaxation only:
+    JSON Schema's `number` admits an integer, `1` and `1.0` are the same number,
+    and pydantic coerces the one to the other, so `isinstance(1, float)` is the
+    wrong question. Nothing reached this before -- `ExpressionFloatOrFloatFloat`
+    is the only `number` a program is likely to write and the arm that leads to
+    it crashed -- and with the crash fixed, `jitter: [1, 2]`, a program that
+    runs, would otherwise be told each of its items is not a number. A false
+    complaint standing beside a true one is worse than the true one alone.
+
+    `bool` stays excluded, as `isinstance(True, float)` already excluded it:
+    Python makes `bool` a subclass of `int`, YAML does not, and admitting it
+    here would be a new complaint's worth of change rather than one fewer.
+    """
+    if the_type is None:
+        # `json_types_convert["null"]` is `None`, which `isinstance` cannot take
+        # as a class. The caller's `or` short-circuits before reaching here for
+        # every value but `None` itself, so this is unreachable today and is
+        # written out rather than left as a `TypeError` waiting in the reporter.
+        return data is None
+    if the_type is float:
+        return isinstance(data, (int, float)) and not isinstance(data, bool)
+    return isinstance(data, the_type)
+
+
 def is_array(schema):
+    """Whether `schema` describes a list.
+
+    `prefixItems` counts even without a `type`, because a tuple schema is an
+    array schema whether or not the generator wrote the keyword. Pydantic does
+    write it, so nothing in `pdl-schema.json` depends on this clause today; a
+    `spec:` carrying a hand-written JSON Schema can, and answering "no" there
+    would send a list down the union arm to be told it is not allowed at all.
+    """
     if "type" in schema:
         return schema["type"] == "array"
-    return False
+    return "prefixItems" in schema
 
 
 def is_object(schema):
@@ -418,12 +459,11 @@ _REMOVAL_EFFECT = {"ParserType": " to leave the output as text"}
 sayable. Keyed by `$def` name and matched by identity, like the block unions."""
 
 
-def scalar_union_message(defs, schema, data, loc: PdlLocationType) -> str:
-    """The message for a scalar that matched no member of its union.
+def union_accepts(defs, schema) -> tuple[list[Any], list[str]]:
+    """The spellings a union accepts: enumerated values, and one-key mappings.
 
-    Falls back to the old `should be of type <schema>` dump when the union has
-    no enumerated values, because then there is no list of accepted spellings to
-    offer and naming the field alone would be less, not more, than the schema.
+    Shared by the scalar arm and the list arm so that the two cannot drift into
+    describing the same union in two different vocabularies.
     """
     accepted: list[Any] = []
     mapping_keys: list[str] = []
@@ -438,6 +478,17 @@ def scalar_union_message(defs, schema, data, loc: PdlLocationType) -> str:
             required = ref_type.get("required") or []
             if len(required) == 1 and required[0] not in mapping_keys:
                 mapping_keys.append(required[0])
+    return accepted, mapping_keys
+
+
+def scalar_union_message(defs, schema, data, loc: PdlLocationType) -> str:
+    """The message for a scalar that matched no member of its union.
+
+    Falls back to the old `should be of type <schema>` dump when the union has
+    no enumerated values, because then there is no list of accepted spellings to
+    offer and naming the field alone would be less, not more, than the schema.
+    """
+    accepted, mapping_keys = union_accepts(defs, schema)
     if not accepted:
         return located_message(loc, str(data) + " should be of type " + str(schema))
 
@@ -456,6 +507,345 @@ def scalar_union_message(defs, schema, data, loc: PdlLocationType) -> str:
         source=source_text(loc.file),
     )
     return located_message(loc, diag.text)
+
+
+# --------------------------------------------------------------------------
+# Shapes (E-SCHEMA-009): a list where a mapping belongs, and the reverse
+# --------------------------------------------------------------------------
+
+_SHAPE_WORDS = {
+    "array": "list",
+    "object": "mapping",
+    "number": "number",
+    "integer": "integer",
+    "string": "string",
+    "boolean": "boolean",
+    "null": "null",
+}
+"""JSON Schema's `type` in the words PDL's own prose uses. See `_YAML_SHAPES`."""
+
+
+def type_word(defs, schema) -> str:
+    """The name of the one type `schema` admits, or `""` if it admits several."""
+    if not isinstance(schema, dict):
+        return ""
+    if "$ref" in schema:
+        ref_string = schema["$ref"].split("/")[2]
+        return "" if ref_string not in defs else type_word(defs, defs[ref_string])
+    declared = schema.get("type")
+    return _SHAPE_WORDS.get(declared, "") if isinstance(declared, str) else ""
+
+
+def satisfies(defs, schema, data, loc: PdlLocationType) -> bool:
+    """Whether `data` satisfies `schema`, for deciding whether to offer an edit.
+
+    Every `help:` in this section is a rewrite of the user's own value, and this
+    is what stops one being offered unchecked. The exception swallowing is
+    deliberate and narrow: the only consequence of answering `False` is that a
+    suggestion is withheld, whereas an exception raised here would be a crash
+    *inside the error reporter*, which is the whole of what E-SCHEMA-009's S0
+    entry records and decision 5.8 forbids.
+    """
+    try:
+        return not analyze_errors(defs, schema, data, loc)
+    except (KeyError, IndexError, TypeError, RecursionError):  # pragma: no cover
+        return False
+
+
+def _listed_values(schema) -> tuple[list, bool]:
+    """The values a non-union schema spells out, and whether it spells out all."""
+    if "enum" in schema:
+        return list(schema["enum"]), True
+    if "const" in schema:
+        return [schema["const"]], True
+    return [], False
+
+
+def enumerated(defs, schema, seen: frozenset[str] = frozenset()) -> tuple[list, bool]:
+    """The values a schema accepts, and whether they are the whole of them.
+
+    The second half is the load-bearing one. `ContributeElement` enumerates four
+    targets *and* admits a mapping, so a diagnostic that printed the four as the
+    accepted set would be stating something false about a schema it had just
+    read; `analyze_errors` would then reject a program the message called legal.
+    """
+    if not isinstance(schema, dict) or not schema:
+        return [], False
+    if "$ref" in schema:
+        ref_string = schema["$ref"].split("/")[2]
+        if ref_string in seen or ref_string not in defs:
+            return [], False
+        return enumerated(defs, defs[ref_string], seen | {ref_string})
+    members = alternatives(schema)
+    if members is None:
+        return _listed_values(schema)
+    values: list = []
+    exhaustive = True
+    for item in members:
+        found, whole = enumerated(defs, item, seen)
+        for value in found:
+            if value not in values:
+                values.append(value)
+        exhaustive = exhaustive and whole
+    return values, exhaustive
+
+
+def fold_entries(data) -> dict | None:
+    """A list of single-entry mappings as the one mapping it was meant to be.
+
+    `defs:` written as a list of definitions is the mistake; folding is the
+    edit, and it invents nothing. `None` when the fold would lose something: a
+    non-mapping item, or a key written twice, where merging would silently drop
+    one of the user's own definitions.
+    """
+    if not isinstance(data, list) or not data:
+        return None
+    folded: dict = {}
+    for item in data:
+        if not isinstance(item, dict):
+            return None
+        for key, value in item.items():
+            if key in folded:
+                return None
+            folded[key] = value
+    return folded
+
+
+def _child_segment(data) -> str | None:
+    """The path segment of the first thing *inside* `data`, if it has one."""
+    if isinstance(data, list) and data:
+        return "[0]"
+    if isinstance(data, dict) and data:
+        first = next(iter(data))
+        return first if isinstance(first, str) else None
+    return None
+
+
+def value_location(loc: PdlLocationType, data) -> PdlLocationType:
+    """`loc`, moved to the line the offending value itself starts on.
+
+    `_walk` records a mapping entry at its **key**, deliberately, so `loc` for
+    `defs:` is the line `defs` is written on while the list the complaint is
+    about may begin on the next one. The value's own node is not recorded, but
+    its first child is, and in block style that child is on the line the value
+    begins on -- which is why this asks the registry for the child rather than
+    promising a position nothing recorded.
+
+    The path is left alone. It names the block the claim is *about*, and
+    `defs.greeting` would attribute a complaint about `defs:` to one entry of
+    it; `_no_block_message` splits the two the same way.
+
+    `append` carries the parent's position down on a miss, so a value with
+    nothing inside it, or one whose child shares the key's line, keeps the key's
+    line rather than moving to an invented one.
+    """
+    segment = _child_segment(data)
+    if segment is None:
+        return loc
+    inner = append(loc, segment)
+    if inner.line == loc.line:
+        return loc
+    return PdlLocationType(file=loc.file, path=loc.path, line=inner.line, col=inner.col)
+
+
+def _shape_spans(loc: PdlLocationType, label: str = "") -> list[Span]:
+    if not loc.line or loc.line < 1:
+        return []
+    return [Span(line=loc.line, col=loc.col or None, label=label, primary=True)]
+
+
+def _shape_source(loc: PdlLocationType, subject: str) -> str | None:
+    """The text an excerpt is drawn from, or None when there is nothing to quote.
+
+    A `subject` means the value being validated is one the program *produced* --
+    a block's result against its `spec:` -- while `loc` names the `spec:` that
+    declared the type. Quoting that line under a claim about a runtime value
+    would put a caret on text that is not the offending value, which `RUBRIC.md`
+    ranks below showing no excerpt at all.
+    """
+    return None if subject else source_text(loc.file)
+
+
+def _writable_field(loc: PdlLocationType, subject: str) -> str | None:
+    """The field name, when the value at `loc` is one the user can go and edit.
+
+    A `subject` means it is not: the value is one the program produced and the
+    field the location names is the `spec:` that declared its type. Every
+    suggestion in this section is a rewrite of the offending value, so with a
+    subject there is none to offer -- `put the value in a list: spec: [Hello]`
+    would be an instruction to write the block's own output into its type
+    declaration.
+    """
+    return None if subject else _field_name(loc)
+
+
+def not_a_list_message(defs, schema, data, loc: PdlLocationType, subject: str) -> str:
+    """A value where the schema wants a list of them. `contribute: result`."""
+    values, exhaustive = enumerated(defs, schema.get("items"))
+    field = _writable_field(loc, subject)
+    wrapped = ""
+    if field is not None and satisfies(defs, schema, [data], loc):
+        wrapped = yaml_value([data])
+    diag = list_expected_diagnostic(
+        field_name=field,
+        subject=subject,
+        value=data,
+        item_values=values,
+        item_values_exhaustive=exhaustive,
+        wrapped=wrapped,
+        spans=_shape_spans(loc),
+        source=_shape_source(loc, subject),
+    )
+    return located_message(loc, diag.text)
+
+
+def not_a_mapping_message(
+    defs, schema, data, loc: PdlLocationType, subject: str
+) -> str:
+    """A list, or a scalar, where the schema wants a mapping. `defs:` as a list."""
+    properties = list(schema.get("properties") or {})
+    additional = schema.get("additionalProperties")
+    field = _writable_field(loc, subject)
+    merged = ""
+    folded = fold_entries(data) if field is not None else None
+    if folded is not None and satisfies(defs, schema, folded, loc):
+        merged = yaml_value(folded)
+    where = value_location(loc, data)
+    diag = mapping_expected_diagnostic(
+        field_name=field,
+        subject=subject,
+        value=data,
+        # A long list of field names is a wall rather than a rule; past this the
+        # shape is what the reader needs and the names are noise.
+        key_names=properties if len(properties) <= 6 else [],
+        open_keys=additional is not None and not isinstance(additional, bool),
+        merged=merged,
+        spans=_shape_spans(where),
+        source=_shape_source(loc, subject),
+    )
+    return located_message(where, diag.text)
+
+
+def no_array_member_message(
+    defs, schema, data, loc: PdlLocationType, subject: str
+) -> str:
+    """A list in a union that has no array member. `fallback:` as a sequence.
+
+    `is_array` reads a literal `type: array`, so an array behind a `$ref` is
+    invisible to the scan that reached here -- but every alternative of
+    `BlockType` is a `$ref` and none of them is an array, so for the case this
+    is written for the scan's answer is right and the field really does take one
+    value. What it takes is knowable, and the message this replaces
+    (`should not be a list`) said only what it does not.
+    """
+    union = discriminated_union(defs, schema)
+    takes_a_block = union is not None and union.name == "BlockType"
+    accepted, mapping_keys = union_accepts(defs, schema)
+    field = _writable_field(loc, subject)
+    only = ""
+    in_order = ""
+    if field is None:
+        pass
+    elif len(data) == 1 and satisfies(defs, schema, data[0], loc):
+        only = yaml_value(data[0])
+    elif takes_a_block and len(data) > 1:
+        sequence = {"text": data}
+        if satisfies(defs, schema, sequence, loc):
+            in_order = yaml_value(sequence)
+    where = value_location(loc, data)
+    diag = single_value_diagnostic(
+        field_name=field,
+        subject=subject,
+        value=data,
+        takes_a_block=takes_a_block,
+        accepted=accepted,
+        mapping_keys=prefer(mapping_keys, ("regex", "pdl")),
+        only=only,
+        in_order=in_order,
+        spans=_shape_spans(where),
+        source=_shape_source(loc, subject),
+    )
+    return located_message(where, diag.text)
+
+
+def list_length_message(defs, schema, data, loc: PdlLocationType, subject: str) -> str:
+    """A list the schema fixes the length of. The S0 entry of E-SCHEMA-009.
+
+    `retry: {jitter: [1, 2, 3]}` crashed the analyzer here until this existed:
+    `ExpressionFloatOrFloatFloat` renders its pair alternative as `prefixItems`
+    with `minItems`/`maxItems` and **no `items`**, and the array arm subscripted
+    `schema["items"]` for every element. Guarding the subscript alone would have
+    answered a length error with silence -- three items where two are allowed is
+    what is actually wrong, and it is what is said.
+    """
+    prefix = schema.get("prefixItems") or []
+    minimum = schema.get("minItems")
+    maximum = schema.get("maxItems")
+    positions = [type_word(defs, item) for item in prefix]
+    if not all(positions):
+        # One unnameable position and the shape cannot be written out; a partly
+        # filled `[number, ]` would be a form the user cannot copy.
+        positions = []
+
+    field = _writable_field(loc, subject)
+    kept = ""
+    where = loc
+    label = ""
+    if maximum is not None and len(data) > maximum:
+        over = len(data) - maximum
+        label = "one item too many" if over == 1 else f"{over} items too many"
+        first_extra = append(loc, "[" + str(maximum) + "]")
+        if first_extra.line:
+            where = PdlLocationType(
+                file=loc.file,
+                path=loc.path,
+                line=first_extra.line,
+                col=first_extra.col,
+            )
+        if field is not None and satisfies(defs, schema, data[:maximum], loc):
+            kept = yaml_value(data[:maximum])
+    diag = list_length_diagnostic(
+        field_name=field,
+        subject=subject,
+        count=len(data),
+        minimum=minimum,
+        maximum=maximum,
+        positions=positions,
+        kept=kept,
+        spans=_shape_spans(where, label),
+        source=_shape_source(loc, subject),
+    )
+    return located_message(where, diag.text)
+
+
+def analyze_list(defs, schema, data, loc: PdlLocationType, subject: str) -> list[str]:
+    """Every way a list fails an array schema: its length, then its elements.
+
+    Three keywords, and `items` is only one of them. `prefixItems` gives a type
+    per position and stops; `items` covers every position `prefixItems` does not
+    and is **absent** for a fixed-length tuple, where it would have nothing to
+    say. An absent `items` constrains nothing, which is why the loop skips
+    rather than complains -- reading it unconditionally is the defect.
+    """
+    ret: list[str] = []
+    prefix = schema.get("prefixItems") or []
+    rest = schema.get("items")
+    minimum = schema.get("minItems")
+    maximum = schema.get("maxItems")
+    if (minimum is not None and len(data) < minimum) or (
+        maximum is not None and len(data) > maximum
+    ):
+        ret.append(list_length_message(defs, schema, data, loc, subject))
+    for index, item in enumerate(data):
+        item_schema = prefix[index] if index < len(prefix) else rest
+        if not isinstance(item_schema, dict):
+            # Absent, or the JSON Schema booleans. `false` forbids the element
+            # outright, which is what `maxItems` says above in every schema PDL
+            # generates; saying it twice would be two complaints about one item.
+            continue
+        newloc = append(loc, "[" + str(index) + "]")
+        ret += analyze_errors(defs, item_schema, item, newloc)
+    return ret
 
 
 def analyze_discriminated(
@@ -546,8 +936,20 @@ def _unknown_tag_message(
     return located_message(key_loc, diag.text)
 
 
-def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # noqa: C901
+def analyze_errors(  # noqa: C901
+    defs, schema, data, loc: PdlLocationType, subject: str = ""
+) -> list[str]:
     """Every way `data` fails `schema`, one independently-located message each.
+
+    `subject` names what is being validated, for the callers where the field the
+    location points at is not it. `pdl_schema_validator` walks a block's
+    *result* against the schema a `spec:` declared, with a location whose path
+    ends in `spec`; a shape message that read the field name off that location
+    would blame the declaration for the value. Everything else leaves it empty
+    and the field name is used. It travels only as far as the node it describes:
+    a `$ref`, a nullable unwrap and a union branch are the same node and keep
+    it, while descending into a property or an element does not, because there
+    the field name is the right subject again.
 
     The return type is the awkward part of rendering block paths here (DROP #10).
     Each element is a whole diagnostic with a location of its own -- E-SCHEMA-010
@@ -569,11 +971,7 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
     if is_base_type(schema):
         if "type" in schema:
             the_type = json_types_convert[schema["type"]]
-            if (
-                the_type is None
-                and data is not None
-                or not isinstance(data, the_type)  # type: ignore
-            ):
+            if the_type is None and data is not None or not is_of_type(the_type, data):
                 ret.append(
                     located_message(
                         loc, str(data) + " should be of type " + str(the_type)
@@ -597,19 +995,17 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
     elif "$ref" in schema:
         ref_string = schema["$ref"].split("/")[2]
         ref_type = defs[ref_string]
-        ret += analyze_errors(defs, ref_type, data, loc)
+        ret += analyze_errors(defs, ref_type, data, loc, subject)
 
     elif is_array(schema):
         if not isinstance(data, list):
-            ret.append(located_message(loc, str(data) + " should be a list"))
+            ret.append(not_a_list_message(defs, schema, data, loc, subject))
         else:
-            for i, item in enumerate(data):
-                newloc = append(loc, "[" + str(i) + "]")
-                ret += analyze_errors(defs, schema["items"], item, newloc)
+            ret += analyze_list(defs, schema, data, loc, subject)
 
     elif is_object(schema):
         if not isinstance(data, dict):
-            ret.append(located_message(loc, str(data) + " should be an object"))
+            ret.append(not_a_mapping_message(defs, schema, data, loc, subject))
         else:
             if "required" in schema.keys():
                 required_fields = schema["required"]
@@ -646,7 +1042,7 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
     elif is_any_of(schema):
         schema_alternatives = alternatives(schema)
         if len(schema_alternatives) == 2 and nullable(schema):
-            ret += analyze_errors(defs, get_non_null_type(schema), data, loc)
+            ret += analyze_errors(defs, get_non_null_type(schema), data, loc, subject)
 
         elif not isinstance(data, dict) and not isinstance(data, list):
             if not any(
@@ -660,9 +1056,9 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
                 if is_array(item):
                     found = item
             if found is not None:
-                ret += analyze_errors(defs, found, data, loc)
+                ret += analyze_errors(defs, found, data, loc, subject)
             else:
-                ret.append(located_message(loc, str(data) + " should not be a list"))
+                ret.append(no_array_member_message(defs, schema, data, loc, subject))
 
         elif isinstance(data, dict):
             union = discriminated_union(defs, schema) or deferred_union(defs, schema)
@@ -685,5 +1081,5 @@ def analyze_errors(defs, schema, data, loc: PdlLocationType) -> list[str]:  # no
                 )
 
             else:
-                ret += analyze_errors(defs, match_ref, data, loc)
+                ret += analyze_errors(defs, match_ref, data, loc, subject)
     return ret

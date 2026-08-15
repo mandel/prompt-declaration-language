@@ -4,5 +4,13 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - [{'greeting': 'hi'}] should be an object
+prog.pdl:3 - `defs:` should be a mapping, but `[{greeting: hi}]` is a list
   in defs
+
+3 |   - greeting: hi
+  |     ^
+
+  `defs:` is a mapping of `key: value` entries, and its keys are names you
+  choose.
+
+  help: write the entries as one mapping: defs: {greeting: hi}

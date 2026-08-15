@@ -170,12 +170,22 @@ def test_line9(capsys: CaptureFixture[str]):
     do_test(line9, capsys)
 
 
+# E-SCHEMA-009. `QUESTION should be an object` said the JSON-Schema noun and
+# nothing else; `mapping` is the word PDL's own prose and documentation use, and
+# the rule below it says what a `defs:` mapping is made of. No `help:`: the
+# value here is a bare string, so there is no list of entries to fold into a
+# mapping and any concrete edit would have to invent the definition.
 line10 = {
     "file": "tests/data/line/hello10.pdl",
     "errors": [
         "",
-        "tests/data/line/hello10.pdl:7 - QUESTION should be an object",
+        "tests/data/line/hello10.pdl:7 - `defs:` should be a mapping, but "
+        "`QUESTION` is a string",
         "  in text[1].defs",
+        "7 |   defs: QUESTION",
+        "  |   ^",
+        "  `defs:` is a mapping of `key: value` entries, and its keys are names you",
+        "  choose.",
     ],
 }
 

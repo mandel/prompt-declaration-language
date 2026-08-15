@@ -34,23 +34,33 @@ def type_check_args(
     schema = get_json_schema(params_copy, False)
     if schema is None:
         return ["Error obtaining a valid schema from function parameters definition"]
-    return type_check(args_copy, schema, loc)
+    return type_check(args_copy, schema, loc, subject="the arguments")
 
 
 def type_check_spec(result: Any, spec: PdlTypeType, loc) -> list[str]:
     schema = pdltype_to_jsonschema(spec, False)
     if schema is None:
         return ["Error obtaining a valid schema from spec"]
-    return type_check(result, schema, loc)
+    return type_check(result, schema, loc, subject="the block's result")
 
 
-def type_check(result: Any, schema: dict[str, Any], loc) -> list[str]:
+def type_check(
+    result: Any, schema: dict[str, Any], loc, subject: str = ""
+) -> list[str]:
+    """Validate a value the *program produced* against a type it declared.
+
+    `subject` is what makes the difference visible to `analyze_errors`. The
+    location here points at the `spec:` or the `args:` that declared the type,
+    while `result` is a value computed at run time, so a message that named the
+    field the location sits on would blame the declaration for the value: "the
+    block's result should be a list", not "`spec:` should be a list".
+    """
     from jsonschema import ValidationError, validate
 
     try:
         validate(instance=result, schema=schema)
     except ValidationError as e:
-        errors = analyze_errors({}, schema, result, loc)
+        errors = analyze_errors({}, schema, result, loc, subject=subject)
         if len(errors) == 0:
             errors = [located_message(loc, e.message)]
         return errors

@@ -423,6 +423,41 @@ class LinterConfig(BaseModel):
         return linter_config
 
 
+# The linter lists one line per file (` - ✅  x.pdl`, ` - ❌  y.pdl`), and a
+# diagnostic sits *under* the file it is about. Five spaces is the gutter the
+# first line of a diagnostic has always been printed at; what was missing is that
+# the rest of the diagnostic was printed at zero, so the second line of one error
+# did not line up with its first.
+_DIAGNOSTIC_INDENT = " " * 5
+
+
+def _indent_diagnostic(text: str) -> str:
+    """Put a whole rendered diagnostic under the linter's five-space gutter.
+
+    Uniform, and deliberately dumb: the continuation lines are the rendered text's
+    own structure -- the `  in <path>` line, the `N | ...` excerpt gutter and its
+    caret, the wrapped rule paragraph, the closing `note:` -- and every one of them
+    is positioned relative to the others by the renderer that produced it. Shifting
+    the block as a whole preserves all of that; re-wrapping it would not, and would
+    desync the linter from `pdl_diagnostics.render` and `pdl_interpreter._wrap`,
+    which are what a reader sees when the *same* diagnostic reaches them from
+    `pdl`. The two tools must spell one error the same way.
+
+    The cost is measured rather than assumed: the widest line of a diagnostic grows
+    by five, so E-LINT-003's rule paragraph reaches 81 columns. That is inside the
+    envelope the linter already has -- E-LINT-002's header is 89 columns today and
+    is unchanged by this -- and narrowing it means changing the width the
+    interpreter wraps to, for both tools at once.
+
+    Blank lines stay blank. Indenting them would make five spaces of trailing
+    whitespace on every paragraph break, which the `trailing-whitespace` hook
+    would then rewrite out of the goldens underneath this.
+    """
+    return "\n".join(
+        _DIAGNOSTIC_INDENT + line if line.strip() else "" for line in text.split("\n")
+    )
+
+
 class _CodeBlockSyntaxError(Exception):
     """A `code:` block that Python's parser rejected.
 
@@ -479,11 +514,11 @@ def _lint_pdl_file(
         # leaking into the linter's output -- the `pdl` interpreter prints the
         # same diagnostic without it -- so the two tools now spell one error the
         # same way.
-        logger.error("     %s", e.text)
+        logger.error("%s", _indent_diagnostic(e.text))
         return False
     except _CodeBlockSyntaxError as e:
         logger.error(" - ❌  %s", file_path)
-        logger.error("     %s", _code_syntax_diagnostic(file_path, e))
+        logger.error("%s", _indent_diagnostic(_code_syntax_diagnostic(file_path, e)))
         return False
     except Exception:
         logger.exception(" - ❌  %s", file_path)

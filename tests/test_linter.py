@@ -286,6 +286,46 @@ def test_lint_pdl_file_python_syntax_error(
         "note: `code:N` line numbers are within the block's code",
     )
     assert not any(record.exc_text for record in caplog.records)
+    assert_indented_to_the_gutter(caplog)
+
+
+def test_diagnostic_is_indented_as_one_block(
+    project_root, caplog
+):  # pylint: disable=redefined-outer-name
+    """Every line of a rendered diagnostic sits under the linter's gutter.
+
+    The linter lists one line per file and prints the diagnostic under it. Only
+    the *first* line used to be indented, so the excerpt, the rule paragraph and
+    the `in <path>` line all started in column 0 and the second line of one error
+    did not line up with its first.
+    """
+    caplog.set_level(logging.ERROR)
+    broken = project_root / "broken.pdl"
+    broken.write_text('text:\n  - "hello\n  - "world"\n')
+    config = LinterConfig(project_root=project_root)
+
+    with ChangeDir(project_root):
+        assert not _lint_pdl_file(Path("broken.pdl"), config)
+
+    assert_indented_to_the_gutter(caplog)
+    # Shifted as a block, never re-wrapped: the renderer's own relative structure
+    # -- here the caret's offset under the line it marks -- has to survive intact.
+    rendered = "\n".join(r.message for r in caplog.records)
+    assert '     2 |   - "hello' in rendered
+    assert "       |     ^ this double quote opens a string" in rendered
+
+
+def assert_indented_to_the_gutter(caplog):
+    """No diagnostic line starts in column 0, and no blank line gains padding."""
+    for record in caplog.records:
+        for line in record.message.split("\n"):
+            if not line.strip():
+                # Blank lines must stay empty or the trailing-whitespace hook
+                # rewrites the goldens underneath us.
+                assert line == "", repr(line)
+                continue
+            assert line.startswith(" "), repr(line)
+            assert line == line.rstrip(), repr(line)
 
 
 def test_lint_pdl_file_nonexistent(

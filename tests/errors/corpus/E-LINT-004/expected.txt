@@ -3,7 +3,7 @@ $ exit: 1
 --- stdout ---
  - ❌  <WORKDIR>/outside.pdl
      <WORKDIR>/outside.pdl:4:5 - Field not allowed: parameterss
-  in text[0].parameterss
+       in text[0].parameterss
 ----------------------------------------------------------------------------------------------------
 😮  Linting failed for 1 file(s):
  - <WORKDIR>/outside.pdl

@@ -4,13 +4,13 @@ $ exit: 1
  - ❌  prog.pdl
      prog.pdl - `code:` block is not valid Python: invalid syntax
 
-code:1 | x = = 1
-       |     ^
+     code:1 | x = = 1
+            |     ^
 
-  `pdl-lint` parses every `code:` block with Python's own parser. The block
-  must be syntactically valid Python even though the linter never runs it.
+       `pdl-lint` parses every `code:` block with Python's own parser. The block
+       must be syntactically valid Python even though the linter never runs it.
 
-  note: `code:N` line numbers are within the block's code, not the PDL file.
+       note: `code:N` line numbers are within the block's code, not the PDL file.
 ----------------------------------------------------------------------------------------------------
 😮  Linting failed for 1 file(s):
  - prog.pdl

@@ -106,6 +106,34 @@ was PDL's internal vocabulary leaking into the linter's output; the `pdl`
 interpreter prints the same diagnostic without it. Anything grepping
 `pdl-lint`'s output for a class name needs updating.
 
+### `pdl-lint` indents the whole diagnostic, not just its first line
+
+`pdl-lint` lists one line per file and prints the diagnostic under it. Only the
+first line of that diagnostic used to be indented, so the excerpt, the caret, the
+wrapped explanation and the `in <path>` line all started in column 0 — the second
+line of one error did not line up with its first:
+
+```console
+ - ❌  prog.pdl
+     prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another value
+
+2 |   - "hello
+  |     ^ this double quote opens a string that is never closed on this line
+```
+
+```console
+ - ❌  prog.pdl
+     prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another value
+
+     2 |   - "hello
+       |     ^ this double quote opens a string that is never closed on this line
+```
+
+The block is shifted, never re-wrapped, so the text is identical to what `pdl`
+prints for the same error — only its left margin differs. Anything matching
+`pdl-lint`'s output by column, or with an anchored (`^`) regular expression,
+needs updating; matching by substring is unaffected.
+
 ### `parser: csv` now reports a quoted field that is never closed (**breaking**)
 
 **A program that exits `0` today can exit `1` after this change.** It is one of

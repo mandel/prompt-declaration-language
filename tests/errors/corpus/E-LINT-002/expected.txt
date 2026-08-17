@@ -2,7 +2,7 @@ $ exit: 1
 
 --- stdout ---
  - ❌  prog.pdl
-     PDLYamlError: prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another value
+     prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another value
 
 2 |   - "hello
   |     ^ this double quote opens a string that is never closed on this line

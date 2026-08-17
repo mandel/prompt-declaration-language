@@ -1,9 +1,12 @@
-$ exit: 0
+$ exit: 1
 
 --- stdout ---
- - ℹ️  SKIPPING <WORKDIR>/outside.pdl (in ignore list)
+ - ❌  <WORKDIR>/outside.pdl
+     <WORKDIR>/outside.pdl:4:5 - Field not allowed: parameterss
+  in text[0].parameterss
 ----------------------------------------------------------------------------------------------------
-🎉  All files linted successfully 🎉
+😮  Linting failed for 1 file(s):
+ - <WORKDIR>/outside.pdl
 
 --- stderr ---
 ⚠️  No PDL linter configuration file found or section usable in <WORKDIR>/proj. Using default configuration.

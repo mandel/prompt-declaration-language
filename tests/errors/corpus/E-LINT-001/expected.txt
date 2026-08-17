@@ -2,7 +2,7 @@ $ exit: 1
 
 --- stdout ---
  - ❌  prog.pdl
-     PDLParseError: prog.pdl:5:5 - Field not allowed: parameterss
+     prog.pdl:5:5 - Field not allowed: parameterss
   in text[1].parameterss
 ----------------------------------------------------------------------------------------------------
 😮  Linting failed for 1 file(s):

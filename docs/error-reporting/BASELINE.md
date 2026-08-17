@@ -7,8 +7,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 ## Summary
 
 - **61 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
-- **568 / 915** rubric points (**62%**).
-- **2 entries leak a Python traceback** to the user.
+- **579 / 915** rubric points (**63%**).
+- **1 entry leaks a Python traceback** to the user.
 - **3 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
 **14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
@@ -19,11 +19,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 100 | 183 | 1.64 |
-| What | 124 | 183 | 2.03 |
-| Why | 122 | 183 | 2.00 |
+| Location | 103 | 183 | 1.69 |
+| What | 128 | 183 | 2.10 |
+| Why | 124 | 183 | 2.03 |
 | Fix | 73 | 183 | 1.20 |
-| Hygiene | 149 | 183 | 2.44 |
+| Hygiene | 151 | 183 | 2.48 |
 
 ## By error class
 
@@ -32,7 +32,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-CLI | 5 | 57 | 75 | 11.4 |
 | E-CODE | 5 | 47 | 75 | 9.4 |
 | E-EXPR | 6 | 42 | 90 | 7.0 |
-| E-LINT | 4 | 26 | 60 | 6.5 |
+| E-LINT | 4 | 37 | 60 | 9.2 |
 | E-MODEL | 3 | 22 | 45 | 7.3 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
 | E-PARSER | 9 | 107 | 135 | 11.9 |
@@ -47,9 +47,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | duplicate mapping key silently accepted |
 | `E-PARSER-004-after-quote` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | text after a quoted field's closing quote is silently tolerated |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
-| `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
-| `E-LINT-003` | S0 | 0 | 1 | 2 | 0 | 0 | **3** | `██░░░░░░░░` | TB | pdl-lint never names the file for a Python syntax error |
 | `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
 | `E-RUNTIME-011` | S0 | 1 | 2 | 2 | 0 | 0 | **5** | `███░░░░░░░` | TB | Retry succeeds on the second attempt and prints a traceback anyway (exit 0) |
 | `E-SCHEMA-008` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute value fails its union |
@@ -64,6 +62,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-EXPR-005` | S2 | 2 | 1 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | error inside a called function has no call stack |
 | `E-EXPR-006` | S1 | 2 | 1 | 1 | 0 | 3 | **7** | `█████░░░░░` |  | comment lines before the error |
 | `E-LINT-001` | S1 | 2 | 2 | 1 | 0 | 2 | **7** | `█████░░░░░` |  | pdl-lint reports a schema error as a list repr |
+| `E-LINT-004` | S0 | 2 | 2 | 1 | 0 | 2 | **7** | `█████░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-SCHEMA-006-fallback` | S1 | 0 | 2 | 1 | 1 | 3 | **7** | `█████░░░░░` |  | validator rejected the program and the analyzer could not localise it |
 | `E-TYPE-001` | S2 | 1 | 2 | 2 | 0 | 2 | **7** | `█████░░░░░` |  | block result violates its spec |
 | `E-CODE-005` | S1 | 1 | 2 | 2 | 2 | 1 | **8** | `█████░░░░░` |  | a `lang: pdl` block whose program does not parse |
@@ -73,6 +72,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-SCHEMA-002` | S2 | 2 | 2 | 1 | 0 | 3 | **8** | `█████░░░░░` |  | near-miss field name (typo) |
 | `E-SCHEMA-004` | S2 | 2 | 1 | 2 | 0 | 3 | **8** | `█████░░░░░` |  | scalar type mismatch |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
+| `E-LINT-003` | S0 | 1 | 3 | 3 | 0 | 2 | **9** | `██████░░░░` |  | pdl-lint never names the file for a Python syntax error |
 | `E-MODEL-001` | S0 | 2 | 1 | 2 | 1 | 3 | **9** | `██████░░░░` |  | unrecognised model provider |
 | `E-RUNTIME-004` | S2 | 2 | 2 | 2 | 0 | 3 | **9** | `██████░░░░` |  | read of a missing file |
 | `E-SCHEMA-003` | S3 | 2 | 2 | 1 | 1 | 3 | **9** | `██████░░░░` |  | missing required field |
@@ -157,16 +157,16 @@ Correct line inside the function body, but nothing says which call site reached 
 Reports line 5, the line `- ${ nope }` is on. Until phase-3 item 0 it reported line 2: `get_line_map` scanned the text with a regex and counted comment lines as structure (DROP #2). Positions now come from PyYAML's own marks, which know what a comment is. The entry is now the regression test for it. Location 1 -> 2 with phase-3 item 7: the previous note recorded that only the column and the block path were missing, and `  in text[1]` supplies the second. Note the path and the line disagree in a useful way -- the block is the *second* list item but sits on file line 5, because of the comment; that is exactly the confusion DROP #2 caused, now legible from the output.
 
 **`E-LINT-001`** — pdl-lint reports a schema error as a list repr  
-List repr gone: `_lint_pdl_file` logs `e.text` instead of `e.message`, so a `PDLParseError` whose message is a `list[str]` prints as prose. Location 1 -> 2 (phase-3 item 7): the same `  in text[1].parameterss` E-SCHEMA-001 gained, since this is the same diagnostic reaching the user through the linter. Hygiene stays 2 and does *not* drop: the path line is flush left while the linter indents the first line of `e.text` by five spaces, which is the same misalignment already recorded against E-LINT-002 (`the multi-line diagnostic does not align with the linter's own five-space gutter`) and belongs to the E-LINT items, not to this one. Everything else is unchanged: the exception class name is still printed, there is no column, no excerpt and no suggestion.
+The `PDLParseError: ` prefix is gone (spec docs/error-reporting/specs/E-LINT.md): `e.text` is already a rendered diagnostic with its own header, and putting PDL's internal class name in front of it was the interpreter's vocabulary leaking into the linter -- `pdl` prints this same diagnostic without it, so the two tools now spell one error the same way. **Nothing else moves, and neither does the total.** This entry's `fix: 0` and `why: 1` are E-SCHEMA-001's gaps displayed through the linter, not linter defects: there is no "did you mean `parameters`?" because the interpreter has none, and landing the schema suggestion once will move both entries together. A linter-local patch would duplicate logic that belongs one layer down. Hygiene stays 2 for the *second* of the two defects previously recorded here: the linter indents the first line of `e.text` by five spaces and the `  in text[1].parameterss` continuation is flush left, so the second line of one diagnostic does not line up with its first. That misalignment is shared with E-LINT-002 and E-LINT-003 and is the one hygiene point all three are still holding; it was left alone deliberately, because changing it rewrites E-LINT-002's accepted golden. Correcting a stale clause in the previous note: there *is* a column -- the golden reads `prog.pdl:5:5`, which the `:col` work landed after that sentence was written. Still no excerpt and no caret, which is what holds location at 2.
 
 **`E-LINT-002`** — pdl-lint dumps a traceback for a YAML error  
-Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. Hygiene is 2, not 3: the `PDLYamlError:` class name is still printed and the multi-line diagnostic does not align with the linter's own five-space gutter. Both belong to the E-LINT items.
+Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. **The `PDLYamlError:` prefix went with E-LINT-001's fix**, which is one `logger.error` shared by both entries -- `PDLYamlError` is a `PDLParseError`, so the class name could not be dropped from one without the other. The golden moved; the score did not. Hygiene is still 2, for the second of the two defects recorded here: the multi-line diagnostic does not align with the linter's own five-space gutter. That is now the only hygiene point E-LINT-001, -002 and -003 are all holding, and the one change that would move all three at once.
 
 **`E-LINT-003`** — pdl-lint never names the file for a Python syntax error  
-Traceback ends in File "<unknown>", line 1. The .pdl path appears only in the summary line, and the snippet's line number is relative to the code block.
+Traceback gone (spec docs/error-reporting/specs/E-LINT.md). `_lint_python_code_blocks` catches `SyntaxError` from its `ast.parse` specifically -- the expected outcome of linting a broken block -- and raises a module-private `_CodeBlockSyntaxError` carrying the exception and the code, which `_lint_pdl_file` renders where the file name is known. The bare `except Exception: logger.exception(...)` stays for genuinely unexpected failures; this is not a blanket swallow. The gutter, its wrapping and its closing `note:` are imported from `pdl_interpreter` rather than reimplemented: a `code:` block that will not compile is the same failure whether `pdl-lint` or `pdl` finds it, E-CODE-001 already chose how to render it, and a second near-identical renderer would drift on the one sentence a reader may have already seen from the other tool. **Location is 1, not the 2 the spec hoped for, and the reason is worth recording:** the spec flagged the `.pdl` line:col as unconfirmed, and it is unavailable -- `CodeBlock.pdl__location` is `None` after `parse_file`, because `process_block_body` is what populates it and the linter never interprets. So the header names the file and no line. `SyntaxError.lineno` counts lines of the *block's code*, and rendering it as a `.pdl` line would be a confidently-stated wrong location, which the rubric ranks below no location at all. What is left is exact within the block -- `code:1` with a caret on the offending token -- and the closing note says so. Lifting this to 2 means giving the linter a way to thread `PdlLocationType` down the block tree, which is location-tracker's ground. What/why are 3 for the same reasons as E-CODE-001: the rule paragraph names the PDL construct and the rule, and the gutter shows the offending text with Python's own diagnosis beside it. Fix is 0 deliberately: `invalid syntax` has no true and useful next action beyond the caret, and the rubric ranks a vacuous `help:` below none. Hygiene is 2, not 3, for the misalignment shared with E-LINT-001 and E-LINT-002: the header is indented five spaces and the document under it is flush left.
 
 **`E-LINT-004`** — pdl-lint reports success for a file it never checked  
-A file outside the detected project root is skipped with the reason 'in ignore list' -- which is false -- and the run reports success. A build that lints the wrong path is green forever. should_ignore conflates two conditions.
+False green gone (spec docs/error-reporting/specs/E-LINT.md, recommendation A). A path named on the command line is now always linted: the ignore rules -- outside the project root, wrong suffix, in `ignore`, under an ignored directory -- describe which files a *directory walk* picks up, and a user who typed a path has already answered that question. None of the four says a file is unlintable; a `.pdl` outside the project root parses exactly as well as one inside it. The skip line therefore disappears for an explicit argument, which dissolves the wrong reason along with the false green, and `should_ignore` returns *which* reason (or `None`) so the walk's own skip lines name it accurately too. This changes the tool's exit code -- 0 to 1 for a named file that is both skipped and broken -- and has a release note. **The reproducer was not repointed, because it did not need to be:** the spec recorded `outside.pdl` as a valid program, and it is not -- `parameterss` has always been a schema error, so the file was already both skipped and broken, which is exactly what the entry needs. **The score is 7, not the predicted 10, and the shortfall is structural rather than a shortfall in the fix.** Once the file is actually linted, this entry displays whatever diagnostic the file produces -- here E-SCHEMA-001's -- so its rubric is now E-LINT-001's rubric, digit for digit, and for the same reasons: `why: 1` and `fix: 0` are the missing expectation and the missing `did you mean` one layer down, and hygiene holds at 2 for the five-space/flush-left misalignment shared across the group. What this entry still pins that no other does is the exit code and the *absence* of a skip line. Not flagged `hygiene_silent_failure`: it was not flagged before and the question of whether that flag reaches tooling is still open with the owner -- either way it is no longer a false green, so the flag would now be wrong to add.
 
 **`E-MODEL-001`** — unrecognised model provider  
 The diagnostic is printed once, by generate() on the main thread, and located. The duplicate report -- 'exception calling callback for <Future ...>' plus ~20 frames -- was removed by guarding the futures done-callback now shared by pdl_llms.py and pdl_openai.py (pdl_scheduler.make_model_call_done_callback): a failed or cancelled future returns before any work and before any print, so the failed path has exactly one writer to stderr and the old main-thread/event-loop-thread interleaving cannot occur. Location moved 0 -> 1 when the burial was removed, and 1 -> 2 with phase-3 item 7: `  in text[0]` names the model block, and `prog.pdl:2` is that list item's own mark. It moves in step with E-MODEL-002, as the previous note said it should. Hygiene 3 with one recorded dissent: 'litellm.BadRequestError:' is a Python exception class name reaching the user, and a scorer who counts that as leakage would score this entry H2. What and Fix stay at 1 deliberately -- raising them needs provider-name knowledge PDL does not have at this raise site, where model_id is an opaque string it passed through.

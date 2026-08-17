@@ -7,12 +7,11 @@
     "prog.pdl"
   ],
   "rubric": {
-    "location": 0,
-    "what": 1,
-    "why": 2,
+    "location": 1,
+    "what": 3,
+    "why": 3,
     "fix": 0,
-    "hygiene": 0,
-    "hygiene_traceback_expected": true
+    "hygiene": 2
   },
-  "notes": "Traceback ends in File \"<unknown>\", line 1. The .pdl path appears only in the summary line, and the snippet's line number is relative to the code block."
+  "notes": "Traceback gone (spec docs/error-reporting/specs/E-LINT.md). `_lint_python_code_blocks` catches `SyntaxError` from its `ast.parse` specifically -- the expected outcome of linting a broken block -- and raises a module-private `_CodeBlockSyntaxError` carrying the exception and the code, which `_lint_pdl_file` renders where the file name is known. The bare `except Exception: logger.exception(...)` stays for genuinely unexpected failures; this is not a blanket swallow. The gutter, its wrapping and its closing `note:` are imported from `pdl_interpreter` rather than reimplemented: a `code:` block that will not compile is the same failure whether `pdl-lint` or `pdl` finds it, E-CODE-001 already chose how to render it, and a second near-identical renderer would drift on the one sentence a reader may have already seen from the other tool. **Location is 1, not the 2 the spec hoped for, and the reason is worth recording:** the spec flagged the `.pdl` line:col as unconfirmed, and it is unavailable -- `CodeBlock.pdl__location` is `None` after `parse_file`, because `process_block_body` is what populates it and the linter never interprets. So the header names the file and no line. `SyntaxError.lineno` counts lines of the *block's code*, and rendering it as a `.pdl` line would be a confidently-stated wrong location, which the rubric ranks below no location at all. What is left is exact within the block -- `code:1` with a caret on the offending token -- and the closing note says so. Lifting this to 2 means giving the linter a way to thread `PdlLocationType` down the block tree, which is location-tracker's ground. What/why are 3 for the same reasons as E-CODE-001: the rule paragraph names the PDL construct and the rule, and the gutter shows the offending text with Python's own diagnosis beside it. Fix is 0 deliberately: `invalid syntax` has no true and useful next action beyond the caret, and the rubric ranks a vacuous `help:` below none. Hygiene is 2, not 3, for the misalignment shared with E-LINT-001 and E-LINT-002: the header is indented five spaces and the document under it is flush left."
 }

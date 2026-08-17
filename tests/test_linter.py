@@ -13,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from pdl.pdl_linter import (
+    IgnoreReason,
     LinterConfig,
     _arg_parser,
     _guess_project_root_dir,
@@ -153,18 +154,50 @@ def test_linter_config_ignore_paths(
     # Save current working directory
     with ChangeDir(project_root):
         # Test ignored file
-
-        # Test ignored file
-        assert config.should_ignore(Path("ignored.pdl"))
+        assert config.should_ignore(Path("ignored.pdl")) is IgnoreReason.IN_IGNORE_LIST
 
         # Test ignored directory
-        assert config.should_ignore(Path("ignored_dir/test.pdl"))
+        assert (
+            config.should_ignore(Path("ignored_dir/test.pdl"))
+            is IgnoreReason.IN_IGNORED_DIRECTORY
+        )
 
         # Test non-ignored file
-        assert not config.should_ignore(Path("test.pdl"))
+        assert config.should_ignore(Path("test.pdl")) is None
 
         # Test non-PDL file
-        assert config.should_ignore(Path("test.txt"))
+        assert config.should_ignore(Path("test.txt")) is IgnoreReason.NOT_A_PDL_FILE
+
+        # Test a path outside the project root
+        assert (
+            config.should_ignore(project_root.parent / "elsewhere.pdl")
+            is IgnoreReason.OUTSIDE_PROJECT_ROOT
+        )
+
+
+def test_should_ignore_reasons_are_distinguishable(
+    project_root,
+):  # pylint: disable=redefined-outer-name
+    """Each skip has its own reason, and every reason is still truthy.
+
+    The four conditions used to collapse into `True`, and the skip line named the
+    third of them for all four -- a file outside the project root was reported as
+    "in ignore list" when nothing was in any ignore list. Callers that only ask
+    yes/no must keep working, which is why `None` is the one falsy answer.
+    """
+    (project_root / "ignored.pdl").touch()
+    config = LinterConfig(project_root=project_root, ignore={Path("ignored.pdl")})
+
+    assert len({reason.value for reason in IgnoreReason}) == len(IgnoreReason)
+    assert all(bool(reason) for reason in IgnoreReason)
+    with ChangeDir(project_root):
+        assert not bool(config.should_ignore(Path("fine.pdl")))
+
+    # Only the "outside the root" reason names a path, and it must name the root
+    # the linter actually guessed -- the user has no other way to see it.
+    described = IgnoreReason.OUTSIDE_PROJECT_ROOT.describe(project_root)
+    assert described == f"not within the project root {project_root}"
+    assert IgnoreReason.IN_IGNORE_LIST.describe(project_root) == "in the ignore list"
 
 
 def test_lint_pdl_file_valid(
@@ -187,6 +220,72 @@ def test_lint_pdl_file_invalid(
     with ChangeDir(invalid_pdl_file.parent):
         assert not _lint_pdl_file(invalid_pdl_file, config)
         mock_parse_pdl_file.assert_called_once_with(invalid_pdl_file)
+
+
+def test_lint_pdl_file_skip_line_names_the_real_reason(
+    project_root, caplog
+):  # pylint: disable=redefined-outer-name
+    """A skipped file is told why it was skipped, accurately.
+
+    Three of the four reasons have nothing to do with an ignore list, and the one
+    message used to claim all of them were it.
+    """
+    caplog.set_level(logging.INFO)
+    (project_root / "notes.txt").touch()
+    config = LinterConfig(project_root=project_root)
+
+    with ChangeDir(project_root):
+        assert _lint_pdl_file(Path("notes.txt"), config)
+    check_logs(caplog, logging.INFO, "SKIPPING notes.txt (not a *.pdl file)")
+    assert not any("ignore list" in record.message for record in caplog.records)
+
+
+def test_lint_pdl_file_explicit_path_is_never_skipped(
+    project_root,
+):  # pylint: disable=redefined-outer-name
+    """A path named on the command line is linted whatever the ignore rules say.
+
+    This is the false green: the file below is outside the project root *and*
+    broken, and `pdl-lint` used to skip it, report "All files linted
+    successfully" and exit 0. The ignore rules describe a directory walk; a user
+    who typed a path has already said which file they mean.
+    """
+    outside = project_root.parent / "outside.pdl"
+    outside.write_text('text:\n  - "unterminated\n  - "x"\n')
+    config = LinterConfig(project_root=project_root)
+
+    with ChangeDir(project_root):
+        # Reached through a directory walk it is skipped, and counted as fine.
+        assert _lint_pdl_file(outside, config)
+        # Named explicitly it is linted, and it fails.
+        assert not _lint_pdl_file(outside, config, explicit=True)
+
+
+def test_lint_pdl_file_python_syntax_error(
+    project_root, caplog
+):  # pylint: disable=redefined-outer-name
+    """A `code:` block Python cannot parse gets a diagnostic, not a traceback."""
+    caplog.set_level(logging.ERROR)
+    bad_code = project_root / "bad_code.pdl"
+    bad_code.write_text("lang: python\ncode: |\n  x = = 1\n")
+    config = LinterConfig(project_root=project_root)
+
+    with ChangeDir(project_root):
+        assert not _lint_pdl_file(Path("bad_code.pdl"), config)
+
+    check_logs(
+        caplog,
+        logging.ERROR,
+        "bad_code.pdl - `code:` block is not valid Python: invalid syntax",
+    )
+    # The gutter locates the error inside the block, and says so.
+    check_logs(caplog, logging.ERROR, "code:1 | x = = 1")
+    check_logs(
+        caplog,
+        logging.ERROR,
+        "note: `code:N` line numbers are within the block's code",
+    )
+    assert not any(record.exc_text for record in caplog.records)
 
 
 def test_lint_pdl_file_nonexistent(

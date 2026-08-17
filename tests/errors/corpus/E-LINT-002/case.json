@@ -13,5 +13,5 @@
     "fix": 3,
     "hygiene": 2
   },
-  "notes": "Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. Hygiene is 2, not 3: the `PDLYamlError:` class name is still printed and the multi-line diagnostic does not align with the linter's own five-space gutter. Both belong to the E-LINT items."
+  "notes": "Traceback gone as a side effect of E-BOUNDARY: `pdl_linter` already caught `PDLParseError`, so the YAML failure now arrives as the rendered E-PARSE-001 diagnostic instead of a 17-frame dump. **The `PDLYamlError:` prefix went with E-LINT-001's fix**, which is one `logger.error` shared by both entries -- `PDLYamlError` is a `PDLParseError`, so the class name could not be dropped from one without the other. The golden moved; the score did not. Hygiene is still 2, for the second of the two defects recorded here: the multi-line diagnostic does not align with the linter's own five-space gutter. That is now the only hygiene point E-LINT-001, -002 and -003 are all holding, and the one change that would move all three at once."
 }

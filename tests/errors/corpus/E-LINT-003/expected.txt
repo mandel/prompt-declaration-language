@@ -2,18 +2,15 @@ $ exit: 1
 
 --- stdout ---
  - ❌  prog.pdl
-Traceback (most recent call last):
-  File "<REPO>/src/pdl/pdl_linter.py", line <LINE>, in _lint_pdl_file
-    _lint_python_code_blocks(prog.root)
-  File "<REPO>/src/pdl/pdl_linter.py", line <LINE>, in _lint_python_code_blocks
-    ast.parse(code)
-  File "<PYLIB>/ast.py", line <LINE>, in parse
-    return compile(source, filename, mode, flags,
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<unknown>", line 1
-    x = = 1
-        ^
-SyntaxError: invalid syntax
+     prog.pdl - `code:` block is not valid Python: invalid syntax
+
+code:1 | x = = 1
+       |     ^
+
+  `pdl-lint` parses every `code:` block with Python's own parser. The block
+  must be syntactically valid Python even though the linter never runs it.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.
 ----------------------------------------------------------------------------------------------------
 😮  Linting failed for 1 file(s):
  - prog.pdl

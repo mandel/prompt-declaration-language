@@ -6,6 +6,106 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### `pdl-lint` now lints every path you name on the command line (**breaking**)
+
+**A `pdl-lint` invocation that exits `0` today can exit `1` after this change.**
+No PDL program changes behaviour; what changes is which files the linter agrees
+to look at, and therefore its exit code.
+
+`pdl-lint` used to apply its ignore rules to *every* path, including one you
+typed. A file outside the detected project root, or one whose suffix was not
+`.pdl`, was skipped — and a skipped file counted as a success:
+
+```console
+$ pdl-lint ../shared/prompt.pdl
+ - ℹ️  SKIPPING ../shared/prompt.pdl (in ignore list)
+----------------------------------------------------------------------------
+🎉  All files linted successfully 🎉
+$ echo $?
+0
+```
+
+That file was never opened. A CI job that names a path and checks the exit code
+was green whether or not the file was valid — and the stated reason was wrong
+as well, since nothing was in any ignore list.
+
+A path you name is now always linted:
+
+```console
+$ pdl-lint ../shared/prompt.pdl
+ - ❌  ../shared/prompt.pdl
+     ../shared/prompt.pdl:4:5 - Field not allowed: parameterss
+  in text[0].parameterss
+----------------------------------------------------------------------------
+😮  Linting failed for 1 file(s):
+ - ../shared/prompt.pdl
+$ echo $?
+1
+```
+
+This is the settled convention elsewhere: ruff checks files passed directly on
+the command line even when they would normally be excluded, and eslint has
+`--no-ignore` for the same reason.
+
+**What now fails.** An invocation that names a path which the ignore rules would
+have skipped, *and* whose file does not lint clean. If the file is valid, the
+exit code is unchanged; the run simply reports `✅` instead of `SKIPPING`.
+
+**What does not change:**
+
+- **Directory walks are unaffected.** `ignore`, `directories_to_ignore`, the
+  project-root check and the `*.pdl` suffix filter all still apply when
+  `pdl-lint` walks a directory, with or without `-r`. That is the case those
+  rules were written for.
+- **No PDL program's semantics or output changes.** This is the linter's exit
+  code only.
+
+**If you relied on the old behaviour**, name a directory rather than a file, or
+drop the path from the command line — a walk still honours your ignore list.
+
+### `pdl-lint` skip messages now name the real reason
+
+Every skipped file used to be reported as `(in ignore list)`, whichever of the
+four rules had actually skipped it. The line now says which:
+
+```console
+ - ℹ️  SKIPPING vendor/v.pdl (in a directory marked to be ignored)
+ - ℹ️  SKIPPING notes.txt (not a *.pdl file)
+```
+
+`LinterConfig.should_ignore` returns the reason (an `IgnoreReason`) or `None`,
+rather than a `bool`. Every reason is truthy and `None` is falsy, so
+`if config.should_ignore(path):` keeps working unchanged.
+
+### `pdl-lint` no longer prints a traceback for a broken `code:` block
+
+A `code:` block that Python's parser rejected used to escape as a raw
+`SyntaxError` traceback ending in `File "<unknown>", line 1`. It is now a
+diagnostic, in the same shape `pdl` itself uses for a `code:` block:
+
+```console
+$ pdl-lint prog.pdl
+ - ❌  prog.pdl
+     prog.pdl - `code:` block is not valid Python: invalid syntax
+
+code:1 | x = = 1
+       |     ^
+
+  `pdl-lint` parses every `code:` block with Python's own parser. The block
+  must be syntactically valid Python even though the linter never runs it.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.
+```
+
+The exit code is unchanged: this file failed to lint before and still does.
+
+### `pdl-lint` no longer prefixes a diagnostic with PDL's exception class name
+
+`PDLParseError: ` / `PDLYamlError: ` in front of an already-rendered diagnostic
+was PDL's internal vocabulary leaking into the linter's output; the `pdl`
+interpreter prints the same diagnostic without it. Anything grepping
+`pdl-lint`'s output for a class name needs updating.
+
 ### `parser: csv` now reports a quoted field that is never closed (**breaking**)
 
 **A program that exits `0` today can exit `1` after this change.** It is one of

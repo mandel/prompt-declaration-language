@@ -6,6 +6,80 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### `parser: csv` now reports a quoted field that is never closed (**breaking**)
+
+**A program that exits `0` today can exit `1` after this change.** It is one of
+the few deliberate semantic changes in this release, and it is here because the
+old behaviour did not fail — it answered, wrongly.
+
+Given output with a `"` that is never closed, `parser: csv` used to swallow
+everything after it into a single field and hand that back as the result:
+
+```console
+$ pdl --stream none csv.pdl        # text: a,b,c / "unterminated,1 / x,y
+[["a", "b", "c"], ["unterminated,1\nx,y\n"]]
+$ echo $?
+0
+```
+
+Two rows of real data disappeared into a string, and nothing said so. That is
+now an error:
+
+```console
+$ pdl --stream none csv.pdl
+csv.pdl:5:1 - `parser: csv` found a quoted field that is never closed
+  in parser
+
+output:2 | "unterminated,1
+         | ^ this quote is never closed
+
+  note: the 1 line below it was read as part of this field rather than as a
+        row of its own.
+  help: add the closing `"`, or remove the opening one if the field was not
+        meant to be quoted.
+$ echo $?
+1
+```
+
+**What now fails.** One shape, and only one: a quoted field with no closing `"`.
+
+| Output | Was | Now |
+| --- | --- | --- |
+| `1,"x` — a quoted field with no closing `"` | `["1", "x\n"]`, plus every later line swallowed into it | error |
+
+**What does not change**, measured rather than assumed:
+
+- **Legitimate multi-line quoted fields still parse.** A `"` that opens a field
+  spanning several lines closes at some point, and only a quote that never
+  closes is an error. This is the case that would have made the change unsafe.
+- **Text after a closing `"` still parses**, unchanged: `1,"Ada" Lovelace` still
+  gives `["1", "Ada Lovelace"]`, and `1,"Ada" ` — with nothing after the quote
+  but a space — still gives `["1", "Ada "]`. An earlier version of this change
+  rejected both, because Python's `csv` module offers strict parsing as a single
+  switch that cannot be asked for one rule and not the other. It was narrowed
+  deliberately: those results are usually what the author meant, a model asked
+  for CSV really does emit them, and a trailing space is not a reason to stop a
+  working program. PDL therefore returns a parse that Python's strict mode would
+  have rejected — an inconsistency accepted on purpose, and written down here
+  rather than left to be discovered.
+- **Ragged rows are still accepted in silence.** `a,b,c` followed by `1,2` is
+  not an error and is not planned to become one: PDL returns a list of lists,
+  which can legitimately be ragged.
+- **Embedded NULs, and a bare `"` in the middle of an *unquoted* field**
+  (`1,va"lue`) are still accepted, as they were.
+- Well-formed CSV, the field-size limit, and every other `parser:` are untouched.
+
+Nothing in this repository is affected: across its 263 `.pdl` files exactly one
+uses `parser: csv`, and it is the reproducer for the field-size limit. Every
+`.pdl` under `examples/` and `tests/data/` was run before and after and not one
+changed its exit code or its output. **The residual risk is to programs outside
+this repository** — if you parse CSV that a model produced, output that used to
+return a wrong value now returns an error, which is the point of the change but
+is a change all the same.
+
+**If you need the old behaviour**, remove `parser: csv` and parse the text
+yourself in a `lang: python` block, where you choose the dialect.
+
 ### Every diagnostic header carries a column
 
 The header of a diagnostic built from a source location is now

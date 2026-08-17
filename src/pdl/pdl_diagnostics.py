@@ -35,10 +35,12 @@ cycle with the parser it serves.
 
 from __future__ import annotations
 
+import csv
 import difflib
 import json
 import textwrap
 from dataclasses import dataclass, field
+from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -1621,24 +1623,96 @@ def parser_yaml_diagnostic(exc: yaml.YAMLError, text: str) -> Diagnostic:
 
 
 _CSV_LIMIT_MARKER = "field larger than field limit"
+_CSV_UNCLOSED_MARKER = "unexpected end of data"
 
 _PARSER_CSV_RULE = "`parser: csv` reads the block's output as comma-separated rows."
 
+_CSV_QUOTE_RULE = (
+    f'{_PARSER_CSV_RULE} A `"` at the start of a field quotes it, and '
+    'everything up to the matching `"` is part of that field -- including '
+    "commas and line breaks."
+)
+
+
+def csv_error_is_unclosed_quote(detail: str) -> bool:
+    """Whether a `csv.Error` is the one class `parser: csv` refuses to parse.
+
+    Matched on the message text, because `csv.Error` offers nothing better: it
+    carries no code, no attributes and no position, so its message is the only
+    thing separating "a quoted field ran off the end of the output" from every
+    other reason the reader can stop. The string is stable and was checked on
+    both interpreters this repository runs -- 3.11 and 3.12 both say
+    `unexpected end of data`.
+
+    The caller must treat an *unrecognised* message as not-this-class and fall
+    back to a lenient parse, never as a failure. That is what makes matching on
+    text safe: if a future Python rewords something, the cost is a diagnostic
+    PDL no longer produces, not a working program that suddenly exits 1.
+    """
+    return _CSV_UNCLOSED_MARKER in detail
+
+
+def _unclosed_quote_position(text: str) -> tuple[int, int] | None:
+    """Locate the `"` that opens the field `csv` ran out of data inside.
+
+    `csv.Error` carries no position at all, and `reader.line_num` is the last
+    line the reader *consumed* -- for a quote left open on line 2 of a
+    four-line output that is line 4, which is a confidently-stated wrong
+    location. So the position is not guessed and it is not found by
+    re-implementing the dialect's quoting rules either: `csv` itself is used as
+    the oracle. Closing the quote at the end of the text makes the same reader
+    parse, and the last field of the last row it then yields *is* the content
+    of the never-closed field. Re-escaping the doubled `""` that content came
+    from gives its length in the original text, and therefore the offset of the
+    `"` that opened it.
+
+    Every step is checked against the text -- the re-parse has to succeed, the
+    offset has to land inside the text, and the character there has to be a `"`
+    -- and `None` is returned when any of them fails, in which case the caller
+    prints an excerpt row with no caret. That is the same rule the field-limit
+    branch already follows: a caret only where the column is known.
+    """
+    try:
+        rows = list(csv.reader(StringIO(text + '"'), strict=True))
+    except Exception:  # pylint: disable=broad-except
+        # Broad on purpose: this runs while a diagnostic is being built, so
+        # anything raised here would reach the user as a traceback in place of
+        # the message, which decision 5.8 forbids. Losing the caret is the
+        # correct failure. `KeyboardInterrupt` is a `BaseException` and so
+        # still propagates.
+        return None
+    if not rows or not rows[-1]:
+        return None
+    content = rows[-1][-1]
+    offset = len(text) - len(content.replace('"', '""')) - 1
+    if not 0 <= offset < len(text) or text[offset] != '"':
+        return None
+    line = text.count("\n", 0, offset) + 1
+    col = offset - text.rfind("\n", 0, offset)
+    return line, col
+
 
 def parser_csv_diagnostic(
-    *, text: str, detail: str, limit: int, row: int
+    *, text: str, detail: str, limit: int, row: int, record_line: int = 1
 ) -> Diagnostic:
-    """E-PARSER-004. Almost always a size limit rather than a syntax error.
+    """E-PARSER-004. Two branches: a size limit and an unclosed quote.
 
-    Malformed CSV does not raise at all -- `csv.reader` accepts an unbalanced
-    quote, ragged rows and embedded NULs -- so the only text that reaches this
-    handler is text over `csv.field_size_limit()`. Calling that "ill-formed
-    CSV", as the message does today, misdiagnoses a resource limit as a syntax
-    error.
+    The size-limit branch is the original one, and it is not a syntax error at
+    all -- calling a well-formed 131073-character field "ill-formed CSV"
+    misdiagnoses a resource limit. The unclosed-quote branch is the whole of
+    the decision-5.5 change (INVENTORY 7.10 finding 1): without it a quoted
+    field that is never closed swallows the rest of the output and the program
+    prints a wrong answer at exit 0.
 
-    No caret: a `csv.Error` carries a row (`reader.line_num`) and no column, and
-    a caret at column 1 would be a coordinate PDL invented.
+    Nothing else is diagnosed, because nothing else fails. The `csv` branch of
+    `parse_result` re-parses leniently everything a strict reader rejects other
+    than this class -- text after a closing `"` above all, which includes a
+    lone trailing space -- so ragged rows, embedded NULs, a bare `"` inside an
+    unquoted field and `1,"Ada" Lovelace` are all still accepted in silence.
+    The generic branch below stays reachable for whatever the lenient reader
+    itself cannot survive.
     """
+    caret: int | None = None
     if _CSV_LIMIT_MARKER in detail:
         headline = f"`parser: csv` cannot read a field longer than {limit} characters"
         rule = (
@@ -1659,11 +1733,55 @@ def parser_csv_diagnostic(
             note = f"the failure is in row {row} of the block's output."
             line = max(row, 1)
         suggestion = Suggestion("if this output is not CSV, remove `parser: csv`.")
+        label = ""
+    elif _CSV_UNCLOSED_MARKER in detail:
+        headline = "`parser: csv` found a quoted field that is never closed"
+        rule = (
+            f'{_CSV_QUOTE_RULE} This one has no matching `"`, so the reader '
+            "ran to the end of the block's output still inside it."
+        )
+        label = "this quote is never closed"
+        position = _unclosed_quote_position(text)
+        if position is None:
+            # The oracle could not confirm a position, so none is stated. The
+            # record the reader was in the middle of is still known exactly:
+            # it begins on the line after the last one a completed row ended
+            # on, which the interpreter counts as it goes.
+            line = max(record_line, 1)
+            label = ""
+            note = (
+                "the reader reached the end of the block's output while still "
+                "inside a quoted field."
+            )
+        else:
+            line, caret = position
+            remaining = len(text.rstrip("\n").split("\n")) - line
+            if remaining == 1:
+                # The damage, not a restatement of the rule: the lines below
+                # were read into the open field instead of becoming rows of
+                # their own, which is the wrong answer this used to return at
+                # exit 0.
+                note = (
+                    "the 1 line below it was read as part of this field "
+                    "rather than as a row of its own."
+                )
+            elif remaining > 1:
+                note = (
+                    f"the {remaining} lines below it were read as part of "
+                    "this field rather than as rows of their own."
+                )
+            else:
+                note = "this field is the last thing in the block's output."
+        suggestion = Suggestion(
+            'add the closing `"`, or remove the opening one if the field was '
+            "not meant to be quoted."
+        )
     else:
         headline = "`parser: csv` could not read the block's output"
         rule = _PARSER_CSV_RULE
         note = f"the `csv` reader reported: {detail}."
         line = max(row, 1)
+        label = ""
         suggestion = Suggestion(
             "check the block's output, or remove `parser: csv` if it is not CSV."
         )
@@ -1678,7 +1796,7 @@ def parser_csv_diagnostic(
         gutter_note=_OUTPUT_CAVEAT,
         empty_note=_EMPTY_OUTPUT,
         source=text,
-        spans=[Span(line=line, primary=True)],
+        spans=[Span(line=line, col=caret, label=label, primary=True)],
     )
 
 

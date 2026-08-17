@@ -174,16 +174,20 @@ parser and the exception surfaces in `generate`. The series moved **29/90 → 80
 `E-PARSER-007` is a seventh entry added by the same change.
 
 The rows below describe the diagnostics **after** the fix; `Current message` is what a
-user sees today. Three silent failures found while specifying this item are **not** fixed
-and are recorded in [7.10](#710-three-silent-failures-in-parse_result-left-open) — none of
-them may become an error without the owner's sign-off under 5.5.
+user sees today. Three silent failures found while specifying this item were **not** fixed
+by it and are recorded in
+[7.10](#710-three-silent-failures-in-parse_result--one-partly-closed-two-left-open) — none of
+them may become an error without the owner's sign-off under 5.5. The first, malformed CSV,
+has since had that sign-off — for the unclosed-quote class only, the rest of it staying
+silent by decision; the other two remain open.
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
 | E-PARSER-001 [obs] | `parser:` on a value that is not text (the branch **issue #387**'s reproducer reaches) | `` prog.pdl:4 - `parser: json` needs text, but this block produced an integer ``, then the rule and `` help: remove `parser: json`; the block's result is already an integer. `` The type is named in PDL's vocabulary (`integer`, not `int`) and the value is shown inline only when `json.dumps` of it is ≤ 40 characters. Was `TypeError("'int' object is not subscriptable")` — `json_repair` subscripting a non-string, reported as a JSON parse failure | file:line + block path | S1 |
 | E-PARSER-002 [obs] | `parser: jsonl` on a line that is not JSON | `` prog.pdl:4 - `parser: jsonl` could not parse line 2 of the block's output ``, an `output:2 \| oops` excerpt row with a caret at `exc.colno` labelled `Expecting value`, the rule, the `output:N` caveat and an action. A second branch detects that the whole output is one JSON document and suggests `parser: json`. Was `Attempted to parse ill-formed JSON: JSONDecodeError('Expecting value: line 1 column 1 (char 0)')` — the wrong parser named, and a position that read `line 1` whichever line failed | file:line + block path | S1 |
 | E-PARSER-003 [obs] | `parser: yaml` on ill-formed YAML | `` prog.pdl:2 - `parser: yaml` could not parse the block's output `` with an `output:1` excerpt and a caret at PyYAML's `problem_mark`, labelled with its `problem`. The marks are read directly, as `yaml_diagnostic` already does for `.pdl` files; PyYAML's own snippet renderer — which names a nonexistent file, `in "<unicode string>"` — is never used. Was `repr(exc)`, printing the two `Mark` objects as memory addresses that differed on every run | file:line + block path | S1 |
-| E-PARSER-004 [obs] | `parser: csv` over the field-size limit. **Malformed CSV still does not raise** — see 7.10 | `` prog.pdl:2 - `parser: csv` cannot read a field longer than 131072 characters ``, an excerpt row with no caret (a `csv.Error` has a row and no column), a `note:` stating the size seen and why it is a single field, and a conditional action. Was `Attempted to parse ill-formed CSV: Error(...)`, which called a well-formed input `ill-formed` and misdiagnosed a resource limit as a syntax error | file:line + block path | S1 |
+| E-PARSER-004 [obs] | `parser: csv` over the field-size limit | `` prog.pdl:2 - `parser: csv` cannot read a field longer than 131072 characters ``, an excerpt row with no caret (a `csv.Error` has a row and no column), a `note:` stating the size seen and why it is a single field, and a conditional action. Was `Attempted to parse ill-formed CSV: Error(...)`, which called a well-formed input `ill-formed` and misdiagnosed a resource limit as a syntax error | file:line + block path | S1 |
+| E-PARSER-004 [obs] **unclosed quote** — the decision-5.5 change of 7.10 finding 1 | `parser: csv` on a quoted field that is never closed. **Exited 0 with a wrong value before**: every remaining line was swallowed into the open field | `` prog.pdl:5 - `parser: csv` found a quoted field that is never closed ``, an `output:2 \| "unterminated,1` excerpt with a caret on the opening quote labelled `this quote is never closed`, a `note:` counting the lines that were swallowed into the field, and a two-clause `help:` whose clauses were both executed. The caret comes from `_unclosed_quote_position`, which uses `csv` as its own oracle rather than `reader.line_num` (the last line *consumed*, and so the wrong line for any multi-line case) or a re-implementation of the dialect. **This class only**: text after a closing `"` is detected and then deliberately tolerated, because rejecting it would break working programs over a trailing space, so it is re-parsed leniently and returned. Pinned by `E-PARSER-004-unterminated-quote`, and the tolerated case by `E-PARSER-004-after-quote` | file:line + block path | S1 |
 | E-PARSER-005 [obs] | an invalid regular expression, in **any** of the five modes | `` prog.pdl:3 - `regex:` is not a valid regular expression ``, located at `parser.regex` rather than at `parser:`, with the pattern in a `regex:1 \| (` gutter and a caret from `re.error.lineno`/`.colno`. `` help: close the group, or write `regex: '\('` to match a literal `(`. `` — single quotes, because `\(` is not a valid escape in a double-quoted YAML scalar. Was `Fail to parse with regex (: error('missing ), unterminated subpattern at position 0')`. **`mode: split` and `mode: findall` compiled inside `re.split`/`re.findall` with no handler at all and reached the user as a raw traceback**; `_compiled_regex` makes compilation an explicit step for all five modes, so they get this diagnostic too. That crash was found during implementation and has no corpus entry of its own | file:line of `parser.regex` + block path | S1 |
 | E-PARSER-006 [obs] | `spec:` names a group the regex does not define | `` prog.pdl:5 - the `regex:` pattern has no group named `second` ``, located at `parser.spec.second`, with a **file** excerpt and caret — the one entry in the series whose evidence is the file, because the fault is static and nothing about the output is relevant. The pattern's own groups are listed from `m.re.groupindex`, ordered by group number, and the `help:` has four branches (only group / near miss / list of alternatives / no named group). Was `No group named second found by (?P<first>\w+) in hello`, which blamed the matched *text* and never named the group the pattern does define. The neighbouring silent failure — a `regex:` that does not match returns `None` at exit 0 — is untouched; see 7.10 | file:line of `parser.spec.<name>` + block path | S2 |
 | E-PARSER-007 [obs] | `parser: {pdl: ...}` — a declared AST node whose implementation is a `TODO` | `` prog.pdl:2 - `parser:` with a `pdl:` sub-program is not implemented ``, the rule, `note: this is a gap in PDL itself, not a mistake in this program.` and the working alternatives. Was `assert False, "TODO"`: an `AssertionError` is neither a `PDLRuntimeError` nor a `PDLParseError`, so it escaped `generate`'s handlers as a **raw traceback** at exit 1. Under `python -O` the assertion is compiled out and the branch falls through to `return result` with `result` unbound — a different and worse failure, which is why the fix is a `raise` and not a better assertion. The diagnostic says the form is not implemented and nothing more: what it *would* do is not knowable from a `TODO` | file:line + block path | **S0** (was) |
@@ -482,6 +486,26 @@ this repository there are **0 duplicate-key sites**, and among **39 `for:` block
 binds a string literal. Nothing in-tree breaks. The residual risk is to user programs
 outside the repository — accepted, and it should be called out in release notes.
 Resolves E-PARSE-003 and E-RUNTIME-012, the two worst entries in the catalogue.
+
+> **A third change has since landed under this decision**, with the owner's explicit
+> sign-off: `parser: csv` rejects a quoted field that is never closed, instead of
+> swallowing the rest of the output into it and returning a wrong parse at exit 0.
+>
+> Its blast radius was measured the same way and is smaller than the two above. Across
+> **263 `.pdl` files** in this repository — the figure that supersedes the 205 quoted
+> above, which was measured earlier and on a `--include=*.pdl` grep that also missed
+> non-`.pdl` call sites — exactly **one** uses `parser: csv`, plus **one** inline program
+> in `tests/test_parser.py:183`. Both are unaffected. Nothing in-tree breaks; the residual
+> risk is to user programs outside the repository, accepted and called out in the release
+> note.
+>
+> **The scope was cut during implementation and that is the part worth reading**: the first
+> version also rejected text after a closing `"`, which `strict` cannot be asked to
+> separate, and which rejects a *trailing space* — breaking working programs to fix a parse
+> that was usually right. The owner narrowed it to the unterminated-quote class alone, at
+> the cost of PDL returning a parse the standard library flagged. Both the ruling and its
+> cost are in [7.10](#closing-finding-1s-worst-class-what-changed-and-what-was-left-alone).
+> Findings 2 and 3 of 7.10 are the remaining candidates and have **not** been decided.
 
 **5.6 — Structured diagnostic records, with a renderer on top. DECIDED.**
 Every diagnostic becomes a record — `id`, `severity`, `file`, `span`, `block path`,
@@ -1105,7 +1129,7 @@ column, and is why `line 0 - ` is unchanged for a program with no source at all.
 
 ---
 
-### 7.10 Three silent failures in `parse_result`, left open
+### 7.10 Three silent failures in `parse_result` — one partly closed, two left open
 
 Found while specifying Phase-3 item 9 and **deliberately not fixed by it**. All three are
 programs that run to completion, print a wrong answer and exit **0**. Turning any of them
@@ -1114,15 +1138,134 @@ semantic change: it needs the owner's sign-off, a blast-radius measurement and a
 note, and it belongs with §6 item 11 rather than with a diagnostics item. Item 9 improved
 the messages of the failures that already *were* errors and touched none of these.
 
+**Finding 1 has since been closed for its worst class**, with the owner's explicit
+sign-off: a quoted field that is never closed is now an error. The rest of finding 1 was
+measured, considered and **deliberately left silent** — that part is not an oversight and
+is not scheduled. Findings 2 and 3 are untouched and still open on the same terms. The
+measurements the decision rested on, and the ones that cut its scope down, are under the
+table.
+
 They are listed together, here, because each was previously buried in the notes of the
 corpus entry nearest to it, where a reader looking for "what does PDL silently get wrong"
 would not find them.
 
 | # | Trigger | What happens | Why item 9 could not fix it |
 | --- | --- | --- | --- |
-| 1 | `parser: csv` on malformed CSV | `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs. `"a,b,c\nunterminated,1\nx,y"` parses to `[["a","b","c"], ["unterminated,1\nx,y\n"]]` — a wrong parse, no diagnostic, exit 0. The `csv` branch's `except` is reachable **only** through `csv.field_size_limit()`, which is what `E-PARSER-004` actually pins | Nothing raises, so there is no raise site to improve. Detecting it means adding a validity rule that `csv.reader` does not have |
+| 1 ~~open~~ **PARTLY CLOSED** | `parser: csv` on malformed CSV | `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs. `"a,b,c\n\"unterminated,1\nx,y\n"` parses to `[["a","b","c"], ["unterminated,1\nx,y\n"]]` — a wrong parse, no diagnostic, exit 0. The `csv` branch's `except` was reachable **only** through `csv.field_size_limit()`, which is what `E-PARSER-004` pins | Item 9 could not: nothing raised, so there was no raise site to improve. **The unclosed-quote class is now an error** under decision 5.5, via a `strict=True` reader used as a detector. The rest is still accepted in silence *on purpose*: ragged rows and NULs as before, and text after a closing `"` because rejecting it breaks working programs over a trailing space. See below |
 | 2 | a `regex:` parser that does not match | `RegexParser.mode` defaults to `fullmatch`, so a near-miss pattern returns `None` and the program prints `null` at exit 0. A user who wrote `regex: '\('` on the advice of `E-PARSER-005`'s `help:` and whose text is `Hello` lands exactly here — which is why that suggestion is phrased conditionally | Same: the code path returns rather than raises. `m is None` would have to become an error, and a program may legitimately want the `null` |
 | 3 | `parser: json` over prose — **the case [#387](https://github.com/IBM/prompt-declaration-language/issues/387) actually names** | `json_repair` *repairs*: its parser returns `""` when it finds no value, so `parser: json` over a model's prose yields `''` at exit 0 rather than the parse error the taxonomy assumed. Measured: `'not json at all'`, `'the answer is 42'`, `''` and `'hello: world'` all return `''`; `'{"a": 1'` repairs to `{'a': 1}`. It raises only for a non-`str` input, which is the branch `E-PARSER-001` pins | The largest of the three by blast radius. `json_repair` is the dependency PDL chose *because* it repairs; making a repaired-to-empty result an error changes what every `parser: json` program does |
+
+#### Closing finding 1's worst class: what changed, and what was left alone
+
+The blast radius §5.5 requires, measured on the tree the change landed on and not assumed.
+
+**What now fails.** One shape, and only one: a quoted field that is never closed.
+
+| Input | Before | Now |
+| --- | --- | --- |
+| `a,b,c\n"unterminated,1\nx,y\n` | rows of width `[3, 1]`, silent | **error** (`csv.Error: unexpected end of data`) |
+| `a,b\n1,"x\n` (quote never closed) | width `[2, 2]`, silent | **error** (same) |
+
+**What it leaves exactly as it was**, including the case that would have made the change
+unsafe:
+
+| Input | Before and now |
+| --- | --- |
+| `a,b\n"line1\nline2",2\n` (legitimate multi-line quoted field) | parses — **no false positive** |
+| `a,b,c\n1,2\n3,4,5,6\n` (ragged) | widths `[3,2,4]`, still silent |
+| `a,b\n1,va"lue\n` (bare `"` inside an unquoted field) | parses |
+| `a,b\n1,\x002\n` (embedded NUL) | parses |
+| `"a", "b", "c"\n` (space after the delimiter, so the `"` is not at a field start) | parses |
+| `1,"Ada" Lovelace` (text after a closing `"`) | `["1", "Ada Lovelace"]`, still silent — see below |
+| `1,"Ada" ` (a trailing space after a closing `"`) | `["1", "Ada "]`, still silent — see below |
+
+#### The narrowing, and the inconsistency it buys
+
+The first version of this change did not have the last two rows in that second table. It
+built the reader with `strict=True` and let every `csv.Error` raise, which also rejects
+**text after a closing `"`** — and the measurement that settled it is that `strict` rejects
+a *whitespace-only* trailing content too. `1,"Ada" ` parses to `["1", "Ada "]` today and
+would have become a hard failure. A trailing space turning a working program into an error
+is well past "fix the wrong parse", and it is a shape model-generated CSV plausibly emits.
+The owner ruled the change down to the unterminated-quote class alone.
+
+`strict` is one flag on `csv.reader` and not two, so the narrowing cannot be done at the
+reader. It is done in the handler instead: **the strict reader is a detector, not the
+parser of record.** Everything it rejects other than the unclosed-quote class is parsed
+again with a default reader and *that* result is returned (`_csv_rows_lenient`,
+`pdl_interpreter.py`).
+
+**The cost, stated rather than glossed: PDL returns a parse the standard library flagged,
+and says nothing about it.** That is an inconsistency between what PDL accepts and what
+`csv` in strict mode accepts, and it was accepted explicitly as the price of not breaking
+programs that work today. It is written at the code site, it is in the release note, and
+corpus entry `E-PARSER-004-after-quote` pins the tolerated value — `1,"Ada" Lovelace` and
+`1,"Ada" ` both parse at exit 0, and the golden records exactly what they produce — so
+that a silence that has been deliberately accepted still cannot change unnoticed. That
+entry carries `hygiene_silent_failure`, on the same terms as findings 2 and 3 below: the
+flag is about the missing diagnostic, not about whether the returned value is defensible.
+
+**Discriminating the class is a match on message text, and the fallback is what makes that
+safe.** A `csv.Error` carries no code, no attributes and no position, so its message is the
+only discriminator available. `unexpected end of data` was checked on both interpreters
+this repository runs — 3.11 and 3.12 emit it identically, as they do `',' expected after
+'"'` and `field larger than field limit (131072)`. The rule at the call site is that an
+**unrecognised** message falls back to the lenient parse rather than raising, so a wording
+change in a future Python costs a diagnostic and never invents a failure
+(`csv_error_is_unclosed_quote`, `pdl_diagnostics.py`).
+
+**The field-size limit still raises**, which is the pre-existing `E-PARSER-004` behaviour
+and reaches the same `except`. It survives the fallback for a structural reason rather than
+by being special-cased: it is a resource limit and not a strictness rule, so the lenient
+reader hits it too and raises there instead. `E-PARSER-004`'s golden is byte-identical.
+
+**Blast radius, re-measured.** Across **263 `.pdl` files** in this repository — the count
+at the commit this landed on; an earlier figure of 205 was from an older tree, and an
+earlier `grep --include=*.pdl` also missed call sites that are not `.pdl` files at all —
+exactly **one** uses `parser: csv`: `tests/errors/corpus/E-PARSER-004/prog.pdl`, the
+field-size reproducer, unaffected. The site that grep missed is **one inline program in
+`tests/test_parser.py:183`** (`test_parser_csv`), which uses `parser: csv` on well-formed
+CSV and is also unaffected. Every use of `csv.reader` in `src/` is inside the `csv` branch
+of `parse_result` or the diagnostic it raises, so nothing outside `parser: csv` can reach
+this code.
+
+Every `.pdl` under `examples/` and `tests/data/` (170 files) was run before and after.
+**Not one changed its exit code** — 43 exit 0 and 127 exit 1 on both trees, the failures
+being models that are not reachable from here — and **no deterministic file changed its
+output**.
+
+The deterministic subset was isolated rather than assumed, because a raw diff over all 170
+produces false alarms rather than evidence. Each file was run **twice on the baseline**
+first; 167 reproduced their own stdout and 3 did not (`code_python.pdl` calls
+`random.choice`, `context_fork.pdl` and `function_empty_context.pdl` call models). Exactly
+one of the 167 then differed after the change — and it is a **fourth** nondeterministic
+file that two runs were not enough to catch, not a regression:
+`examples/skeleton-of-thought/tips.pdl` calls an unreachable model and LiteLLM prints a
+banner **to stdout** once per attempt, so the byte count depends on how many attempts get
+made. Run five times on one fixed tree it gave banner counts 5, 3, 5, 5, 5. The file
+contains no CSV at all, its exit code and stderr are identical on both trees, and the
+diff is entirely in that banner. So: 166 files byte-identical, 4 nondeterministic against
+themselves, 0 regressions. The residual risk is to user programs outside this repository,
+accepted, and called out in the release note.
+
+**Ragged rows stay silent, deliberately.** They are common in the wild, PDL returns a list
+of lists which can legitimately be ragged, and `strict=True` does not touch them anyway.
+Making raggedness an error is a separate and much larger decision the owner has not taken:
+it needs a policy for *which* width is the expected one — first row, modal, declared — and
+that is a feature, not a diagnostic. **Still open.**
+
+**The caret needed an oracle, not a heuristic.** A `csv.Error` carries no position, and
+`reader.line_num` is the last line *consumed*, which for a quote left open on line 2 of a
+four-line output is line 4 — the confidently-stated wrong location §7.9 and `RUBRIC.md`
+score below silence. `_unclosed_quote_position` (`pdl_diagnostics.py`) uses `csv` as its
+own oracle instead: closing the quote at the end of the text makes the same reader parse,
+and the last field of the last row it then yields *is* the content of the never-closed
+field, so re-escaping the doubled `""` it came from recovers the offset of the opening
+`"`. Every step is checked against the text and the caret is dropped when any check fails.
+Verified exact for a field opening at the start of a line, mid-line, spanning three lines,
+containing `""`, and under CRLF. This is the pattern to reuse for any diagnostic whose
+parser reports no position: **ask the parser a second question rather than re-implement
+it.**
 
 `parse_result` also has a fourth gap that is not a silent failure but is not a diagnostic
 either: **a parser's `spec:` types are never checked.** `Parser.spec` is documented as

@@ -147,6 +147,7 @@ from .pdl_context import (
 )
 from .pdl_diagnostics import (
     Diagnostic,
+    csv_error_is_unclosed_quote,
     import_read_diagnostic,
     parser_csv_diagnostic,
     parser_group_diagnostic,
@@ -4151,6 +4152,41 @@ def _parser_detail(exc: BaseException) -> str:
     return text if len(text) <= 120 else text[:120].rstrip() + "..."
 
 
+def _csv_rows_lenient(text: str, loc: PdlLocationType | None) -> list[list[str]]:
+    """Read `text` with a default `csv.reader`, diagnosing what still fails.
+
+    The fallback for everything a strict reader rejects other than an unclosed
+    quote; the `csv` branch of `parse_result` explains why that narrowing
+    exists and what it tolerates. A second, complete parse rather than a
+    patch-up of the rows the strict reader had already produced, because the
+    strict reader stops in the middle of a record and its rows are not the rows
+    a lenient reader would have returned for the same text.
+
+    Not everything survives it. `field larger than field limit` is a resource
+    limit and not a strictness rule, so the lenient reader raises it here and
+    E-PARSER-004 keeps its diagnostic.
+    """
+    rows: list[list[str]] = []
+    reader = csv.reader(StringIO(text))
+    try:
+        for row in reader:
+            rows.append(row)
+    except KeyboardInterrupt as exc:
+        raise exc from exc
+    except Exception as exc:
+        raise PDLRuntimeParserError(
+            parser_csv_diagnostic(
+                text=text,
+                detail=_parser_detail(exc),
+                limit=csv.field_size_limit(),
+                row=reader.line_num,
+            ).text,
+            loc=loc,
+            source_exception=exc,
+        ) from exc
+    return rows
+
+
 def _compiled_regex(regex: str, loc: PdlLocationType | None) -> re.Pattern[str]:
     """Compile a parser's `regex:` as an explicit step. E-PARSER-005.
 
@@ -4304,23 +4340,72 @@ def parse_result(
                 text, loc, label="`parser: csv`", remove="remove `parser: csv`"
             )
             result = []
-            reader = csv.reader(StringIO(text))
+            # The strict reader is a *detector*, not the parser of record.
+            #
+            # Built without `strict`, `csv.reader` accepts a quoted field that
+            # is never closed and swallows every remaining line into it, so the
+            # program prints a wrong parse and exits 0 (INVENTORY 7.10, finding
+            # 1). Making that an error is a decision-5.5 semantic change and it
+            # has the owner's sign-off -- for that one class and no other.
+            #
+            # `strict=True` cannot be narrowed at the reader: it is one flag,
+            # and it also rejects any text after a closing `"`, down to a lone
+            # trailing space (`1,"Ada" ` parses to `['1', 'Ada ']` without it,
+            # `1,"Ada" Lovelace` to `['1', 'Ada Lovelace']`). Both are shapes
+            # model-generated CSV really emits, and turning a working program
+            # into a hard failure over a trailing space is well past fixing a
+            # wrong parse. So the narrowing happens here instead, in the
+            # handler.
+            reader = csv.reader(StringIO(text), strict=True)
+            # `reader.line_num` is the last line the reader *consumed*, which
+            # for an unterminated quote is the end of the output rather than
+            # the line the quote is on. The line each completed row ended at is
+            # therefore recorded as it goes: the failing record starts on the
+            # line after the last one, which is a fact rather than a guess.
+            consumed = 0
+            tolerate = False
             try:
                 for row in reader:
                     result.append(row)
+                    consumed = reader.line_num
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
-                raise PDLRuntimeParserError(
-                    parser_csv_diagnostic(
-                        text=text,
-                        detail=_parser_detail(exc),
-                        limit=csv.field_size_limit(),
-                        row=reader.line_num,
-                    ).text,
-                    loc=loc,
-                    source_exception=exc,
-                ) from exc
+                if csv_error_is_unclosed_quote(_parser_detail(exc)):
+                    raise PDLRuntimeParserError(
+                        parser_csv_diagnostic(
+                            text=text,
+                            detail=_parser_detail(exc),
+                            limit=csv.field_size_limit(),
+                            row=reader.line_num,
+                            record_line=consumed + 1,
+                        ).text,
+                        loc=loc,
+                        source_exception=exc,
+                    ) from exc
+                # Everything else the strict reader rejects is parsed again
+                # leniently and returned. The cost is stated rather than
+                # glossed: PDL hands back a parse the standard library flagged,
+                # and says nothing about it. That inconsistency is the price of
+                # not breaking programs that work today, and it is recorded in
+                # INVENTORY 7.10, in the release note, and by the corpus entry
+                # `E-PARSER-004-after-quote`, which pins the tolerated value.
+                #
+                # It is also what makes matching a `csv.Error` by its message
+                # safe (`csv_error_is_unclosed_quote`): an unrecognised message
+                # from a future Python lands here, in the lenient parse, and
+                # not in a spurious error.
+                #
+                # The field-size limit is *not* tolerated by this and must not
+                # be: it is not a strictness rule, so the lenient reader hits it
+                # too and raises there instead, which is where E-PARSER-004 gets
+                # its diagnostic.
+                tolerate = True
+            if tolerate:
+                # Outside the handler on purpose, so that a diagnostic raised by
+                # the lenient parse is not chained onto the strict reader's
+                # exception as its `__context__`.
+                result = _csv_rows_lenient(text, loc)
         case PdlParser():
             # E-PARSER-007. `PdlParser` is a declared branch of `ParserType`, so
             # this is reachable from user YAML; it used to be `assert False,

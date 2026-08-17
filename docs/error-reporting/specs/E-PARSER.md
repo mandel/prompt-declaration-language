@@ -769,6 +769,19 @@ the last three were found while specifying and are new.
    quote, ragged rows and embedded NULs; the coordinator reproduced
    `[["a","b","c"], ["unterminated,1\nx,y\n"]]`. Making it an error is a **semantic change**
    under §5.5 and needs the owner's sign-off.
+
+   > **Since closed for the unterminated-quote class only**, with that sign-off. A
+   > `strict=True` reader detects it; every *other* `csv.Error` is re-parsed with a default
+   > reader and that result returned, so ragged rows, embedded NULs and text after a
+   > closing `"` are all still accepted in silence. The narrowing is deliberate: `strict`
+   > also rejects a lone trailing space after a closing `"` (`1,"Ada" `), and breaking a
+   > working program over that is not a trade the fix is worth. The cost — PDL returning a
+   > parse the standard library flagged — is stated at the code site, in the release note
+   > and in INVENTORY §7.10. The caret comes from `_unclosed_quote_position`, which asks
+   > `csv` a second question rather than re-implementing it, because `reader.line_num` is
+   > the last line *consumed* and so the wrong line for any multi-line field. Two corpus
+   > entries: `E-PARSER-004-unterminated-quote` for the error and
+   > `E-PARSER-004-after-quote` for the tolerated parse.
 2. **A `regex:` parser that does not match returns `None` silently.** `RegexParser.mode`
    defaults to `fullmatch` (`pdl_ast.py:354-357`), so a near-miss pattern prints `null` at
    exit 0 (`:4134-4135`). Same category as #1.

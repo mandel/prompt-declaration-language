@@ -6,10 +6,10 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 ## Summary
 
-- **59 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
-- **554 / 885** rubric points (**63%**).
+- **61 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
+- **568 / 915** rubric points (**62%**).
 - **2 entries leak a Python traceback** to the user.
-- **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
+- **3 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
 **14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
@@ -19,11 +19,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 98 | 177 | 1.66 |
-| What | 121 | 177 | 2.05 |
-| Why | 119 | 177 | 2.02 |
-| Fix | 70 | 177 | 1.19 |
-| Hygiene | 146 | 177 | 2.47 |
+| Location | 100 | 183 | 1.64 |
+| What | 124 | 183 | 2.03 |
+| Why | 122 | 183 | 2.00 |
+| Fix | 73 | 183 | 1.20 |
+| Hygiene | 149 | 183 | 2.44 |
 
 ## By error class
 
@@ -35,7 +35,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | E-LINT | 4 | 26 | 60 | 6.5 |
 | E-MODEL | 3 | 22 | 45 | 7.3 |
 | E-PARSE | 5 | 46 | 75 | 9.2 |
-| E-PARSER | 7 | 93 | 105 | 13.3 |
+| E-PARSER | 9 | 107 | 135 | 11.9 |
 | E-RUNTIME | 7 | 56 | 105 | 8.0 |
 | E-SCHEMA | 13 | 134 | 195 | 10.3 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
@@ -45,6 +45,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
 | `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | duplicate mapping key silently accepted |
+| `E-PARSER-004-after-quote` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | text after a quoted field's closing quote is silently tolerated |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
 | `E-LINT-004` | S0 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | pdl-lint reports success for a file it never checked |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
@@ -93,6 +94,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `TB` marks an entry that 
 | `E-LINT-002` | S0 | 3 | 3 | 3 | 3 | 2 | **14** | `█████████░` |  | pdl-lint dumps a traceback for a YAML error |
 | `E-PARSE-005` | S0 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | non-UTF-8 bytes in source |
 | `E-PARSER-001` | S1 | 2 | 3 | 3 | 3 | 3 | **14** | `█████████░` |  | json parser on non-JSON (issue #387) |
+| `E-PARSER-004-unterminated-quote` | S1 | 2 | 3 | 3 | 3 | 3 | **14** | `█████████░` |  | csv parser on a quoted field that is never closed |
 | `E-PARSER-005` | S1 | 2 | 3 | 3 | 3 | 3 | **14** | `█████████░` |  | invalid regex in a parser |
 | `E-RUNTIME-007` | S1 | 2 | 3 | 3 | 3 | 3 | **14** | `█████████░` |  | contribute entry is a dict of the wrong size |
 | `E-SCHEMA-007` | S1 | 3 | 3 | 3 | 2 | 3 | **14** | `█████████░` |  | dict fails every block union branch |
@@ -201,6 +203,12 @@ Fixed (spec docs/error-reporting/specs/E-PARSER.md). The two memory addresses ar
 
 **`E-PARSER-004`** — csv parser exceeding the field size limit  
 Fixed (spec docs/error-reporting/specs/E-PARSER.md). The taxonomy trigger this entry was written for does not exist: malformed CSV does not raise, so `csv.field_size_limit()` is the only way into this handler and calling a well-formed 131073-character field `ill-formed CSV` misdiagnosed a resource limit as a syntax error. `parser_csv_diagnostic` says what actually happened -- the limit, the size seen, and that it is a size limit and not a syntax error. No caret, deliberately: a `csv.Error` carries a row (`reader.line_num`, still in scope in the handler) and no column, so a caret at column 1 would be a coordinate PDL invented; the excerpt row is emitted with `col=None` and `_excerpt` prints no annotation line. The first `note:` is emitted only when the output really contains no `,` and no line break -- then `it is a single field` is a fact rather than a guess -- and is otherwise replaced by the row number from `reader.line_num`. The excerpt row is 62 characters of the field plus ` ... `, from the gutter-aware width budget: `_clip_within` counts the ` ... ` markers against the budget, unlike `_clip`, because a row prefixed `output:1 | ` has 67 columns to spend and not 75 plus markers. Fix 2: `if this output is not CSV, remove `parser: csv`` names the alternative and is conditional, because PDL cannot know whether the user meant CSV; there is no edit that turns an oversized field into valid CSV. **The silent failure this entry originally documented is untouched and remains open**: malformed CSV -- unbalanced quotes, ragged rows, embedded NULs -- still parses to nonsense at exit 0. Making it an error is a decision-5.5 semantic change needing the owner's sign-off (INVENTORY 7.10, finding 1).
+
+**`E-PARSER-004-after-quote`** — text after a quoted field's closing quote is silently tolerated  
+**A deliberately accepted silent failure, pinned so that it cannot change unnoticed.** Python's `csv` reader in `strict` mode rejects two shapes, and the decision-5.5 sign-off for INVENTORY 7.10 finding 1 covers only one of them: a quoted field that is never closed, where the rest of the output is swallowed and the answer is wrong (`E-PARSER-004-unterminated-quote`). This is the other shape -- text after a closing `"` -- and an earlier version of the change made it an error too, because `strict` is one flag on `csv.reader` and not two. The owner ruled that back out on the measurements: `1,"Ada" Lovelace` returns `Ada Lovelace`, which is very plausibly what the author meant, and `strict` rejects `1,"Ada" ` as well, so **a trailing space alone** would have turned a working program into a hard failure. Both shapes are in the reproducer, and the second one is why the ruling went the way it did. The narrowing is in the handler, not in the reader: the strict reader is used as a detector, everything it rejects other than the unclosed-quote class is parsed again with a default reader, and that result is returned (`_csv_rows_lenient`, `pdl_interpreter.py`). The cost is real and is not glossed -- PDL returns a parse the standard library flagged, and says nothing -- and it is stated at the code site, in INVENTORY 7.10 and in the release note as well as here. `hygiene_silent_failure` **is** set, and the choice was not automatic: the returned value is defensible, so the case for leaving the flag off is that nothing is really broken. It is set because the flag's definition in `RUBRIC.md` is about the *diagnostic*, not the value -- a broken input that exits 0 and says nothing at all -- and because 7.10's other two findings, a non-matching `regex:` returning `null` and `json_repair` returning `''`, are counted as silent failures on exactly those terms while also returning plausible values. Leaving it off would have undercounted PDL's silence in `BASELINE.md` by one to make a deliberate decision look tidier. Severity S0 for the same mechanical reason -- the legend reads `error is silently swallowed` -- with the difference from the other S0s being that this one is accepted rather than open. All five scores are 0 because there is no diagnostic to score, which is the convention the two other `hygiene_silent_failure` entries follow. The count self-heals if a later decision makes this class an error. The field-size limit reaches the same `except` and must keep raising; it does, because it is a resource limit rather than a strictness rule, so the lenient re-parse hits it too and `E-PARSER-004` is unchanged.
+
+**`E-PARSER-004-unterminated-quote`** — csv parser on a quoted field that is never closed  
+The decision-5.5 semantic change of INVENTORY 7.10 finding 1, taken with the owner's sign-off: this program exited **0** before, printing `[["a", "b", "c"], ["unterminated,1\nx,y\n"]]`. That is the worst kind of failure in the catalogue -- the answer is wrong rather than absent, and the user is told nothing -- because a `csv.reader` built without `strict` accepts a quoted field that is never closed and swallows every remaining line into it. The `csv` branch of `parse_result` now builds its reader with `strict=True` and uses it as a **detector**, not as the parser of record: this class raises, and everything else the strict reader rejects is parsed again with a default reader and returned (`_csv_rows_lenient`). That narrowing is the ruling on an earlier version of the change, which let every `csv.Error` raise and so also rejected text after a closing `"` -- including a lone trailing space, `1,"Ada" `, which parses fine today. Breaking a working program over a trailing space is not a trade this fix is worth; the cost of the narrowing, PDL returning a parse the standard library flagged, is pinned next door by `E-PARSER-004-after-quote`. So this entry is the whole of the behavioural change, and `parser_csv_diagnostic` gains exactly one branch. What is **not** changed was measured rather than assumed: ragged rows, embedded NULs, a bare `"` in the middle of an unquoted field and text after a closing `"` are all still accepted in silence, and -- the case that would have made this unsafe -- a legitimate multi-line quoted field still parses, because the quote that opens it does close. The field-size limit still raises, structurally rather than by special-casing: it is a resource limit and not a strictness rule, so the lenient re-parse hits it too and `E-PARSER-004` is byte-identical. Ragged rows stay silent deliberately: PDL returns a list of lists, which can legitimately be ragged, and a raggedness policy is a larger decision the owner has not taken (INVENTORY 7.10). The caret is the part that needed care. A `csv.Error` carries no position at all, and `reader.line_num` is the last line the reader *consumed* -- line 3 here, and the end of the file for any multi-line case -- so pointing there would have been the confidently-stated wrong location `RUBRIC.md` scores below silence. `_unclosed_quote_position` does not guess it and does not re-implement the dialect's quoting rules either: it uses `csv` as its own oracle, closing the quote at the end of the text so the same reader parses, taking the content of the last field of the last row it then yields, and re-escaping the doubled `""` that content came from to recover the offset of the `"` that opened it. Every step is checked against the text -- the re-parse must succeed, the offset must land inside it, the character there must be a `"` -- and when any check fails the caret is dropped and the excerpt falls back to the first line of the failing record, which `parse_result` tracks as the line after the last completed row. Verified exact on an unterminated field at the start of a line, mid-line, spanning three lines, containing doubled `""`, and under CRLF. Fix 3: both clauses of the `help:` were executed. Adding the closing `"` gives `[["a","b","c"],["unterminated,1"],["x","y"]]` and removing the opening one gives `[["a","b","c"],["unterminated","1"],["x","y"]]`, both at exit 0. Location 2 and not 3 for the reason the whole series is: the excerpt and caret are in the block's *output*, which is why they carry an `output:N` gutter and the caveat note, and the file has no column of its own to offer.
 
 **`E-PARSER-005`** — invalid regex in a parser  
 Fixed (spec docs/error-reporting/specs/E-PARSER.md). One of the two entries whose location is deeper than `parser:`: the fault is entirely static and lives at `parser.regex`, so the header names line 3 and the path reads `  in parser.regex`. `_walk` records a mark for every nested mapping key with a scalar name, so the mark exists; `_marked_path` descends to it only when it does, and otherwise stays where it is. The pattern is shown in a `regex:N` gutter with a caret from `re.error.lineno`/`.colno`, which is the same information as the old `at position 0` plus the ability to see what is at position 0. It is deliberately *not* a caret on file line 3: the mark for `["parser","regex"]` is the key's start and the value's end, so PDL knows where `regex` begins but not where `(` begins inside the quoted scalar, and finding it would mean re-scanning the line through YAML's quoting -- the class of heuristic E-CODE-001 rejected. Recording the value node's start mark in `_walk` would remove that obstacle for every scalar in PDL at once and is listed as adjacent work. The `help:` fires only for `missing )` / `unbalanced parenthesis`, and the single quotes in it are load-bearing: `\(` is not a valid escape in a double-quoted YAML scalar, so ``regex: "\("`` would trade a regex error for a YAML error -- the trap E-PARSE-001 fell into. In a single-quoted scalar the backslash is literal and reaches `re` intact; verified by running it. The clause is conditional (`or write ... to match a literal `(``) because `\(` matches a literal `(` and nothing else, which on this reproducer's own `text: "Hello"` would not match at all and print `null` at exit 0. Every other `re.error` gets `check the pattern at position N.` and would score Fix 1. Same fix, wider reach: `_compiled_regex` makes compilation an explicit step for **all five** modes, so `mode: split` and `mode: findall` -- which compiled inside `re.split`/`re.findall` with no handler at all and reached the user as a raw traceback -- now get this diagnostic too. That crash has no corpus entry of its own; see INVENTORY.

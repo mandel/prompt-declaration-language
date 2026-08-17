@@ -152,14 +152,20 @@ def test_a_location_with_no_source_stays_unknown():
     parse_str("text:\n  - a\n  - b\n  - c\n  - d\n  - e\n  - f\n  - g\n")
     loc = append(append(empty_block_location, "text"), "[6]")
     assert loc.line == 0
+    assert loc.col == 0
+    # No source means no marks, so the column is unknown and is not rendered:
+    # `line 0:0 - ` would state a position no 1-based file has. This is the one
+    # form the column change deliberately leaves alone.
     assert get_loc_string(loc) == "line 0 - "
 
 
 def test_a_program_parsed_from_a_string_is_named_and_located():
     _, loc = parse_str("text:\n  - a\n  - ${ nope }\n")
     assert loc.file == UNNAMED_SOURCE
-    assert get_loc_string(append(loc, "text")) == "<program>:1 - "
-    assert get_loc_string(append(append(loc, "text"), "[1]")) == "<program>:3 - "
+    # The column comes off the same mark as the line: `1:1` is the `text:` key,
+    # `3:5` is the start of the list item's own value, past the `- `.
+    assert get_loc_string(append(loc, "text")) == "<program>:1:1 - "
+    assert get_loc_string(append(append(loc, "text"), "[1]")) == "<program>:3:5 - "
 
 
 def test_the_registry_answers_with_the_source_text():
@@ -282,7 +288,7 @@ def test_a_nested_program_does_not_evict_the_program_that_ran_it():
     walk fell back to `['text']` -- line 2 of the inner source, printed as line
     2 of the outer one.
     """
-    assert get_loc_string(failure_of(NESTED_PROGRAM).loc) == "<program>:7 - "
+    assert get_loc_string(failure_of(NESTED_PROGRAM).loc) == "<program>:7:3 - "
 
 
 def test_the_registry_keeps_both_the_container_and_what_it_ran():

@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:5 - the `regex:` pattern has no group named `second`
+prog.pdl:5:5 - the `regex:` pattern has no group named `second`
   in parser.spec.second
 
 5 |     second: str

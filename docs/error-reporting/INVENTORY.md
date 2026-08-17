@@ -841,6 +841,9 @@ into traces, and available to `Diagnostic`'s span renderer, which has printed
 every *runtime* and *schema* diagnostic is still built from — deliberately does not use
 it: turning on `:col` there rewrites the header of every entry in the corpus in one step,
 and that is a rendering decision belonging to 5.6's renderer, not to the location model.
+**Decided since, in 7.9:** the renderer owner took it, `get_loc_string` returns
+`file:line:col - `, and the 42 goldens it rewrote are what that paragraph priced. The
+location model is unchanged by it — no field, no computation, only the printer.
 
 **How to name a source that has no file name — decided since, in 7.7.** The registry
 must be keyed by something, and the empty string cannot be it — `""` is
@@ -1052,6 +1055,54 @@ decision belongs to whoever owns 5.6's renderer.
 `E-RUNTIME-006`, naming the offending list (which is also its Why 0); for `E-TYPE-001`,
 locating the result rather than the `spec:`. Each is that error ID's own work.
 
+**Decision taken: `:col` is rendered, and this section's arithmetic was half right.**
+`get_loc_string` now returns `file:line:col - `. The prediction above is confirmed where
+it was measured and wrong where it was inferred, and both halves are worth keeping:
+
+- **The eight coarse entries do not move, exactly as measured.** The column comes off
+  the same mark as the coarse line, so it is a horizontal coordinate for the wrong
+  element. Confirmed entry by entry against the regenerated goldens.
+- **Two entries moved 1 → 2 that this section did not count**, because it counted only
+  the coarse eight and not the *empty-path* four. `E-RUNTIME-001` (`include:`) and
+  `E-RUNTIME-004` (`read:`) are single-block programs whose path is `[]`: rubric item 1
+  wants an accurate line plus a column **or** a path, they had an accurate line and
+  neither, and a path is the one thing they can never have. Their own corpus notes said
+  so at the time — "the remaining point here is the column" — and the column was it.
+  The other two of the four, `E-CODE-003` and `E-RUNTIME-011`, do **not** move, and
+  `E-CODE-003`'s note claiming it would has been corrected: both are `code:` blocks
+  whose failing statement is inside a multi-line scalar, which is the coarseness above
+  and not the missing-coordinate case.
+- **Three entries moved 2 → 3**, not zero: `E-PARSER-006`, `E-SCHEMA-007` and
+  `E-SCHEMA-009-items-crash`. Each already had the block path, a *file* excerpt and a
+  caret, and was held at 2 by the header alone; each carries a note that pre-registered
+  the move. None is inside an `include`/`import`/call, so the chain clause does not
+  apply to any of them.
+- **No entry's Location moved down, and the mechanism is why.** A column cannot make a
+  header state a construct the header did not already state: `line` and `col` are read
+  from one mark, of the block `loc.path` names, and 38 of the 42 changed goldens print
+  that path directly under the header. The failure mode the deferral feared — a
+  confidently precise column pointing somewhere the message is not about — would need the
+  column to come from a different mark than the line, which `append` cannot produce.
+
+**Measured reach: 42 of 59 goldens, 47 headers.** Where those columns land, counted
+rather than characterised: **5** on a value or a list item (a `- ${ nope }` past the
+`- `, the `{result: 1, context: 2}` inside a flow sequence, the third item of
+`[1, 2, 3]`) and **42** on a key token. A key landing is not by itself a misdirection —
+in **26** of the 42 the message names that very key, because the key *is* the fault: a
+field no block accepts, the `parser:` whose parse failed, the `jitter:` list of the wrong
+length. In the remaining **16** the column is on the construct containing the offending
+value (`role: 42`, `return: ${ kaboom }`, `code: |`), which is an upper bound on
+"precise-looking about something else" rather than a count of it — four of the 16 name
+their subject some other way, `E-SCHEMA-007`'s caret label being the clearest.
+**A conditional rendering that told the two apart
+is not implementable in this renderer**, which is the argument that settled it rather
+than taste: `get_loc_string` receives a `PdlLocationType` and nothing on it distinguishes
+"this mark is the offending element" from "this mark is the construct around it" — both
+are produced by the identical `SOURCES.mark(file, path)` lookup. The only predicate
+available is *known* versus *unknown*, and that one is applied: `col == 0` renders no
+column, which is what `pdl_diagnostics._header` has always done with a span that has no
+column, and is why `line 0 - ` is unchanged for a program with no source at all.
+
 ---
 
 ### 7.10 Three silent failures in `parse_result`, left open
@@ -1138,6 +1189,20 @@ PDL knows where the fault is, in the same diagnostic, and the header is the less
 of the two. `E-SCHEMA-009-items-crash` is the sharpest case: the caret sits on the third
 item of a flow sequence, a position no line number can express. Four entries are held at
 Location 2 by the missing `:col` alone. Still not taken here, for the reason above.
+
+*Taken since, and the disagreement is closed.* `get_loc_string` renders `file:line:col - `
+(§7.9, decision recorded there with the measurements). Where a diagnostic draws a caret,
+the header and the caret now name the same column, because both read the same mark; the
+header is no longer the less precise half of its own document. Of the four entries this
+paragraph counted as held at Location 2 by the missing `:col` alone, **one moved to 3** —
+`E-SCHEMA-009-items-crash`, where the column, 18, is the third item of `[1, 2, 3]` and
+says without the excerpt what the line number cannot. The other three did not, and the
+count was optimistic in the way §7.9's was: `E-SCHEMA-009`, `-not-a-list` and `-object`
+draw their caret under the *key*, or under the value's first child, while the message is
+about the value's type, so the caret is not under the offending token and rubric item 1's
+fourth conjunct is still unmet. `E-SCHEMA-006` is the same shape. Sharpening
+those carets, not the header, is what would move them; that is E-SCHEMA-009's own work.
+`E-SCHEMA-007` moved to 3 in the same pass, which this paragraph did not count at all.
 
 **The E-SCHEMA-010 flag was kept by changing the reproducer, not by annotating a stale
 one.** `test_order_instability_is_real` re-proves the `hygiene_unstable_order`

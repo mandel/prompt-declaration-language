@@ -4,9 +4,9 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:4 - Field not allowed: foo
+prog.pdl:4:1 - Field not allowed: foo
   in foo
-prog.pdl:6 - Field not allowed: baz
+prog.pdl:6:1 - Field not allowed: baz
   in baz
-prog.pdl:5 - Field not allowed: bar
+prog.pdl:5:1 - Field not allowed: bar
   in bar

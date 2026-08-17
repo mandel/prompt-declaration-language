@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - code block raised ZeroDivisionError: division by zero
+prog.pdl:2:1 - code block raised ZeroDivisionError: division by zero
   in code
 
 code:1 | result = 1/0

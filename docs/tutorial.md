@@ -1086,9 +1086,15 @@ If we disable structured decoding by setting the field `structuredDecoding` to f
 
 ```
 {'name': 'John', 'age': 'twentyfive'}
-examples/tutorial/type_error.pdl:24 - Type errors during spec checking:
-examples/tutorial/type_error.pdl:24 - twentyfive should be of type <class 'int'>
+examples/tutorial/type_error.pdl:24:5 - Type errors during spec checking:
+  in text[0].spec
+examples/tutorial/type_error.pdl:24:26 - twentyfive should be of type <class 'int'>
+  in text[0].spec.age
 ```
+
+The two headers name the same line and different columns: `24:5` is the `spec:`
+key the check belongs to, `24:26` is the `age:` entry inside it that the result
+violated. The `  in <path>` line under each says the same thing as a block path.
 
 
 

@@ -5,7 +5,7 @@ ok on attempt 2
 
 --- stderr ---
 
-[0;31m[Retry 1/1] prog.pdl:1 - An error occurred in a PDL block. Error details: Traceback (most recent call last):
+[0;31m[Retry 1/1] prog.pdl:1:1 - An error occurred in a PDL block. Error details: Traceback (most recent call last):
   File "<REPO>/src/pdl/pdl_interpreter.py", line <LINE>, in process_advance_block_retry
     result, background, new_scope, trace = process_block_body_with_replay(
                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

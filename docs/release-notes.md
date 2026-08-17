@@ -6,6 +6,47 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### Every diagnostic header carries a column
+
+The header of a diagnostic built from a source location is now
+`file:line:col - ` where it was `file:line - `:
+
+```console
+$ pdl prog.pdl
+prog.pdl:3:18 - the list in `jitter:` should have exactly 2 items, but it has 3
+  in retry.jitter
+
+3 |   jitter: [1, 2, 3]
+  |                  ^ one item too many
+```
+
+The column has been computed for every location since positions started coming
+from the YAML parser's own marks (below); it was the one coordinate the printer
+held back. It comes off the *same* mark as the line, so the two always name one
+construct — the block, key or list item the `  in <path>` line names — and can
+never disagree, and where a diagnostic also draws a caret the header and the
+caret now agree. Where PDL knows the fault to the character, the column says so:
+which item of a flow sequence is one too many, which entry of a one-line
+`spec: {name: string, age: integer}` the result violated. Where PDL knows only
+the enclosing construct — a `code:` block whose failing statement is three lines
+further down — the column is the exact position of that construct, no more
+precise than the line beside it and no less.
+
+Structured diagnostics (`E-CLI-*`, `E-PARSE-*`, a failing `import:`) have printed
+`file:line:col - ` since they were introduced, so this makes one header shape
+across the whole tool. A column that is genuinely unknown is still omitted rather
+than printed as `:0`, which is why a diagnostic about a program with no source at
+all still reads `line 0 - `, and why a failing `import:` still reads
+`prog.pdl:1 - `: its span carries no column to print.
+
+**If you match on diagnostic text (SDK).** Nothing about a program that runs
+changes: same result, same exit code, same success-path output, same exit code
+`1` on failure. What moves is stderr, and any regular expression anchored on
+`^(\S+):(\d+) - ` needs a third, optional group: `^(\S+):(\d+)(?::(\d+))? - `.
+`PDLRuntimeError.message` is unchanged — the header is added by the printer —
+but the elements of `PDLParseError.message`, which carry their own header, are
+not.
+
 ### Diagnostics name the block they are about
 
 Every diagnostic built from a source location now carries the **block path** on a
@@ -13,7 +54,7 @@ line of its own, under the header:
 
 ```console
 $ pdl prog.pdl
-sub/imported.pdl:4 - Error during the evaluation of ${ kaboom }: 'kaboom' is undefined
+sub/imported.pdl:4:5 - Error during the evaluation of ${ kaboom }: 'kaboom' is undefined
   in defs.f.return
 ```
 
@@ -51,7 +92,7 @@ text, which split each line on `":"` to guess what was on it. It counted comment
 lines as structure, had no notion of flow style or of a multi-line scalar, and
 had nothing to say about a top-level block. Positions now come from the marks
 PyYAML computes while parsing, so they are exact, and they include a **column**
-for the first time.
+for the first time — the column the headers described above now print.
 
 Three things move as a result:
 
@@ -62,14 +103,15 @@ Three things move as a result:
 - **A top-level block is `file:1`, not `file:0`.** `read:`, `code:` and
   `include:` programs of one block each used to report line 0.
 - **A program parsed from a string is named `<program>`.** Diagnostics from
-  `exec_str` and the notebook magic read `<program>:4 - ...` where they used to
+  `exec_str` and the notebook magic read `<program>:4:1 - ...` where they used to
   read `line 4 - ...`, matching the label such a program's YAML errors already
   carried. `line N - ` now means what it says: a program with no source text at
-  all, such as one built with `exec_dict`.
+  all, such as one built with `exec_dict` — which is also why it is the one
+  header that gains no column: there are no marks to take one from.
 - **A program that a program produced is named for where it came from.** The
   `code:` of a `lang: pdl` block is a program of its own with no file name;
   diagnostics about it now read
-  `<program:prog.pdl#text[0].code>:2 - ...`, naming the file that contains the
+  `<program:prog.pdl#text[0].code>:4:1 - ...`, naming the file that contains the
   block and the block path of the `code:` field, instead of `<program>`. It also
   stops such a block from taking the name of the program that ran it: a string
   program containing one used to report line numbers belonging to the nested

@@ -4,7 +4,7 @@ $ exit: 1
 hi
 
 --- stderr ---
-prog.pdl:2 - code block finished without assigning `result`
+prog.pdl:2:1 - code block finished without assigning `result`
   in code
 
   A `code:` block's value is whatever its code assigns to the variable

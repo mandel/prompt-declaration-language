@@ -46,8 +46,9 @@ ${ {}[ }
 # The two parser tests below assert the *located* message rather than
 # `exc.value.message`, which is what they used to assert. Phase-3 item 9 threads
 # a location into `parse_result`, and the location is half of what changed: the
-# body travels on the exception and `generate` renders the `<file>:<line> - `
-# header and the `  in <path>` line through `located_message` at print time. An
+# body travels on the exception and `generate` renders the
+# `<file>:<line>:<col> - ` header and the `  in <path>` line through
+# `located_message` at print time. An
 # assertion on the body alone would leave the part these tests exist to pin --
 # that a parser failure now has a location at all -- unchecked.
 #
@@ -63,7 +64,7 @@ parser: jsonl
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
     assert located_message(exc.value.loc, exc.value.message) == (
-        "<program>:3 - `parser: jsonl` could not parse line 1 of the block's output\n"
+        "<program>:3:1 - `parser: jsonl` could not parse line 1 of the block's output\n"
         "  in parser\n"
         "\n"
         "output:1 | { x: 1 + 1 }\n"
@@ -86,15 +87,17 @@ parser:
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
-    # `:4`, not `:3`: the fault is entirely in the pattern, so the location
-    # descends to `parser.regex` rather than stopping at the `parser:` key.
+    # `:4:3`, not `:3`: the fault is entirely in the pattern, so the location
+    # descends to `parser.regex` rather than stopping at the `parser:` key. The
+    # column is that key's own, two characters in from the indent -- the same
+    # mark the line comes from, so the two coordinates name one construct.
     #
     # The version-dependent alternative this assertion used to carry is gone
     # with the `repr(exc)` that needed it: Python 3.13 renamed `re.error` to
     # `re.PatternError`, which changed the class name inside the old message.
     # `exc.msg` is the same string on both.
     assert located_message(exc.value.loc, exc.value.message) == (
-        "<program>:4 - `regex:` is not a valid regular expression\n"
+        "<program>:4:3 - `regex:` is not a valid regular expression\n"
         "  in parser.regex\n"
         "\n"
         "regex:1 | (\n"
@@ -126,7 +129,7 @@ spec: integer
     # builds it as a bare string; only `generate` adds one, at print time.
     assert (
         str(exc.value.message) == "Type errors during spec checking:\n"
-        "<program>:3 - Hello should be of type <class 'int'>\n"
+        "<program>:3:1 - Hello should be of type <class 'int'>\n"
         "  in spec"
     )
 

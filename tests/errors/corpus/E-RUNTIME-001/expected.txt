@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:1 - Attempting to include invalid yaml: does_not_exist.pdl
+prog.pdl:1:1 - Attempting to include invalid yaml: does_not_exist.pdl
 cannot read `does_not_exist.pdl`: no such file
 
   `pdl` takes the path of a PDL program file. The directory contains

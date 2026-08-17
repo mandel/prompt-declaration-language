@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - `parser:` with a `pdl:` sub-program is not implemented
+prog.pdl:2:1 - `parser:` with a `pdl:` sub-program is not implemented
   in parser
 
   A `parser:` may be `json`, `jsonl`, `yaml`, `csv`, or a `regex:` parser. The

@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - `parser: csv` cannot read a field longer than 131072 characters
+prog.pdl:2:1 - `parser: csv` cannot read a field longer than 131072 characters
   in parser
 
 output:1 | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ...

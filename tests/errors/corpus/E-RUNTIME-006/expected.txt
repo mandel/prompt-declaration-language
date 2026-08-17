@@ -4,5 +4,5 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:1 - Lists inside the For block must be of the same length.
+prog.pdl:1:1 - Lists inside the For block must be of the same length.
   in for

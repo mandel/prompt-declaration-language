@@ -54,7 +54,8 @@ in the same process had parsed a string.
 
 So `""` stays the unknown location, is never registered, and never resolves;
 `<program>` is a real source with real marks. `get_loc_string` renders the first
-as `line N - ` and the second as `<program>:N - `.
+as `line N - ` -- no marks, so no column to print -- and the second as
+`<program>:N:C - `.
 
 A source that a *running* program produced -- the `code:` of a `lang: pdl` block
 -- is not this. It gets a name of its own; see `nested_source_name`.
@@ -410,33 +411,51 @@ def append(loc: PdlLocationType, seg: str) -> PdlLocationType:
 
 
 def get_loc_string(loc: PdlLocationType) -> str:
-    """`file:line - `, the prefix every legacy diagnostic is built from.
+    """`file:line:col - `, the prefix every legacy diagnostic is built from.
 
-    The column is carried on the location but not rendered here. Putting it in
-    this prefix would rewrite the header of every diagnostic in the corpus in one
-    step, which is a renderer decision (5.6) and not part of the location model.
+    The column is the one `append` resolved from the YAML mark of the block the
+    path names -- the same mark the line comes from, so the two coordinates are
+    always the same point and never disagree about which construct is meant.
+    Where that construct is coarser than the offending element inside it -- the
+    `code:` key of a `code:` block whose failing statement is three lines down --
+    the column is the exact position of the key, exactly as the line is the exact
+    line of the key. It says no more and no less than the line beside it;
+    `docs/error-reporting/INVENTORY.md` 7.9 measured that coarseness, and it is
+    neither cured nor worsened by a horizontal coordinate.
 
-    `line N - `, with no file, is now reserved for a location with no source at
-    all: a program built as a dict, or a block reached before any file was
-    known. A program parsed from a string has a source and says so, as
-    `<program>:N - `, which is the label its YAML errors already used.
+    `0` means unknown on `PdlLocationType`, and an unknown column is dropped
+    rather than printed as `:0`, which would be a position no 1-based file has.
+    That is the rule `pdl_diagnostics._header` already applies to the structured
+    diagnostics, so the two renderers spell a location the same way. It is not a
+    precision judgement: a *known* column is always rendered, however coarse the
+    mark it came from, because a reader cannot be asked to infer PDL's confidence
+    from the shape of a header.
+
+    `line N - `, with no file, is reserved for a location with no source at all:
+    a program built as a dict, or a block reached before any file was known.
+    Those locations have no marks, so their column is unknown and the form is
+    unchanged in practice; it takes a column by the same rule if one is ever
+    known, since a line without a file is no more useful than a column without
+    one. A program parsed from a string has a source and says so, as
+    `<program>:N:C - `, which is the label its YAML errors already used.
 
     The block path is not here either, for a reason that is about shape rather
     than policy: it is rendered on a line of its own (`  in text[0].code`), and a
     prefix cannot place a line after the text it prefixes. `located_message`
     below is the whole header, and is what a diagnostic site should call.
     """
+    col = ":" + str(loc.col) if loc.col else ""
     if loc.file == "":
-        return "line " + str(loc.line) + " - "
-    return loc.file + ":" + str(loc.line) + " - "
+        return "line " + str(loc.line) + col + " - "
+    return loc.file + ":" + str(loc.line) + col + " - "
 
 
 def located_message(loc: PdlLocationType, message: str) -> str:
-    """One legacy diagnostic: its `file:line - ` header, its `  in <path>` line.
+    """One legacy diagnostic: its `file:line:col - ` header, its `  in <path>` line.
 
     This is DROP #10. `loc.path` -- the block path the rubric asks for -- was
     computed on every location, carried all the way to the print site, and
-    thrown away there, because `get_loc_string` renders only `file:line`.
+    thrown away there, because `get_loc_string` rendered only `file:line`.
 
     The spelling is not a new one. `pdl_diagnostics.render` has emitted the path
     as `  in <path>` under the header since the boundary diagnostics, using

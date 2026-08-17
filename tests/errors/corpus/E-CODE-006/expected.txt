@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:9 - code block raised ZeroDivisionError: division by zero
+prog.pdl:9:3 - code block raised ZeroDivisionError: division by zero
   in text[1].code
 
 code:3 | result = PDL_SESSION.embed(key)

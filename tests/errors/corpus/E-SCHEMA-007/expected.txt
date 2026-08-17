@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:3 - this is not a PDL block: nothing here says what it does
+prog.pdl:3:5 - this is not a PDL block: nothing here says what it does
   in text[1]
 
 3 |   - foo: bar

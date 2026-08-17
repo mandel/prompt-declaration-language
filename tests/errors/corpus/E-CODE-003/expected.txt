@@ -6,4 +6,4 @@ $ exit: 1
 --- stderr ---
 boom
 
-prog.pdl:1 - Shell Code error: ValueError('command exited with non zero code: 7')
+prog.pdl:1:1 - Shell Code error: ValueError('command exited with non zero code: 7')

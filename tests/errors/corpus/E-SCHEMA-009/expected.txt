@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - `contribute:` should be a list, but `result` is a string
+prog.pdl:2:1 - `contribute:` should be a list, but `result` is a string
   in contribute
 
 2 | contribute: result

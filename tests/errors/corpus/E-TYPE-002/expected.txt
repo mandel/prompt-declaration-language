@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:8 - Type errors during function call to ${ greet }:
+prog.pdl:8:5 - Type errors during function call to ${ greet }:
   in text[0].args
-prog.pdl:9 - 42 should be of type <class 'str'>
+prog.pdl:9:7 - 42 should be of type <class 'str'>
   in text[0].args.name

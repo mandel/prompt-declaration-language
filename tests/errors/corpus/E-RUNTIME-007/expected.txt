@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:4 - contribute entry has 2 keys, expected exactly 1
+prog.pdl:4:5 - contribute entry has 2 keys, expected exactly 1
   in contribute[0]
 
   A `contribute` entry is either `result` or `context`, or a mapping with a

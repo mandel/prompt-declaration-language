@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - `parser: yaml` could not parse the block's output
+prog.pdl:2:1 - `parser: yaml` could not parse the block's output
   in parser
 
 output:1 | [1, 2

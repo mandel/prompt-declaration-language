@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:3 - `regex:` is not a valid regular expression
+prog.pdl:3:3 - `regex:` is not a valid regular expression
   in parser.regex
 
 regex:1 | (

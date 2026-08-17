@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:3 - `defs:` should be a mapping, but `[{greeting: hi}]` is a list
+prog.pdl:3:5 - `defs:` should be a mapping, but `[{greeting: hi}]` is a list
   in defs
 
 3 |   - greeting: hi

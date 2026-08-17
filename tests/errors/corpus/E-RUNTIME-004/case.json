@@ -3,11 +3,11 @@
   "title": "read of a missing file",
   "severity": "S2",
   "rubric": {
-    "location": 1,
+    "location": 2,
     "what": 2,
     "why": 2,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "'prog.pdl:1', the line of the `read:` block. It was 'prog.pdl:0' until phase-3 item 0: a top-level block has an empty location path and `get_line` returned 0 for it, so the one block a single-block program has was the one thing that could not be located. Clean message otherwise. Phase-3 item 7 does not move this golden and location stays 1: the path is `[]` for the same reason the line used to be 0, so there is nothing to render. The remaining point here is the column."
+  "notes": "'prog.pdl:1', the line of the `read:` block. It was 'prog.pdl:0' until phase-3 item 0: a top-level block has an empty location path and `get_line` returned 0 for it, so the one block a single-block program has was the one thing that could not be located. Clean message otherwise. Phase-3 item 7 does not move this golden and location stays 1: the path is `[]` for the same reason the line used to be 0, so there is nothing to render. The remaining point was the column, and it landed: `prog.pdl:1:1` is an accurate line plus a second coordinate, so Location 1 -> 2. Accurate rather than coarse on INVENTORY 7.9's test -- `nofile.txt` is the whole value of the `read:` entry, so the entry's mark is its mark. Location 3 is still four things away: no excerpt, no caret, and the path this entry cannot have."
 }

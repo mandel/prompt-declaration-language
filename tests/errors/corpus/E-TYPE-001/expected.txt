@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2 - Type errors during spec checking:
+prog.pdl:2:1 - Type errors during spec checking:
   in spec
-prog.pdl:2 - hello should be of type <class 'int'>
+prog.pdl:2:1 - hello should be of type <class 'int'>
   in spec

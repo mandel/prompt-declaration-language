@@ -76,9 +76,17 @@ not as a sentence.
 code, stdout and stderr together. If a diagnostic is correct but arrives behind a
 traceback, Hygiene is 0 and Location is scored on what is actually legible.
 
-**Wrong beats missing, downward.** A confidently-stated wrong location (E-EXPR-004,
-E-EXPR-006) scores Location 0, below a diagnostic with no location at all. Misdirection
-costs a user more than silence.
+**Wrong beats missing, downward.** A confidently-stated wrong location scores Location 0,
+below a diagnostic with no location at all. Misdirection costs a user more than silence.
+
+The two entries this convention was written for — E-EXPR-004, whose cross-file error
+reported the importing file's line, and E-EXPR-006, whose line was shifted by comments —
+both score **2** now: Phase-3 item 0 replaced the regex line scanner with real YAML marks
+and the wrong lines went with it. They are kept named here because the convention is what
+made them worth fixing first, and because nothing in the corpus currently scores Location
+0 for wrongness: the remaining 0s are entries with no location at all. If a future change
+makes a header confidently wrong again — the risk that deferred `:col` twice — this is the
+rule that applies.
 
 **Don't credit accidents.** Where a coarse location happens to be right because the
 construct is one line long, score the mechanism, not the luck.

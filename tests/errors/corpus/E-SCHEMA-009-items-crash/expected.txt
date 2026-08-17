@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:3 - the list in `jitter:` should have exactly 2 items, but it has 3
+prog.pdl:3:18 - the list in `jitter:` should have exactly 2 items, but it has 3
   in retry.jitter
 
 3 |   jitter: [1, 2, 3]

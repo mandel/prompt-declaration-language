@@ -219,15 +219,31 @@ silent by decision; the other two remain open.
 | E-GUI-001 [src] | any failure in the viewer's Run panel | `String(err)` written verbatim to an xterm, tracebacks included | **S1** |
 | E-GUI-002 [src] | error blocks in a loaded trace | dropped from the timeline — `// TODO show errors in trace` (`view/timeline/model.ts:157`) | **S1** |
 
-**Counts:** 18 × S0, 23 × S1, 24 × S2, 3 × S3 — 68 rows. E-SCHEMA-005 was the one
-unclassifiable row, on the grounds that its branch was unreachable in practice; Phase-3
-item 10 made it reachable, and it is scored S1 with the rest of its class.
+**Counts:** 20 × S0, 24 × S1, 23 × S2, 3 × S3 — **70 rows**, covering **69 distinct IDs**
+(`E-PARSER-004` has two rows: the original and the narrowed behaviour). Two of the S0 rows
+are marked `S0 (was)` — they record a severity since resolved, and are counted here
+because this is a tally of the table, not of what is currently broken.
 
-These were `14 / 21 / 22 / 4` until they were re-counted: wrong on every number, and
-summing to 61 against a table that had 67 rows at the time. Two severity cells carried
-trailing prose that also made the column impossible to tally mechanically; the prose has
-moved into the message column, so the four numbers above can now be checked by counting
-the last column of every `| E-…` row.
+E-SCHEMA-005 was the one unclassifiable row, on the grounds that its branch was
+unreachable in practice; Phase-3 item 10 made it reachable, and it is scored S1 with the
+rest of its class.
+
+**Do not re-count these by eye. This tally has been wrong twice.** It was `14 / 21 / 22 / 4`
+summing to 61 against a 67-row table, then `18 / 23 / 24 / 3` summing to 68 against a
+70-row table — that one transposed S1 and S2 and silently dropped both `(was)` rows. Both
+times the error was a hand count. Re-derive it instead:
+
+```sh
+awk -F'|' '/^\| E-[A-Z]+-[0-9]/ {c=$(NF-1); if (match(c, /S[0-3]/)) print substr(c, RSTART, 2)}' \
+  docs/error-reporting/INVENTORY.md | sort | uniq -c   # 20 S0, 24 S1, 23 S2, 3 S3 — sums to 70
+```
+
+**Take the first `S[0-3]` in the cell and stop.** Severity cells are not uniformly
+formatted — some bold the marker, some do not — so matching `\*\*S[0-3]\*\*` finds only 37
+of the 70. And `E-SCHEMA-009`'s cell reads `**S0** (was; the three shape messages alone
+were S2)`, so counting *every* `S[0-3]` in the cell scores it twice and yields 71 against
+70 rows. A tally that does not sum to the row count is wrong; that check is the cheapest
+way to catch this.
 
 ---
 

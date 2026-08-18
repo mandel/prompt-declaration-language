@@ -290,7 +290,9 @@ def test_a_nested_program_does_not_evict_the_program_that_ran_it():
     walk fell back to `['text']` -- line 2 of the inner source, printed as line
     2 of the outer one.
     """
-    assert get_loc_string(failure_of(NESTED_PROGRAM).loc) == "<program>:7:3 - "
+    loc = failure_of(NESTED_PROGRAM).loc
+    assert loc is not None
+    assert get_loc_string(loc) == "<program>:7:3 - "
 
 
 def test_the_registry_keeps_both_the_container_and_what_it_ran():

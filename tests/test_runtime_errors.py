@@ -3,6 +3,7 @@ import errno
 import pytest
 
 from pdl.pdl import exec_file, exec_str
+from pdl.pdl_ast import PDLImportError
 from pdl.pdl_interpreter import PDLRuntimeError
 from pdl.pdl_location_utils import located_message
 
@@ -63,6 +64,7 @@ parser: jsonl
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
+    assert exc.value.loc is not None
     assert located_message(exc.value.loc, exc.value.message) == (
         "<program>:3:1 - `parser: jsonl` could not parse line 1 of the block's output\n"
         "  in parser\n"
@@ -96,6 +98,7 @@ parser:
     # with the `repr(exc)` that needed it: Python 3.13 renamed `re.error` to
     # `re.PatternError`, which changed the class name inside the old message.
     # `exc.msg` is the same string on both.
+    assert exc.value.loc is not None
     assert located_message(exc.value.loc, exc.value.message) == (
         "<program>:4:3 - `regex:` is not a valid regular expression\n"
         "  in parser.regex\n"
@@ -237,7 +240,9 @@ def test_import_error_carries_one_location_header(tmp_path, monkeypatch):
     rendered = str(caught.value)
     assert rendered.count("prog.pdl:3 - ") == 1
     assert rendered.startswith("prog.pdl:3 - cannot import `nosuch`")
-    assert caught.value.source_exception.diagnostic.as_record()["id"] == "E-RUNTIME-002"
+    source_exception = caught.value.source_exception
+    assert isinstance(source_exception, PDLImportError)
+    assert source_exception.diagnostic.as_record()["id"] == "E-RUNTIME-002"
 
 
 def test_import_near_miss_is_suggested_in_the_written_form(tmp_path, monkeypatch):

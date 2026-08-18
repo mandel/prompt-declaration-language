@@ -12,7 +12,7 @@ from pytest import CaptureFixture, MonkeyPatch
 from pdl import pdl
 from pdl.pdl_interpreter_state import ScopeType
 from pdl.pdl_parser import PDLParseError
-from tests.pdl_files import all_pdl_files
+from tests.pdl_files import all_pdl_files, is_excluded
 
 EXAMPLES_RUN_CONFIG_FILE = os.getenv(
     "EXAMPLES_RUN_FILE", "tests/test_examples_run.yaml"
@@ -153,7 +153,17 @@ class ExamplesRun:
             # Update files to check iff check is specified
             if content["check"] is not None:
                 if len(content["check"]) > 0:
-                    self.check = content["check"]
+                    # Filter through `is_excluded` even for an explicit list.
+                    # Being a deliberately-invalid reproducer is a property of
+                    # the file, not of how the list was built, and this list is
+                    # not always hand-written: `run-examples-prep.yml` fills it
+                    # from every `.pdl` a PR changed, which reaches the corpus
+                    # and asserts that programs written to fail will parse.
+                    self.check = [
+                        file
+                        for file in content["check"]
+                        if not is_excluded(pathlib.Path(file))
+                    ]
 
             self.skip = content["skip"]
             self.expected_parse_error = content["expected_parse_error"]

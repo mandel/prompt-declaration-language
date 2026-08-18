@@ -958,7 +958,14 @@ def _no_block_message(defs, data, unrecognised, loc: PdlLocationType) -> str:
         in_list=bool(loc.path) and loc.path[-1].startswith("["),
         source=source_text(loc.file),
     )
-    first = next(((line, col) for _, line, col in keys if line is not None), None)
+    # Both coordinates or neither: a `keys` entry is `(key, None, None)` on a
+    # registry miss and `(key, mark.line, mark.col)` otherwise. Testing both is
+    # what the tuple actually promises, and it is what lets `PdlLocationType`
+    # take a plain `int` for each.
+    first = next(
+        ((line, col) for _, line, col in keys if line is not None and col is not None),
+        None,
+    )
     header_loc = (
         loc
         if first is None

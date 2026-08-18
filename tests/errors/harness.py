@@ -56,6 +56,22 @@ class Case:  # pylint: disable=too-many-instance-attributes
     expect_exit: int | None = 1
     severity: str = ""
     rubric: dict[str, int] = field(default_factory=dict)
+    scored: bool = True
+    """Whether this entry's output is a *diagnostic*, and so has something for
+    the rubric to measure.
+
+    Almost every entry is. The exception is an entry that pins a behaviour
+    rather than a message -- ``E-RUNTIME-011``, where the correct output on a
+    successful retry is nothing at all. There is no diagnostic there to be
+    located, explained or fixed, so any rubric row for it is a fiction: 15 would
+    claim an excellent message where there is no message, and 0 would record
+    correct behaviour as a failure. Such an entry is excluded from both the
+    numerator *and* the denominator of every score in ``report.py``, which is
+    the half that keeps the percentage honest.
+
+    It is not an escape hatch for a diagnostic that scores badly. If the user
+    sees any text at all, the entry is scored.
+    """
     notes: str = ""
     skip: str = ""
 
@@ -86,6 +102,7 @@ def load_cases() -> list[Case]:
                 expect_exit=spec.get("expect_exit", 1),
                 severity=spec.get("severity", ""),
                 rubric=spec.get("rubric", {}),
+                scored=spec.get("scored", True),
                 notes=spec.get("notes", ""),
                 skip=spec.get("skip", ""),
             )

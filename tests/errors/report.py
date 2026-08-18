@@ -51,6 +51,8 @@ def _bar(total: int) -> str:
 
 def _flags(case: Case) -> str:
     marks = []
+    if not case.scored:
+        marks.append("N/S")
     if case.rubric.get("hygiene_traceback_expected"):
         marks.append("TB")
     if case.rubric.get("hygiene_unstable_order"):
@@ -60,9 +62,16 @@ def _flags(case: Case) -> str:
     return " ".join(marks)
 
 
-def render(cases: list[Case]) -> str:
+def render(cases: list[Case]) -> str:  # noqa: C901
     out: list[str] = []
     w = out.append
+
+    # Every score below is over the *scored* entries only. An entry that pins a
+    # behaviour rather than a message (`Case.scored`) leaves both the numerator
+    # and the denominator: counting its 15 possible points while it can never
+    # earn any would report correct behaviour as a hole in the diagnostics.
+    scored = [c for c in cases if c.scored]
+    unscored = [c for c in cases if not c.scored]
 
     w("# PDL Diagnostic Baseline")
     w("")
@@ -74,14 +83,15 @@ def render(cases: list[Case]) -> str:
     w("")
     w(
         "Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). "
+        "`N/S` marks an entry that is not scored (see below); "
         "`TB` marks an entry that leaks a Python traceback; `ORD` marks one whose "
         "message order varies with the hash seed; `SIL` marks one that fails "
         "silently."
     )
     w("")
 
-    total_possible = MAX_PER_DIMENSION * len(RUBRIC_DIMENSIONS) * len(cases)
-    total_actual = sum(c.rubric_total for c in cases)
+    total_possible = MAX_PER_DIMENSION * len(RUBRIC_DIMENSIONS) * len(scored)
+    total_actual = sum(c.rubric_total for c in scored)
     tb = sum(1 for c in cases if c.rubric.get("hygiene_traceback_expected"))
     silent = sum(1 for c in cases if c.rubric.get("hygiene_silent_failure"))
 
@@ -103,7 +113,8 @@ def render(cases: list[Case]) -> str:
         w(f"- **{len(cases)} corpus entries**.")
     w(
         f"- **{total_actual} / {total_possible}** rubric points "
-        f"(**{100 * total_actual / total_possible:.0f}%**)."
+        f"(**{100 * total_actual / total_possible:.0f}%**), over the "
+        f"**{len(scored)}** scored entries."
     )
     w(
         f"- **{tb} {'entry leaks' if tb == 1 else 'entries leak'} a Python "
@@ -125,14 +136,33 @@ def render(cases: list[Case]) -> str:
         w("> " + ", ".join(f"`{i}`" for i in uncovered))
         w("")
 
+    if unscored:
+        # Named, with the reason, rather than left as a discrepancy between two
+        # counts for a later reader to work out.
+        w(
+            f"**{len(unscored)} "
+            f"{'entry is' if len(unscored) == 1 else 'entries are'} not scored** "
+            "and "
+            f"{'is' if len(unscored) == 1 else 'are'} excluded from every total "
+            "and mean below, denominator included. An unscored entry pins a "
+            "*behaviour* whose correct output is not a diagnostic, so there is "
+            "no message for the rubric to measure and any score would be a "
+            "fiction — full marks would claim an excellent message where there "
+            "is none, and zero would record correct behaviour as a defect. The "
+            "golden is enforced exactly as for every other entry:"
+        )
+        w("")
+        w("> " + ", ".join(f"`{c.id}`" for c in sorted(unscored, key=lambda c: c.id)))
+        w("")
+
     w("## Per-dimension totals")
     w("")
     w("| Dimension | Score | of | Mean |")
     w("| --- | ---: | ---: | ---: |")
     for dim in RUBRIC_DIMENSIONS:
-        got = sum(c.rubric.get(dim, 0) for c in cases)
-        cap = MAX_PER_DIMENSION * len(cases)
-        w(f"| {dim.capitalize()} | {got} | {cap} | {got / len(cases):.2f} |")
+        got = sum(c.rubric.get(dim, 0) for c in scored)
+        cap = MAX_PER_DIMENSION * len(scored)
+        w(f"| {dim.capitalize()} | {got} | {cap} | {got / len(scored):.2f} |")
     w("")
 
     w("## By error class")
@@ -140,7 +170,7 @@ def render(cases: list[Case]) -> str:
     w("| Class | Entries | Score | of | Mean / 15 |")
     w("| --- | ---: | ---: | ---: | ---: |")
     by_class: dict[str, list[Case]] = defaultdict(list)
-    for case in cases:
+    for case in scored:
         by_class["-".join(case.id.split("-")[:2])].append(case)
     for cls in sorted(by_class):
         group = by_class[cls]
@@ -148,6 +178,12 @@ def render(cases: list[Case]) -> str:
         cap = MAX_PER_DIMENSION * len(RUBRIC_DIMENSIONS) * len(group)
         w(f"| {cls} | {len(group)} | {got} | {cap} | {got / len(group):.1f} |")
     w("")
+    if unscored:
+        w(
+            "`Entries` counts scored entries, so a class total and its mean "
+            "share one denominator."
+        )
+        w("")
 
     w("## Every entry, worst first")
     w("")
@@ -158,7 +194,16 @@ def render(cases: list[Case]) -> str:
         + " | ".join(["---:"] * len(RUBRIC_DIMENSIONS))
         + " | ---: | --- | --- | --- |"
     )
-    for case in sorted(cases, key=lambda c: (c.rubric_total, c.id)):
+    # Unscored entries sort last: they have no total to be worst by, and a 0
+    # would put them at the top of a list that reads as a queue of work.
+    for case in sorted(cases, key=lambda c: (not c.scored, c.rubric_total, c.id)):
+        if not case.scored:
+            dashes = " | ".join(["—"] * len(RUBRIC_DIMENSIONS))
+            w(
+                f"| `{case.id}` | {case.severity} | {dashes} | "
+                f"— | | {_flags(case)} | {case.title} |"
+            )
+            continue
         scores = " | ".join(str(case.rubric.get(d, 0)) for d in RUBRIC_DIMENSIONS)
         w(
             f"| `{case.id}` | {case.severity} | {scores} | "

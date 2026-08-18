@@ -114,6 +114,24 @@ drive tests and counts rather than arithmetic:
   defect was a *wrong* message rather than a missing one, and one that the fix had
   already repaired.
 
+**An entry with no diagnostic to score** sets `"scored": false` at the top level of its
+`case.json` and carries no `rubric` block at all. It is excluded from every total, mean
+and per-class figure in `BASELINE.md` — from the **denominator** as well as the
+numerator, which is the half that keeps the percentage honest — and is marked `N/S` in
+the entry table. Its golden is enforced exactly like every other entry's.
+
+This is for a reproducer whose *correct* output is not a message. `E-RUNTIME-011` is the
+one: a retry that succeeds prints nothing, by decision, so there is nothing to locate,
+explain or fix, and both 15 and 0 would be fictions — one claiming an excellent
+diagnostic where there is none, the other recording correct behaviour as a defect. The
+entry is kept because it pins that stderr stays empty.
+
+It is **not** for an entry that scores badly, and it is not `hygiene_silent_failure`.
+That flag marks a *broken* program that exits 0 and says nothing; those entries score a
+real 0/15 and stay in the denominator, because a missing diagnostic that should exist is
+exactly what the baseline is there to count. If the user sees any text at all, the entry
+is scored.
+
 ---
 
 ## Aggregate baseline

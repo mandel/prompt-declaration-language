@@ -81,3 +81,10 @@ Useful `case.json` keys beyond the obvious: `entry` (`pdl`, `pdl-lint`, or
 tool's behaviour depends on where the project root is), and `skip`. `argv`
 entries may contain `{WORKDIR}`, substituted with the run directory, for cases
 that need an absolute path.
+
+`"scored": false` is for the rare entry whose correct output is **not a
+diagnostic** — `E-RUNTIME-011`, where a retry that succeeds must print nothing.
+Such an entry carries no `rubric` and leaves both the numerator and the
+denominator of every figure in `BASELINE.md`; its golden is still enforced. It is
+not for an entry that scores badly, and not for a *silent failure*, which is a
+real 0/15 (see `RUBRIC.md`).

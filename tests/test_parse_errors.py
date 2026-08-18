@@ -27,6 +27,7 @@ import yaml
 from pdl.pdl import exec_file
 from pdl.pdl_ast import PDLException, PDLScopeError
 from pdl.pdl_parser import (
+    PDLDuplicateKeyError,
     PDLFileNotFoundError,
     PDLIsADirectoryError,
     PDLParseError,
@@ -471,3 +472,76 @@ def test_shimmed_exceptions_stringify_as_prose(tmp_path: Path):
         assert not rendered.startswith("["), rendered
         assert "\\n" not in rendered, rendered
         assert rendered == caught.value.text
+
+
+# --------------------------------------------------------------------------
+# Duplicate mapping keys (E-PARSE-003, decision 5.5)
+#
+# The one parse failure PyYAML does not object to. Everything below is about the
+# *type* rather than the wording, which the corpus pins: what an SDK caller
+# catches, and what it must not be told.
+# --------------------------------------------------------------------------
+
+
+def test_a_duplicate_key_is_not_a_yaml_error():
+    """PyYAML parses the document, so nothing may claim it is malformed YAML.
+
+    The negative half is the point. `except yaml.YAMLError` around `parse_file`
+    means "this document is not YAML", and a user who checks the same file with
+    another YAML tool will be told that it is. The rule is PDL's, so the class
+    is PDL's alone.
+    """
+    assert issubclass(PDLDuplicateKeyError, PDLParseError)
+    assert not issubclass(PDLDuplicateKeyError, yaml.YAMLError)
+    # And the document really does load, without the rule.
+    assert yaml.safe_load("text: hello\ntext: world\n") == {"text": "world"}
+
+
+def test_a_duplicate_key_raises_and_names_both_lines():
+    with pytest.raises(PDLDuplicateKeyError) as caught:
+        parse_str("text: hello\ntext: world\n", file_name="prog.pdl")
+    rendered = flat(caught.value.text)
+    assert rendered.startswith("prog.pdl:2:1 - the key `text` is written twice")
+    assert "1 | text: hello | ^ first written here" in rendered
+    assert "2 | text: world | ^ written again here" in rendered
+    assert "not valid YAML" not in rendered
+
+
+def test_a_duplicate_key_is_caught_by_the_clause_every_caller_wrote(tmp_path: Path):
+    """`except PDLParseError` is what the CLI, `pdl-lint`, `include:` and
+    `import:` all use, so the new failure reaches the user formatted."""
+    program = tmp_path / "dup.pdl"
+    program.write_text("text: hello\ntext: world\n", encoding="utf-8")
+    with pytest.raises(PDLParseError) as caught:
+        exec_file(str(program))
+    assert str(caught.value) == caught.value.text
+    assert not str(caught.value).startswith("[")
+
+
+def test_a_duplicate_key_diagnostic_carries_its_structured_record():
+    with pytest.raises(PDLDuplicateKeyError) as caught:
+        parse_str("text:\n  - model: m\n    input: a\n    input: b\n", "prog.pdl")
+    record = caught.value.diagnostic.as_record()
+    assert record["id"] == "E-PARSE-003"
+    assert record["block_path"] == ["text", "[0]"]
+    assert record["span"] == {
+        "line": 4,
+        "col": 5,
+        "end_line": None,
+        "end_col": None,
+        "label": "written again here",
+        "primary": True,
+    }
+    assert [s["line"] for s in record["spans"]] == [3, 4]
+
+
+def test_a_data_file_may_still_repeat_a_key(tmp_path: Path):
+    """Deliberately out of scope: `-f` and `-d` carry data, not program text.
+
+    Extending the rule there is a separate decision with a blast radius of its
+    own. Pinned so the asymmetry is a choice on the record rather than an
+    oversight, and so that widening it later has to be done on purpose.
+    """
+    data_file = tmp_path / "scope.yaml"
+    data_file.write_text("a: 1\na: 2\n", encoding="utf-8")
+    assert yaml.safe_load(data_file.read_text(encoding="utf-8")) == {"a": 2}

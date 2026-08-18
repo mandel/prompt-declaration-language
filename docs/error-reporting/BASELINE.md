@@ -6,28 +6,28 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 ## Summary
 
-- **61 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
-- **578 / 900** rubric points (**64%**), over the **60** scored entries.
+- **64 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
+- **623 / 930** rubric points (**67%**), over the **62** scored entries.
 - **0 entries leak a Python traceback** to the user.
-- **3 entries fail silently** — a broken program that exits 0 and reports nothing at all.
+- **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
 
 **14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
 > `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-TYPE-004`, `E-TYPE-005`
 
-**1 entry is not scored** and is excluded from every total and mean below, denominator included. An unscored entry pins a *behaviour* whose correct output is not a diagnostic, so there is no message for the rubric to measure and any score would be a fiction — full marks would claim an excellent message where there is none, and zero would record correct behaviour as a defect. The golden is enforced exactly as for every other entry:
+**2 entries are not scored** and are excluded from every total and mean below, denominator included. An unscored entry pins a *behaviour* whose correct output is not a diagnostic, so there is no message for the rubric to measure and any score would be a fiction — full marks would claim an excellent message where there is none, and zero would record correct behaviour as a defect. The golden is enforced exactly as for every other entry:
 
-> `E-RUNTIME-011`
+> `E-PARSE-003-merge-key`, `E-RUNTIME-011`
 
 ## Per-dimension totals
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 102 | 180 | 1.70 |
-| What | 126 | 180 | 2.10 |
-| Why | 122 | 180 | 2.03 |
-| Fix | 73 | 180 | 1.22 |
-| Hygiene | 155 | 180 | 2.58 |
+| Location | 111 | 186 | 1.79 |
+| What | 135 | 186 | 2.18 |
+| Why | 131 | 186 | 2.11 |
+| Fix | 82 | 186 | 1.32 |
+| Hygiene | 164 | 186 | 2.65 |
 
 ## By error class
 
@@ -38,7 +38,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | E-EXPR | 6 | 42 | 90 | 7.0 |
 | E-LINT | 4 | 41 | 60 | 10.2 |
 | E-MODEL | 3 | 22 | 45 | 7.3 |
-| E-PARSE | 5 | 46 | 75 | 9.2 |
+| E-PARSE | 7 | 91 | 105 | 13.0 |
 | E-PARSER | 9 | 107 | 135 | 11.9 |
 | E-RUNTIME | 6 | 51 | 90 | 8.5 |
 | E-SCHEMA | 13 | 134 | 195 | 10.3 |
@@ -50,7 +50,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| `E-PARSE-003` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | duplicate mapping key silently accepted |
 | `E-PARSER-004-after-quote` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | text after a quoted field's closing quote is silently tolerated |
 | `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
@@ -108,8 +107,12 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | `E-LINT-002` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | pdl-lint dumps a traceback for a YAML error |
 | `E-PARSE-001` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | unterminated quoted scalar |
 | `E-PARSE-002` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | tab used for indentation |
+| `E-PARSE-003` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | duplicate mapping key |
+| `E-PARSE-003-nested` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | duplicate mapping key inside a block |
+| `E-PARSE-003-repeated` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | one key three times, a second key twice, and a third repeat nested |
 | `E-PARSER-006` | S2 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | regex parser spec naming a group the pattern does not define |
 | `E-SCHEMA-009-items-crash` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | a fixed-length list of the wrong length |
+| `E-PARSE-003-merge-key` | S0 | — | — | — | — | — | — | | N/S | merge keys and aliases are not repeated keys |
 | `E-RUNTIME-011` | S0 | — | — | — | — | — | — | | N/S | retry succeeds on the second attempt (exit 0, silent) |
 
 ## Notes per entry
@@ -189,8 +192,17 @@ Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). Read the 15 narrowly: it 
 **`E-PARSE-002`** — tab used for indentation  
 Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). PyYAML's own text was already good; all it needed was to not be the 58th line of a traceback. The tab is rendered as one space in the excerpt so the caret column equals the source column with no tab-stop arithmetic, which makes the tab invisible by construction -- hence the headline and the caret label both name it in words.
 
-**`E-PARSE-003`** — duplicate mapping key silently accepted  
-No diagnostic at all. Last key wins, exit 0. Decision 5.5 makes this an error.
+**`E-PARSE-003`** — duplicate mapping key  
+The second of the two decision-5.5 semantic changes, taken with the owner's explicit sign-off: this program printed `world` and exited **0** before, discarding `text: hello` with nothing on stderr. It was one of only three entries scoring 0 on all five dimensions, and its `hygiene_silent_failure` flag is gone with the silence. PyYAML's `construct_mapping` assigns into a dict, so last-write-wins was inherited default behaviour rather than a decision anyone took; the rule that a PDL program may not do it is PDL's own. Blast radius was re-measured on the tree the change landed on, because the 205 figure in INVENTORY 5.5 was stale in the same way the csv work found it to be: a duplicate-detecting `SafeLoader` over all **265** `.pdl` files present (261 parsed, 4 deliberately-broken corpus reproducers) finds exactly **one** duplicate-key site, and it is this file. Nothing else in the repository is affected, and no `.pdl` under `examples/` or `tests/data/` changes its exit code. The check is in `load_with_marks`, which is the only route a `.pdl` program takes to YAML, and it is there rather than in the constructor because that is the last moment at which **both** occurrences still exist as nodes with marks of their own -- which is the whole of the 15. "There is a duplicate" is a fact the user already has; "this one, and the earlier one whose value it replaces" is the edit, and it needs two marks. The exception type was chosen against the grain of the module: `PDLDuplicateKeyError` is **not** a `yaml.YAMLError` and the message never says "not valid YAML", because this document is valid YAML by every other reader's reckoning and a user who checked it with one would be told so. It stays a `PDLParseError`, so the CLI, `pdl-lint`, `include:` and `import:` all keep handling it. Location 3 with no `  in <path>` line: the repeat is at the program root, whose path is `[]`, and `  in ` with nothing after it would claim a block that does not exist -- the sibling entry `E-PARSE-003-nested` carries the path. Keys are compared as `(tag, value)` rather than as the objects they construct to, a deliberate under-approximation: `1:` and `+1:` build the same integer key under different text and are missed, which leaves a working program working, where the reverse error would stop one. Scoring the 15 narrowly, as `E-PARSE-001` asks to be scored: it is available because the marks are exact and there are two of them, not because the class is easy.
+
+**`E-PARSE-003-merge-key`** — merge keys and aliases are not repeated keys  
+Not a diagnostic and deliberately so: this program must keep running, and the entry exists because the duplicate-key rule of `E-PARSE-003` is the change in this series most likely to break something that works. There is no message to locate, explain or fix, so it carries no rubric block -- `scored: false`, on the same terms as `E-RUNTIME-011`. Three shapes that all look like a repeated key and are not, each of which a naive check would reject. **A merged key overridden explicitly**: `<<: *shared` contributes `tone`, and the next line writes `tone: brisk`. That is the ordinary reason to use a merge key at all, and it survives because the check runs on the *composed* graph, before `construct_document` calls `flatten_mapping` -- after flattening, the merged pairs are spliced into `node.value` ahead of the explicit ones and the override is indistinguishable from a repeat. **Two `<<:` keys in one mapping**: PyYAML's `flatten_mapping` honours every merge key rather than keeping the last, so two of them are a union and lose nothing, which is why `<<` is the one key exempt from the rule (`MERGE_KEY`). **One anchor referenced twice**: `*shared` makes a single node reachable by two paths, and `find_duplicate_keys` carries an `id`-keyed visited set so it is scanned once rather than once per reference. That set is load-bearing for a second reason: without it a recursive anchor does not terminate. The golden pins the value as well as the exit code -- `{"role": "helper", "tone": "plain", "extra": true}` -- because a check that quietly dropped a merged key would still exit 0.
+
+**`E-PARSE-003-nested`** — duplicate mapping key inside a block  
+The shape a real program is far likelier to have than the document-root repeat of `E-PARSE-003`: a block field written twice, here a `code:` whose first body is thrown away. Pinned separately for two reasons the root entry cannot show. First, the rule applies at every depth -- the check walks the whole composed graph, not just the top-level mapping -- and a version that only looked at the document root would pass the root entry and miss this one entirely. Second, this is the entry that carries the `  in text[0]` line: the mapping has a block path, so the diagnostic names the block as well as the two lines, which is the half of Location 3 the root repeat has nothing to fill. Before the change this printed `9` at exit 0, having silently run `result = 3 + 3` and dropped `result = 2 + 2`. Note the elided `...` row between the two excerpt lines: they are three apart because the first `code:` owns a block scalar, and the renderer already elides non-adjacent excerpt rows rather than quoting the span between them.
+
+**`E-PARSE-003-repeated`** — one key three times, a second key twice, and a third repeat nested  
+Pins that the message stays true when there is more than one thing to say, which is the failure mode a two-position diagnostic invites: the carets are under one specific pair, so nothing in the headline, the excerpt or the `help:` may describe any other. It does not. The headline counts `text` at three rather than saying "twice", the two carets are the *first two* of the three and a `note:` says so in as many words, the `help:` reads "remove all but one" instead of "remove one of them", the second repeated key of the same mapping -- `defs` -- gets a `note:` of its own, and the repeat inside the flow mapping on line 4 (`{x: 1, x: 2}`, a different mapping and so a different site) is counted in a third. The three notes are exclusive by construction rather than by luck: `duplicate_key_error` subtracts this site and the siblings it has just named from the document total, so a program whose only repeats are in one mapping emits no third note and cannot double-count. Which pair is chosen is not the walk order. `find_duplicate_keys` sorts by the position of the **second** occurrence, so "the first duplicate" means the first one a reader scrolling the file reaches -- `text` at line 3, ahead of `defs` at line 4 column 1 and of `x` at line 4 column 13. A depth-first order would have answered differently for no reason the reader could see. The flow mapping is doing a second job here: it is the shape the pre-foundation regex line map could not read at all (DROP #2), and the check inherits real marks, so a repeat inside `{...}` is found with a column that is right.
 
 **`E-PARSE-004`** — empty program file  
 Prints 'null' and exits 0. Arguably valid; more likely a truncated file.

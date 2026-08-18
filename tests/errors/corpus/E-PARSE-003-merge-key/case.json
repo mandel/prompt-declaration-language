@@ -1,0 +1,8 @@
+{
+  "id": "E-PARSE-003-merge-key",
+  "title": "merge keys and aliases are not repeated keys",
+  "severity": "S0",
+  "expect_exit": 0,
+  "scored": false,
+  "notes": "Not a diagnostic and deliberately so: this program must keep running, and the entry exists because the duplicate-key rule of `E-PARSE-003` is the change in this series most likely to break something that works. There is no message to locate, explain or fix, so it carries no rubric block -- `scored: false`, on the same terms as `E-RUNTIME-011`. Three shapes that all look like a repeated key and are not, each of which a naive check would reject. **A merged key overridden explicitly**: `<<: *shared` contributes `tone`, and the next line writes `tone: brisk`. That is the ordinary reason to use a merge key at all, and it survives because the check runs on the *composed* graph, before `construct_document` calls `flatten_mapping` -- after flattening, the merged pairs are spliced into `node.value` ahead of the explicit ones and the override is indistinguishable from a repeat. **Two `<<:` keys in one mapping**: PyYAML's `flatten_mapping` honours every merge key rather than keeping the last, so two of them are a union and lose nothing, which is why `<<` is the one key exempt from the rule (`MERGE_KEY`). **One anchor referenced twice**: `*shared` makes a single node reachable by two paths, and `find_duplicate_keys` carries an `id`-keyed visited set so it is scanned once rather than once per reference. That set is load-bearing for a second reason: without it a recursive anchor does not terminate. The golden pins the value as well as the exit code -- `{\"role\": \"helper\", \"tone\": \"plain\", \"extra\": true}` -- because a check that quietly dropped a merged key would still exit 0."
+}

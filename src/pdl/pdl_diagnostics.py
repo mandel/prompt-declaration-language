@@ -1201,6 +1201,127 @@ def yaml_diagnostic(  # pylint: disable=too-many-arguments
 
 
 # --------------------------------------------------------------------------
+# Duplicate mapping keys: E-PARSE-003
+# --------------------------------------------------------------------------
+#
+# The one diagnostic in this module whose subject PyYAML did *not* object to.
+# `text: a` twice is valid YAML by every reader's reckoning and builds a mapping
+# holding `b`; the rule that it may not appear in a PDL program is PDL's own
+# (decision 5.5). So the message never says "not valid YAML" -- a reader who
+# checked the same file with another YAML tool and was told it parses would be
+# right, and a diagnostic that contradicts the tool next to it teaches the user
+# to distrust this one.
+
+_KEY_MAX = 40
+"""How much of a repeated key is quoted in prose. A key is the user's own text
+and is short in every realistic case, but it is still text from outside: YAML
+permits a block scalar as a key, so it can be arbitrarily long and can contain
+newlines."""
+
+_DUPLICATE_RULE = (
+    "A YAML mapping gives each key one value. Most YAML readers accept a key "
+    "written more than once and silently keep the last value, discarding the "
+    "ones before it; PDL rejects the program instead of choosing between them "
+    "for you."
+)
+
+
+def _key_label(key: str) -> str:
+    """A repeated key as it may be quoted in prose: one line, bounded length."""
+    folded = _fold_controls(key).strip()
+    if len(folded) > _KEY_MAX:
+        return folded[: _KEY_MAX - 1] + "…"
+    return folded
+
+
+def _and_list(items: Sequence[str]) -> str:
+    """``\\`a\\```, ``\\`a\\` and \\`b\\```, ``\\`a\\`, \\`b\\` and \\`c\\```."""
+    quoted = [f"`{_key_label(i)}`" for i in items]
+    if len(quoted) == 1:
+        return quoted[0]
+    return ", ".join(quoted[:-1]) + " and " + quoted[-1]
+
+
+def duplicate_key_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    key: str,
+    file: str,
+    source: str,
+    first_line: int,
+    first_col: int,
+    again_line: int,
+    again_col: int,
+    count: int = 2,
+    block_path: Sequence[str] = (),
+    siblings: Sequence[str] = (),
+    other_mappings: int = 0,
+) -> Diagnostic:
+    """E-PARSE-003. A mapping key written more than once.
+
+    Both positions are shown, and that is the whole point of building this here
+    rather than at the constructor: "there is a duplicate" is a fact the user
+    already has, while "this one, and the earlier one whose value it replaces"
+    is the edit. The two marks exist only while the node graph does, which is
+    why `pdl_location_utils.load_with_marks` is where the check lives.
+
+    Everything the caller passes is true of *one* mapping and one key. Where a
+    program has more than one repeat, the surplus is reported as counts in
+    ``note:`` lines rather than folded into the headline, so that nothing here
+    can overstate which pair the carets are under: the header, the excerpt and
+    the ``help:`` all describe the same two lines.
+    """
+    shown = _key_label(key)
+    times = "twice" if count == 2 else f"{count} times"
+    notes = [Note("rule", _DUPLICATE_RULE)]
+    if count > 2:
+        notes.append(
+            Note(
+                "note",
+                f"`{shown}` is written {count} times here; the two shown above "
+                "are the first two.",
+            )
+        )
+    if siblings:
+        verb = "is" if len(siblings) == 1 else "are"
+        notes.append(
+            Note(
+                "note",
+                f"{_and_list(siblings)} {verb} also written more than once in "
+                "this mapping.",
+            )
+        )
+    if other_mappings:
+        plural = "" if other_mappings == 1 else "s"
+        verb = "has" if other_mappings == 1 else "have"
+        notes.append(
+            Note(
+                "note",
+                f"{other_mappings} other mapping{plural} in this program "
+                f"{verb} a repeated key too.",
+            )
+        )
+    action = "remove one of them" if count == 2 else "remove all but one"
+    return Diagnostic(
+        code="E-PARSE-003",
+        message=f"the key `{shown}` is written {times} in the same mapping",
+        file=file,
+        spans=[
+            Span(line=first_line, col=first_col, label="first written here"),
+            Span(
+                line=again_line,
+                col=again_col,
+                label="written again here",
+                primary=True,
+            ),
+        ],
+        block_path=list(block_path) if block_path else None,
+        source=source,
+        notes=notes,
+        suggestions=[Suggestion(f"{action}, or merge them into a single `{shown}:`.")],
+    )
+
+
+# --------------------------------------------------------------------------
 # Scope validation: E-CLI-004
 # --------------------------------------------------------------------------
 

@@ -8,6 +8,11 @@ The model, after decisions 5.1/5.2 of `docs/error-reporting/INVENTORY.md`:
   the parser that decides what those things are -- replacing a regex line-scan
   that split each line on `":"` and could not be right for a quoted key, a flow
   mapping, a multi-line scalar or a comment (DROP #1 and DROP #2).
+* Holding the node graph is also what makes `E-PARSE-003` reportable at all: at
+  that moment *both* occurrences of a repeated mapping key still exist, each
+  with its own mark, where the constructed dict keeps only the last of them.
+  `find_duplicate_keys` reads them off, and `load_with_marks` refuses to
+  construct the document (decision 5.5).
 * The resulting map is per *file*, so it lives in a per-file `PdlSource` in the
   `SourceRegistry`, not inside every location value. `PdlLocationType` carries
   `(file, line, col, path)` and no table, which is what makes DROP #6 --
@@ -201,6 +206,151 @@ def _walk(node: yaml.nodes.Node, path: list[str], out: dict[str, SourceMark]) ->
             _walk(item_node, child, out)
 
 
+MERGE_KEY = "<<"
+"""YAML's merge key, and the one key exempt from the duplicate-key rule.
+
+`<<: *anchor` is not a mapping entry; it is an instruction to the constructor,
+and PyYAML's `flatten_mapping` honours **every** one of them in a mapping rather
+than keeping the last. Two `<<:` lines therefore merge two anchors and lose
+nothing, which is precisely the shape the rule below exists to reject -- so
+treating them as a duplicate would break a working program.
+
+The check runs on the composed graph, *before* `construct_document` calls
+`flatten_mapping`, so a key that a merge contributes and the mapping also states
+explicitly is likewise not seen as a duplicate. That is the other half of
+keeping merges working, and it comes for free from where the check sits: after
+flattening, the merged pairs are spliced into `node.value` in front of the
+explicit ones and the override would be indistinguishable from a repeat.
+"""
+
+
+@dataclass(frozen=True)
+class DuplicateKey:
+    """One key written more than once in one YAML mapping.
+
+    `first` and `again` are the marks of the key nodes themselves -- the first
+    occurrence and the second -- which is the pair a diagnostic has to show for
+    the report to be about anything more useful than "there is a duplicate".
+    """
+
+    key: str
+    path: tuple[str, ...]
+    """Block path of the *mapping*, so a diagnostic can say which one."""
+    first: SourceMark
+    again: SourceMark
+    count: int
+    """How many times the key appears in that mapping. At least 2."""
+    siblings: tuple[str, ...]
+    """Other keys repeated in the *same* mapping, in order of their repeat."""
+
+
+class DuplicateKeyError(Exception):
+    """`load_with_marks` refused to construct a document (E-PARSE-003).
+
+    Deliberately not a `yaml.YAMLError`, here or in the `PDLParseError` the
+    parser turns it into: PyYAML parses the document without complaint and would
+    hand back a dict. The rule is PDL's, layered on top, and a type that said
+    "YAML" would send a reader looking for a syntax fault that no other YAML
+    tool will confirm.
+
+    It is a plain exception rather than a rendered diagnostic because this module
+    is handed a *source*, never a file name, and a diagnostic with no file is
+    exactly the thing the source registry exists to stop being built. The parser
+    knows the name and wraps it; see `pdl_parser.duplicate_key_error`.
+    """
+
+    def __init__(self, duplicate: DuplicateKey, total: int):
+        super().__init__(f"duplicate mapping key {duplicate.key!r}")
+        self.duplicate = duplicate
+        self.total = total
+        """How many (mapping, key) duplicate sites the document has in all."""
+
+
+def _duplicate_keys_in(
+    node: yaml.nodes.Node,
+    path: tuple[str, ...],
+    out: list[DuplicateKey],
+    visited: set[int],
+) -> None:
+    """Collect duplicate keys from `node` and everything under it.
+
+    Keys are compared as `(tag, value)` and not as the objects they construct
+    to, which is a deliberate under-approximation. Construction is a pure
+    function of a scalar's tag and its text, so two key nodes agreeing on both
+    always build the same key and the check can never invent a duplicate that
+    the constructed mapping would not have had. It does miss the reverse -- `1`
+    and `+1` are both the integer `1` under different text -- and a missed
+    duplicate leaves a program working exactly as it does today, where a
+    false positive would stop one that does.
+
+    `visited` is keyed on `id`, because an alias makes one node reachable by
+    several paths: without it a shared node is re-scanned once per reference,
+    and a recursive anchor (`&a {self: *a}`) does not terminate at all.
+    """
+    if id(node) in visited:
+        return
+    visited.add(id(node))
+    if isinstance(node, yaml.nodes.SequenceNode):
+        for index, item_node in enumerate(node.value):
+            _duplicate_keys_in(item_node, path + (f"[{index}]",), out, visited)
+        return
+    if not isinstance(node, yaml.nodes.MappingNode):
+        return
+
+    first: dict[tuple[str, str], yaml.nodes.ScalarNode] = {}
+    repeats: dict[tuple[str, str], list[yaml.nodes.ScalarNode]] = {}
+    for key_node, _ in node.value:
+        # Non-scalar keys (`? [a, b]: x`) are skipped for the same reason
+        # `_walk` skips them: PDL has no path syntax for one, so there is
+        # nothing a diagnostic could name.
+        if not isinstance(key_node, yaml.nodes.ScalarNode):
+            continue
+        if str(key_node.value) == MERGE_KEY:
+            continue
+        identity = (str(key_node.tag), str(key_node.value))
+        if identity in first:
+            repeats.setdefault(identity, []).append(key_node)
+        else:
+            first[identity] = key_node
+
+    repeated_names = [str(k.value) for k in (first[i] for i in repeats)]
+    for position, identity in enumerate(repeats):
+        again_nodes = repeats[identity]
+        out.append(
+            DuplicateKey(
+                key=str(first[identity].value),
+                path=path,
+                first=_mark_of(first[identity]),
+                again=_mark_of(again_nodes[0]),
+                count=len(again_nodes) + 1,
+                siblings=tuple(
+                    name
+                    for index, name in enumerate(repeated_names)
+                    if index != position
+                ),
+            )
+        )
+
+    for key_node, value_node in node.value:
+        if not isinstance(key_node, yaml.nodes.ScalarNode):
+            continue
+        _duplicate_keys_in(value_node, path + (str(key_node.value),), out, visited)
+
+
+def find_duplicate_keys(node: yaml.nodes.Node) -> list[DuplicateKey]:
+    """Every repeated mapping key in a composed document, first in the file first.
+
+    Ordered by the position of the *second* occurrence rather than by the walk,
+    so that "the first duplicate" means the first one a reader scrolling the
+    file would reach. A depth-first order does not: a repeat nested under the
+    document's first key would otherwise be reported before or after one between
+    its first and third keys depending only on nesting depth.
+    """
+    out: list[DuplicateKey] = []
+    _duplicate_keys_in(node, (), out, set())
+    return sorted(out, key=lambda d: (d.again.line, d.again.col))
+
+
 def load_with_marks(source: str) -> tuple[Any, dict[str, SourceMark]]:
     """Parse a PDL source, returning the same data as `yaml.safe_load` plus marks.
 
@@ -209,6 +359,12 @@ def load_with_marks(source: str) -> tuple[Any, dict[str, SourceMark]]:
     is kept long enough to read the marks off it. Every `yaml.YAMLError`
     `safe_load` raises is raised from the same places, with the same marks, so
     the parser's boundary handling is unaffected.
+
+    One thing it does that `safe_load` does not: a repeated mapping key raises
+    `DuplicateKeyError` instead of constructing a dict that quietly holds the
+    last value only (decision 5.5, E-PARSE-003). The check has to be here and
+    not in the constructor, because this is the last moment at which both
+    occurrences still exist.
 
     An alias makes the same node reachable by more than one path. Both paths are
     recorded and both point at the anchor's definition site, which is where the
@@ -219,6 +375,9 @@ def load_with_marks(source: str) -> tuple[Any, dict[str, SourceMark]]:
         node = loader.get_single_node()
         if node is None:
             return None, {}
+        duplicates = find_duplicate_keys(node)
+        if duplicates:
+            raise DuplicateKeyError(duplicates[0], len(duplicates))
         marks = {path_key([]): _mark_of(node)}
         _walk(node, [], marks)
         return loader.construct_document(node), marks

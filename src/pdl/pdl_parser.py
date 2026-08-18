@@ -10,6 +10,7 @@ from .pdl_ast import PDLException, PdlLocationType, Program, empty_block_locatio
 from .pdl_diagnostics import (
     ORIGIN_PROGRAM,
     Diagnostic,
+    duplicate_key_diagnostic,
     source_read_diagnostic,
     undecodable_diagnostic,
     unlocated_schema_diagnostic,
@@ -17,6 +18,7 @@ from .pdl_diagnostics import (
 )
 from .pdl_location_utils import (
     UNNAMED_SOURCE,
+    DuplicateKeyError,
     SourceMark,
     is_unnamed,
     load_with_marks,
@@ -153,6 +155,27 @@ class PDLYamlError(PDLLocatedParseError, yaml.YAMLError):
     """
 
 
+class PDLDuplicateKeyError(PDLLocatedParseError):
+    """A mapping key was written more than once (E-PARSE-003).
+
+    **Not** a `yaml.YAMLError`, and that is the deliberate part. Every other
+    failure in this module is one because PyYAML raised it; this one PyYAML is
+    perfectly happy with. `text: a` written twice parses, builds a dict holding
+    the second value, and any other YAML tool the user reaches for will confirm
+    it. The rule that a PDL program may not do that is PDL's own, taken under
+    decision 5.5 of `docs/error-reporting/INVENTORY.md` because the alternative
+    is discarding a block in silence.
+
+    Two consequences, both wanted. `except yaml.YAMLError` around `parse_file`
+    does not catch it, so a caller that means "the document is malformed" is not
+    handed a document that is not; and `str(exc)`, which is the rendered
+    diagnostic, never claims the file is invalid YAML. It remains a
+    `PDLParseError`, so every `except PDLParseError` -- which is what the CLI,
+    `pdl-lint`, `include:` and `import:` all use -- keeps matching, and the new
+    failure reaches the user as a formatted diagnostic like any other.
+    """
+
+
 SHIMMED_OS_ERRORS: tuple[tuple[type[OSError], type[PDLOSParseError]], ...] = (
     (FileNotFoundError, PDLFileNotFoundError),
     (IsADirectoryError, PDLIsADirectoryError),
@@ -278,6 +301,36 @@ def yaml_error(  # pylint: disable=too-many-arguments
     )
 
 
+def duplicate_key_error(
+    exc: DuplicateKeyError, source: str, file_name: str
+) -> PDLDuplicateKeyError:
+    """Give a repeated key the file it was found in, and render it.
+
+    `load_with_marks` collected the facts -- both marks, the count, the mapping's
+    block path -- and stopped there, because it is handed a source and never a
+    name. This is the only place that has both.
+    """
+    found = exc.duplicate
+    return PDLDuplicateKeyError(
+        duplicate_key_diagnostic(
+            key=found.key,
+            file=file_name,
+            source=source,
+            first_line=found.first.line,
+            first_col=found.first.col,
+            again_line=found.again.line,
+            again_col=found.again.col,
+            count=found.count,
+            block_path=found.path,
+            siblings=found.siblings,
+            # `total` counts every (mapping, key) site, this one included, and
+            # the siblings of this mapping are already named a line above, so
+            # they are not counted twice.
+            other_mappings=exc.total - 1 - len(found.siblings),
+        )
+    )
+
+
 @lru_cache(maxsize=128)
 def _parse_str_cached(
     pdl_str: str, file_name: str
@@ -285,6 +338,8 @@ def _parse_str_cached(
     """`parse_str`'s body. The marks come back out so the caller can re-register."""
     try:
         prog_dict, marks = load_with_marks(pdl_str)
+    except DuplicateKeyError as exc:
+        raise duplicate_key_error(exc, pdl_str, file_name) from exc
     except yaml.YAMLError as exc:
         raise yaml_error(exc, pdl_str, file_name) from exc
     # The source is registered before anything can fail on it: `parse_dict`

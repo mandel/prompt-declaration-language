@@ -481,11 +481,53 @@ rule applies to any other success-path stderr warning discovered later.
 > **This overrides the "never change program semantics" hard constraint**, knowingly.
 > Programs that today exit 0 will exit 1.
 
-Blast radius was measured before deciding, not assumed: across **205 `.pdl` files** in
-this repository there are **0 duplicate-key sites**, and among **39 `for:` blocks** none
-binds a string literal. Nothing in-tree breaks. The residual risk is to user programs
-outside the repository — accepted, and it should be called out in release notes.
-Resolves E-PARSE-003 and E-RUNTIME-012, the two worst entries in the catalogue.
+Blast radius was measured before deciding, not assumed: across ~~**205 `.pdl` files**~~ —
+**265**, see the corrections below — in this repository there are **0 duplicate-key
+sites**, and among **39 `for:` blocks** none binds a string literal. Nothing in-tree
+breaks. The residual risk is to user programs outside the repository — accepted, and it
+should be called out in release notes. Resolves E-PARSE-003 and E-RUNTIME-012, the two
+worst entries in the catalogue.
+
+> **E-PARSE-003 has since landed**, with the owner's explicit sign-off: a mapping key
+> written more than once is an error, where PyYAML's `construct_mapping` assigned into a
+> dict and kept the last value. `text: hello` / `text: world` printed `world` at exit 0
+> and said nothing; it now exits 1.
+>
+> **The file count was stale twice over and is corrected here for the third time.** The
+> 205 above missed files, the csv note below raised it to **263**, and a re-scan on the
+> tree this change landed on finds **265** `.pdl` files: 261 parse, and 4 are corpus
+> reproducers that are deliberately broken YAML. The measurement was re-run rather than
+> carried over, with a duplicate-detecting `SafeLoader` over every one of them, and it
+> finds **1** duplicate-key site — `tests/errors/corpus/E-PARSE-003/prog.pdl`, the
+> reproducer that exists to demonstrate the bug. The only duplicate key in the repository
+> is the one documenting that duplicate keys are wrong — which is also the whole of the
+> difference from the **0** claimed above, measured before the corpus existed. No `.pdl`
+> under `examples/` or `tests/data/` changes its exit code: all **170** were run twice before the change to
+> screen for self-nondeterminism, none was, and none moved after it.
+>
+> *(Re-running that scan on the tree **after** the change now finds four sites, not one:
+> the three new corpus reproducers `E-PARSE-003`, `-nested` and `-repeated` are the
+> difference, and they are meant to be there. The blast-radius figure is the pre-change
+> one, which is the tree a user's programs were written against.)*
+>
+> **Two things about the shape of the change are worth keeping.** The check is in
+> `load_with_marks` and not in the constructor, because that is the last moment at which
+> *both* occurrences exist as nodes with marks of their own — which is what lets the
+> diagnostic say "this one, and the earlier one whose value it replaces" instead of
+> "there is a duplicate". And the exception is deliberately **not** a `yaml.YAMLError`
+> and its message never says "not valid YAML": PyYAML parses the document without
+> complaint, so a user who checked the same file with another YAML tool would be told it
+> is fine, and a diagnostic contradicting the tool beside it teaches distrust. It is a
+> `PDLParseError`, so every existing handler keeps matching.
+>
+> **Scope excludes data files, deliberately.** `pdl.py:253` and `:269` call
+> `yaml.safe_load` for `--data` and `-f` scope files, and they are untouched: those carry
+> data values rather than program text, and extending the rule to them is a separate
+> decision with a blast radius of its own that nobody has measured. The asymmetry is
+> stated in the release note rather than left to be discovered.
+>
+> `for:` over a string (E-RUNTIME-012) remains the one part of this decision not yet
+> implemented.
 
 > **A third change has since landed under this decision**, with the owner's explicit
 > sign-off: `parser: csv` rejects a quoted field that is never closed, instead of
@@ -607,7 +649,13 @@ Then, serialised on the foundation:
     the spec predicted it would not be.
 11. **E-PARSE-003 and E-RUNTIME-012** — the two semantic changes from 5.5. Deliberately
     last: they are the only items that can break a working user program, so they land
-    after everything else is green and get their own release note.
+    after everything else is green and get their own release note. *E-PARSE-003
+    delivered; the re-measured blast radius and the two shape decisions are in the
+    5.5 blockquote. E-RUNTIME-012 is still open.* One thing the estimate missed, found
+    by running it: `<<:` had to be exempted outright, because PyYAML's `flatten_mapping`
+    honours **every** merge key in a mapping rather than the last, so two of them are a
+    union that loses nothing — a naive check would have rejected a working program, and
+    that is the case `E-PARSE-003-merge-key` now pins.
 12. **E-TYPE-006** — locate and de-duplicate the deprecation warning (5.4).
 
 ---

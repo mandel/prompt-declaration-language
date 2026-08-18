@@ -6,6 +6,91 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### A repeated YAML key in a program is now an error (**breaking**)
+
+**A program that exits `0` today can exit `1` after this change.** Like the
+`parser: csv` change below, it is here because the old behaviour did not fail —
+it answered, having thrown half your program away.
+
+Writing the same key twice in one YAML mapping used to keep the last value and
+discard the rest, with nothing printed and nothing to grep for:
+
+```console
+$ pdl prog.pdl        # text: hello / text: world
+world
+$ echo $?
+0
+```
+
+`text: hello` was never run and never mentioned. That is now an error, and it
+names both lines rather than only the offending one:
+
+```console
+$ pdl prog.pdl
+prog.pdl:2:1 - the key `text` is written twice in the same mapping
+
+1 | text: hello
+  | ^ first written here
+2 | text: world
+  | ^ written again here
+
+  A YAML mapping gives each key one value. Most YAML readers accept a key
+  written more than once and silently keep the last value, discarding the ones
+  before it; PDL rejects the program instead of choosing between them for you.
+
+  help: remove one of them, or merge them into a single `text:`.
+$ echo $?
+1
+```
+
+**PDL is being stricter than YAML here, and says so.** This document is valid
+YAML: PyYAML parses it, and so will every other YAML tool you check it with. The
+message therefore never claims the file is malformed, and the exception is
+deliberately **not** a `yaml.YAMLError` — if you catch parse failures in the SDK,
+use `except PDLParseError`, which has always matched and still does:
+
+| Clause | Duplicate key |
+| --- | --- |
+| `except pdl.pdl_parser.PDLParseError` | matches (and is what the CLI, `pdl-lint`, `include:` and `import:` use) |
+| `except pdl.pdl_parser.PDLDuplicateKeyError` | matches; the new, narrower class |
+| `except yaml.YAMLError` | **does not match** — the document is not malformed YAML |
+
+**What now fails**, at any depth in the program: two entries with the same key in
+one mapping, whether at the document root or inside a block. Where a program has
+several, the first one in the file is reported and the rest are counted in
+`note:` lines, so one run tells you how much there is to fix.
+
+**What does not change**, checked rather than assumed:
+
+- **Merge keys still work.** `<<: *anchor` is not a mapping entry, and PyYAML
+  honours *every* merge key in a mapping rather than the last, so two `<<:`
+  lines are a union that loses nothing and are not a repeat. A key that a merge
+  contributes and the mapping then states explicitly — the ordinary reason to
+  use `<<:` at all — is an override, not a repeat, and still overrides.
+- **Anchors and aliases still work.** One anchor referenced many times is one
+  node, not many keys.
+- **Keys that differ only in how they are written are two keys**, as they always
+  were: `1:` and `"1":` build an integer key and a string key, and PDL does not
+  merge them into a complaint.
+- **`--data` and `-f` scope files are not affected.** They are read with
+  `yaml.safe_load` and a repeated key there still keeps the last value. That
+  asymmetry is deliberate and is stated here rather than left to be found: those
+  inputs carry data values rather than program text, and extending the rule to
+  them is a separate decision that has not been taken.
+
+Nothing in this repository is affected. Across the 265 `.pdl` files it held
+before this change there was exactly **one** duplicate-key site, and it was the
+reproducer that exists to demonstrate the bug; all 170 `.pdl` files under
+`examples/` and `tests/data/` were run before and after — twice before, to screen
+out anything nondeterministic on its own — and not one changed its exit code.
+**The residual risk is to programs outside this repository** — if you have been
+relying on a later key
+overriding an earlier one, that program now stops instead, which is the point of
+the change but is a change all the same.
+
+**If you were using a repeat as an override**, delete the entry you did not want:
+its value was already the one being ignored.
+
 ### A retry is no longer reported at all
 
 A block with `retry:` that failed and was about to be retried used to print the

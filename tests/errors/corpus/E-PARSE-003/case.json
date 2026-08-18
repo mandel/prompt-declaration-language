@@ -1,15 +1,14 @@
 {
   "id": "E-PARSE-003",
-  "title": "duplicate mapping key silently accepted",
+  "title": "duplicate mapping key",
   "severity": "S0",
-  "expect_exit": 0,
+  "expect_exit": 1,
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 0,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_silent_failure": true
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
   },
-  "notes": "No diagnostic at all. Last key wins, exit 0. Decision 5.5 makes this an error."
+  "notes": "The second of the two decision-5.5 semantic changes, taken with the owner's explicit sign-off: this program printed `world` and exited **0** before, discarding `text: hello` with nothing on stderr. It was one of only three entries scoring 0 on all five dimensions, and its `hygiene_silent_failure` flag is gone with the silence. PyYAML's `construct_mapping` assigns into a dict, so last-write-wins was inherited default behaviour rather than a decision anyone took; the rule that a PDL program may not do it is PDL's own. Blast radius was re-measured on the tree the change landed on, because the 205 figure in INVENTORY 5.5 was stale in the same way the csv work found it to be: a duplicate-detecting `SafeLoader` over all **265** `.pdl` files present (261 parsed, 4 deliberately-broken corpus reproducers) finds exactly **one** duplicate-key site, and it is this file. Nothing else in the repository is affected, and no `.pdl` under `examples/` or `tests/data/` changes its exit code. The check is in `load_with_marks`, which is the only route a `.pdl` program takes to YAML, and it is there rather than in the constructor because that is the last moment at which **both** occurrences still exist as nodes with marks of their own -- which is the whole of the 15. \"There is a duplicate\" is a fact the user already has; \"this one, and the earlier one whose value it replaces\" is the edit, and it needs two marks. The exception type was chosen against the grain of the module: `PDLDuplicateKeyError` is **not** a `yaml.YAMLError` and the message never says \"not valid YAML\", because this document is valid YAML by every other reader's reckoning and a user who checked it with one would be told so. It stays a `PDLParseError`, so the CLI, `pdl-lint`, `include:` and `import:` all keep handling it. Location 3 with no `  in <path>` line: the repeat is at the program root, whose path is `[]`, and `  in ` with nothing after it would claim a block that does not exist -- the sibling entry `E-PARSE-003-nested` carries the path. Keys are compared as `(tag, value)` rather than as the objects they construct to, a deliberate under-approximation: `1:` and `+1:` build the same integer key under different text and are missed, which leaves a working program working, where the reverse error would stop one. Scoring the 15 narrowly, as `E-PARSE-001` asks to be scored: it is available because the marks are exact and there are two of them, not because the class is easy."
 }

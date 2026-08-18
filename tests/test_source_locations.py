@@ -8,13 +8,18 @@ docstring, measured against `get_line_map` at commit `87958e4` rather than
 recalled.
 """
 
+import yaml
+
 from pdl.pdl import exec_file, exec_str
 from pdl.pdl_ast import PdlLocationType, empty_block_location
+from pdl.pdl_diagnostics import join_path
 from pdl.pdl_interpreter import PDLRuntimeError
 from pdl.pdl_location_utils import (
     SOURCES,
     UNNAMED_SOURCE,
+    DuplicateKeyError,
     append,
+    find_duplicate_keys,
     get_loc_string,
     get_source,
     is_unnamed,
@@ -33,9 +38,6 @@ def marks_of(source: str) -> dict[str, tuple[int, int]]:
 
 
 def test_data_is_what_safe_load_would_have_returned():
-    # local: the point is the comparison, not the dependency
-    import yaml  # pylint: disable=import-outside-toplevel
-
     source = "text:\n  - a\n  - b: {c: 1}\nanchors: &a [1, 2]\nalias: *a\n"
     data, _ = load_with_marks(source)
     assert data == yaml.safe_load(source)
@@ -373,3 +375,140 @@ def test_a_cached_re_parse_puts_its_own_marks_back():
     # marks it misses and keeps its parent's line 1. Against the taller text's
     # it would have resolved, confidently, to line 5.
     assert append(append(again, "text"), "[2]").line == 1
+
+
+# --------------------------------------------------------------------------
+# Duplicate mapping keys (E-PARSE-003, decision 5.5)
+#
+# `find_duplicate_keys` reads the composed node graph, which is the only moment
+# at which both occurrences of a repeated key exist. The cases below are the
+# ones where a naive check would stop a program that works today; the message
+# itself is pinned by the corpus.
+# --------------------------------------------------------------------------
+
+
+def compose(source: str) -> yaml.nodes.Node:
+    """The composed node graph -- what the check reads, before construction."""
+    loader = yaml.SafeLoader(source)
+    try:
+        node = loader.get_single_node()
+    finally:
+        loader.dispose()
+    assert node is not None
+    return node
+
+
+def duplicates_in(source: str) -> list[tuple[str, int, int, int]]:
+    """`(key, first line, second line, count)` for each repeat, in file order."""
+    return [
+        (d.key, d.first.line, d.again.line, d.count)
+        for d in find_duplicate_keys(compose(source))
+    ]
+
+
+def test_a_repeated_key_carries_both_positions():
+    assert duplicates_in("text: hello\ntext: world\n") == [("text", 1, 2, 2)]
+
+
+def test_a_repeat_is_found_at_any_depth():
+    """The whole graph is walked, not just the document's root mapping."""
+    source = "text:\n  - model: m\n    input: a\n    input: b\n"
+    found = find_duplicate_keys(compose(source))
+    assert [(d.key, d.path) for d in found] == [("input", ("text", "[0]"))]
+    # The path is the *mapping's*, so a diagnostic can name the block it is in.
+    assert join_path(found[0].path) == "text[0]"
+
+
+def test_a_repeat_inside_a_flow_mapping_is_found_with_its_column():
+    """The shape the regex line map could not see at all (DROP #2)."""
+    (found,) = find_duplicate_keys(compose("data: {x: 1, x: 2}\n"))
+    assert (found.first.line, found.first.col) == (1, 8)
+    assert (found.again.line, found.again.col) == (1, 14)
+
+
+def test_repeats_are_ordered_by_their_second_occurrence():
+    """Not by the walk: "the first duplicate" means the first one in the file.
+
+    The walk sees the root mapping's own keys before it descends, so a
+    depth-first order would report `defs` -- whose second occurrence is on the
+    last line -- ahead of the nested `k` on line 3. The repeat a reader
+    scrolling the file reaches first is `k`, and that is the one reported.
+    """
+    source = "defs:\n  k: 1\n  k: 2\ntext: x\ndefs: {}\n"
+    assert duplicates_in(source) == [("k", 2, 3, 2), ("defs", 1, 5, 2)]
+
+
+def test_a_key_repeated_three_times_is_counted_and_shows_the_first_two():
+    (found,) = find_duplicate_keys(compose("text: a\ntext: b\ntext: c\n"))
+    assert (found.count, found.first.line, found.again.line) == (3, 1, 2)
+
+
+def test_two_repeated_keys_in_one_mapping_name_each_other():
+    first, second = find_duplicate_keys(compose("a: 1\nb: 2\na: 3\nb: 4\n"))
+    assert (first.key, first.siblings) == ("a", ("b",))
+    assert (second.key, second.siblings) == ("b", ("a",))
+
+
+def test_a_merge_key_may_be_written_twice():
+    """`<<:` is not a mapping entry, and `flatten_mapping` honours every one.
+
+    Two of them are a union that loses nothing, so treating them as a repeat
+    would reject a program that works. This is the likeliest way the rule could
+    have broken something.
+    """
+    source = "x: &x {a: 1}\ny: &y {b: 2}\nz:\n  <<: *x\n  <<: *y\n"
+    assert find_duplicate_keys(compose(source)) == []
+    assert load_with_marks(source)[0]["z"] == {"a": 1, "b": 2}
+
+
+def test_a_merged_key_may_be_overridden_explicitly():
+    """The ordinary reason to use a merge key at all.
+
+    It survives only because the check runs *before* `construct_document` calls
+    `flatten_mapping`: afterwards the merged pairs are spliced into the node's
+    value ahead of the explicit ones, and the override is indistinguishable
+    from a repeat.
+    """
+    source = "base: &b\n  role: helper\n  tone: plain\nuse:\n  <<: *b\n  tone: brisk\n"
+    assert find_duplicate_keys(compose(source)) == []
+    assert load_with_marks(source)[0]["use"] == {"role": "helper", "tone": "brisk"}
+
+
+def test_one_anchor_referenced_twice_is_scanned_once():
+    source = "a: &a\n  k: 1\nb: *a\nc: *a\n"
+    assert find_duplicate_keys(compose(source)) == []
+
+
+def test_the_walk_terminates_on_a_recursive_anchor():
+    """An alias can make the graph cyclic; the `id`-keyed visited set is why
+    this returns rather than exhausting the stack."""
+    assert find_duplicate_keys(compose("a: &a\n  self: *a\n")) == []
+
+
+def test_keys_that_build_different_objects_are_not_a_repeat():
+    """Compared as `(tag, value)`, so `1:` and `\"1\":` are two keys -- which is
+    what the constructed mapping holds, and a false positive here would stop a
+    working program."""
+    assert find_duplicate_keys(compose('a:\n  1: x\n  "1": y\n')) == []
+    assert load_with_marks('a:\n  1: x\n  "1": y\n')[0] == {"a": {1: "x", "1": "y"}}
+
+
+def test_a_non_scalar_key_is_skipped_rather_than_stringified():
+    """As `_walk` skips it: PDL has no path syntax for `? [a, b]:`, so there is
+    nothing a diagnostic could name. A missed repeat leaves a program working."""
+    assert find_duplicate_keys(compose("? [a, b]\n: 1\n? [a, b]\n: 2\n")) == []
+
+
+def test_load_with_marks_refuses_to_construct_a_document_with_a_repeat():
+    # Caught by hand rather than with `pytest.raises`: every other test in this
+    # file is a plain `assert`, and the module has never imported the test
+    # framework. What the *parser* raises out of this is pinned in
+    # `tests/test_parse_errors.py`.
+    caught: DuplicateKeyError | None = None
+    try:
+        load_with_marks("text: hello\ntext: world\n")
+    except DuplicateKeyError as exc:
+        caught = exc
+    assert caught is not None, "a repeated key must stop the document being built"
+    assert caught.duplicate.key == "text"
+    assert caught.total == 1

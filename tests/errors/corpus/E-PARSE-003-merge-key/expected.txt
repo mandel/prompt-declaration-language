@@ -1,0 +1,7 @@
+$ exit: 0
+
+--- stdout ---
+{"role": "helper", "tone": "plain", "extra": true}
+
+--- stderr ---
+(empty)

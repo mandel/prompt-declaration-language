@@ -6,14 +6,14 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 ## Summary
 
-- **66 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
-- **673 / 960** rubric points (**70%**), over the **64** scored entries.
+- **68 corpus entries**, covering 56 of the **69** error IDs in the taxonomy.
+- **694 / 990** rubric points (**70%**), over the **66** scored entries.
 - **0 entries leak a Python traceback** to the user.
 - **1 entry fails silently** — a broken program that exits 0 and reports nothing at all.
 
-**14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
+**13 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
-> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-003`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-TYPE-004`, `E-TYPE-005`
+> `E-CODE-004`, `E-GUI-001`, `E-GUI-002`, `E-MODEL-004`, `E-MODEL-005`, `E-RUNTIME-005`, `E-RUNTIME-008`, `E-RUNTIME-009`, `E-RUNTIME-010`, `E-RUST-001`, `E-SCHEMA-005`, `E-TYPE-004`, `E-TYPE-005`
 
 **2 entries are not scored** and are excluded from every total and mean below, denominator included. An unscored entry pins a *behaviour* whose correct output is not a diagnostic, so there is no message for the rubric to measure and any score would be a fiction — full marks would claim an excellent message where there is none, and zero would record correct behaviour as a defect. The golden is enforced exactly as for every other entry:
 
@@ -23,11 +23,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 119 | 192 | 1.86 |
-| What | 143 | 192 | 2.23 |
-| Why | 138 | 192 | 2.16 |
-| Fix | 100 | 192 | 1.56 |
-| Hygiene | 173 | 192 | 2.70 |
+| Location | 124 | 198 | 1.88 |
+| What | 145 | 198 | 2.20 |
+| Why | 142 | 198 | 2.15 |
+| Fix | 106 | 198 | 1.61 |
+| Hygiene | 177 | 198 | 2.68 |
 
 ## By error class
 
@@ -40,7 +40,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | E-MODEL | 3 | 22 | 45 | 7.3 |
 | E-PARSE | 7 | 91 | 105 | 13.0 |
 | E-PARSER | 9 | 107 | 135 | 11.9 |
-| E-RUNTIME | 7 | 81 | 105 | 11.6 |
+| E-RUNTIME | 9 | 102 | 135 | 11.3 |
 | E-SCHEMA | 14 | 148 | 210 | 10.6 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -73,6 +73,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | `E-SCHEMA-004` | S2 | 2 | 1 | 2 | 0 | 3 | **8** | `█████░░░░░` |  | scalar type mismatch |
 | `E-TYPE-002` | S2 | 2 | 2 | 2 | 0 | 2 | **8** | `█████░░░░░` |  | function argument type mismatch |
 | `E-MODEL-001` | S0 | 2 | 1 | 2 | 1 | 3 | **9** | `██████░░░░` |  | unrecognised model provider |
+| `E-RUNTIME-003` | S2 | 2 | 1 | 1 | 3 | 2 | **9** | `██████░░░░` |  | include: prefixes a schema error with "invalid yaml" |
 | `E-RUNTIME-004` | S2 | 2 | 2 | 2 | 0 | 3 | **9** | `██████░░░░` |  | read of a missing file |
 | `E-SCHEMA-003` | S3 | 2 | 2 | 1 | 1 | 3 | **9** | `██████░░░░` |  | missing required field |
 | `E-CODE-001` | S1 | 1 | 3 | 3 | 0 | 3 | **10** | `███████░░░` |  | Python exception inside a code block |
@@ -89,6 +90,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | `E-PARSER-003` | S1 | 2 | 3 | 3 | 1 | 3 | **12** | `████████░░` |  | yaml parser on ill-formed YAML |
 | `E-PARSER-007` | S0 | 2 | 3 | 2 | 2 | 3 | **12** | `████████░░` |  | parser with a pdl: sub-program is not implemented |
 | `E-RUNTIME-002` | S0 | 2 | 3 | 3 | 1 | 3 | **12** | `████████░░` |  | import names a missing file |
+| `E-RUNTIME-003-duplicate-key` | S2 | 3 | 1 | 3 | 3 | 2 | **12** | `████████░░` |  | include: says "invalid yaml" over a diagnostic written not to say it |
 | `E-CLI-004` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | malformed pdl_model_default_parameters |
 | `E-CODE-002` | S0 | 1 | 3 | 3 | 3 | 3 | **13** | `█████████░` |  | code block never assigns result (issue #386) |
 | `E-PARSER-002` | S1 | 2 | 3 | 3 | 2 | 3 | **13** | `█████████░` |  | jsonl parser on non-JSONL text |
@@ -244,6 +246,12 @@ Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught 
 
 **`E-RUNTIME-002`** — import names a missing file  
 Fixed (spec docs/error-reporting/specs/E-RUNTIME-002.md). `process_import` guards only its own two-line read -- it cannot call `parse_file`, because `state.imported` is keyed on the source text -- and builds `import_read_diagnostic` (pdl_diagnostics.py) instead of reusing E-CLI-001's, whose sentences are about the command-line argument. The message leads with what the user wrote and then names what PDL opened, so the appended `.pdl` is accounted for rather than sprung on them. The rendered text reaches `generate` through a `PDLImportError` carried as `source_exception`, which `PDLRuntimeError` collapses to the innermost one, so no re-wrap site can give it a second location header. This entry shows the weakest branch: the work directory holds only `prog.pdl`, and the importing file is excluded from the listing, so there is no near miss to suggest and nothing to list -- hence Fix 1. The richer branches (near miss, `.pdl`-suffix trap, directory listing) score 2-3 and are exercised in the spec's verification runs. Location 2 is file:line plus the block path; the line comes from `get_line(loc.table, loc.path + ['import'])`, which is why it is 1 rather than E-RUNTIME-001's :0. Column and excerpt need phase-3 item 0. SDK note: a bad `import:` now raises `PDLRuntimeError` rather than a bare `FileNotFoundError` (docs/release-notes.md).
+
+**`E-RUNTIME-003`** — include: prefixes a schema error with "invalid yaml"  
+First execution of a row that has been `[src]` since phase 0; this pins the trigger the row itself names. `process_include` (`pdl_interpreter.py:3834-3842`) wraps its whole body in one `try` and ends it with `except PDLParseError as exc: message = f"Attempting to include invalid yaml: {str(file)}\n{exc.text}"`. `PDLParseError` is the carrier for *every* static failure of an included file -- a YAML syntax error, a schema error, a duplicate key, and (because `PDLFileNotFoundError` subclasses it via `PDLOSParseError`, `pdl_parser.py:97`) a file that does not exist -- so the prefix is unconditional and the word `yaml` is a guess that happens to be right for one of the four classes. Here it is wrong: `sub/included.pdl` is well-formed YAML and the fault is a misspelt block key. The user is told the file is invalid YAML and then, two lines later, told to rename `descrption:` to `description:`; the two claims do not describe the same defect, and the first is the one a reader acts on. `E-RUNTIME-003-duplicate-key` is the same wrapper over the sharpest case. Two measured corrections to the phase-0 row, which was read off the source and never run. (1) It predicts an **absolute path** after the colon, citing issue #410; the golden shows `sub/included.pdl`, relative, because the interpolated `file` is `state.cwd / block.include` and `state.cwd` is relative when `pdl` is invoked on a relative path. The absolute form is still reachable -- invoke `pdl` with an absolute path and `state.cwd` becomes absolute -- so #410 is not refuted, only shown not to apply to the ordinary invocation. (2) The row implies `import:` behaves identically. It no longer does for the missing-file class: `process_import` grew an `except OSError` branch ahead of the parse (`:3900`) that raises `import_read_error` with no prefix, which is why `E-RUNTIME-002`'s golden opens *cannot import `nosuch`: no such file* while `E-RUNTIME-001`'s -- `include:` on a missing file, through the blanket wrapper -- still reads `Attempting to include invalid yaml: does_not_exist.pdl`. That asymmetry is a second, already-pinned instance of this defect and needs no new entry. The import wrapper itself survives verbatim at `:3944`. Scores against the inner diagnostic alone (`E-SCHEMA-001`, 11/15) minus the wrapper: Location 2 is unchanged -- both ends are accurate to `file:line:col` with a block path and the chain is legible, but neither shows an excerpt or a caret. What drops 2 -> 1: the headline names a rule that was not violated, and RUBRIC's "wrong beats missing, downward" convention puts a false claim below a true but generic one. Fix stays 3, because the `help:` line offering `description:` is a correct concrete edit and the wrapper does not damage it. Hygiene 2, for the same reason `E-RUNTIME-001` is at 2: two stacked claim lines for one error.
+
+**`E-RUNTIME-003-duplicate-key`** — include: says "invalid yaml" over a diagnostic written not to say it  
+The sharpest illustration of the blanket wrapper described in `E-RUNTIME-003`, and the one case where the false claim is not merely inaccurate but reverses a decision already taken. `included.pdl` writes `text:` twice. Read alone that file produces the E-PARSE-003 diagnostic, whose design note in INVENTORY 5.5 says in as many words: "The exception is deliberately **not** a `yaml.YAMLError` and its message never says 'not valid YAML': PyYAML parses the document without complaint, so a user checking the same file with another YAML tool would be told it is fine, and a diagnostic contradicting the tool beside it teaches distrust." Reached through `include:`, `process_include`'s `except PDLParseError` (`pdl_interpreter.py:3842`) prints `Attempting to include invalid yaml: sub/included.pdl` immediately above it. The sentence the diagnostic was written to avoid is restored by the caller, one line higher and read first. The golden is self-refuting on its face: the headline calls the file invalid YAML, and the paragraph six lines below it explains that "Most YAML readers accept a key written more than once" -- the body concedes the document is valid YAML while the header denies it. The mechanism is the wrapper being keyed on the *carrier* rather than on the *fault*: `PDLParseError` was chosen for the duplicate-key error precisely so that every existing handler would keep matching (5.5 again), and this handler matching is that choice working as intended while producing the outcome it was made to prevent. So the two changes are individually correct and jointly wrong, which is why neither side's tests caught it -- `E-PARSE-003` reads the file directly and never sees a prefix. Verified line by line against the reproducer: `prog.pdl:2:5` is the `include:` key (line 2, column 5 counting the two-space indent and `- `), `sub/included.pdl:1:1` and `:2:1` are the two `text:` keys, and every one is correct. Location 3: the inner diagnostic supplies `file:line:col`, an excerpt and a caret on each occurrence, the outer supplies the include site with `  in text[0]`, and between them the chain that reached the fault is legible -- everything rubric item 1 asks for at 3. What 1 rather than the 3 the same diagnostic earns as `E-PARSE-003`: the headline states a rule that was not violated and contradicts the one below it, and "wrong beats missing, downward" places that under a true-but-generic statement. Why and Fix are untouched at 3, both carried entirely by the inner text. Hygiene 2: no traceback, no dump, but two stacked claim lines of which one is false, matching `E-RUNTIME-001`'s reading. Nothing here is new behaviour -- it is reachable on this HEAD and was reachable the day the duplicate-key check landed.
 
 **`E-RUNTIME-004`** — read of a missing file  
 'prog.pdl:1', the line of the `read:` block. It was 'prog.pdl:0' until phase-3 item 0: a top-level block has an empty location path and `get_line` returned 0 for it, so the one block a single-block program has was the one thing that could not be located. Clean message otherwise. Phase-3 item 7 does not move this golden and location stays 1: the path is `[]` for the same reason the line used to be 0, so there is nothing to render. The remaining point was the column, and it landed: `prog.pdl:1:1` is an accurate line plus a second coordinate, so Location 1 -> 2. Accurate rather than coarse on INVENTORY 7.9's test -- `nofile.txt` is the whole value of the `read:` entry, so the entry's mark is its mark. Location 3 is still four things away: no excerpt, no caret, and the path this entry cannot have.

@@ -16,6 +16,7 @@ from .pdl_ast import (  # noqa: PLC2701
 )
 from .pdl_diagnostics import (
     Span,
+    field_not_allowed_diagnostic,
     list_expected_diagnostic,
     list_length_diagnostic,
     mapping_expected_diagnostic,
@@ -408,6 +409,52 @@ def near_miss_pool(defs) -> list[str]:
         if not field.startswith("pdl__") and field != "kind"
     ]
     return sorted(set(BLOCK_KIND_FIELDS) | set(common))
+
+
+def _correction_pool(
+    defs, all_fields: Sequence[str], written: str, guessed: bool
+) -> list[str]:
+    """The field names `written` may be offered as a misspelling of, or `[]`.
+
+    The candidate set is the properties of **the schema being checked**, and
+    that is the whole of why the suggestion is worth anything: `parameters` is
+    not a field of `TextBlock` and `model` is not either, so testing
+    `parameterss` against the wrong branch of the block union answers nothing.
+    It is also why the three guards below exist, each of which turns a confident
+    wrong answer into silence.
+
+    **A guessed branch suggests nothing.** For a block PDL answers the union
+    with the discriminator pydantic uses, so the properties really are the ones
+    that key would be read against. Four unions have no discriminator --
+    `JoinType`, `ParserType`, `PatternType`, `PdlTypeType` -- and there
+    `analyze_errors` picks the branch sharing the most field names with the
+    data, which for `join: {as: array, wth: ", "}` is a **tie** between
+    `JoinText` and `JoinArray` broken by document order. `JoinText` has `with:`;
+    the user wrote `as: array` and meant `JoinArray`, which does not. "Did you
+    mean `with:`?" would there be a correction to a field that is still not
+    allowed where they wrote it. This costs a real suggestion too -- a typo of
+    `regex:` inside `parser:` arrives by the same route -- and that is the trade
+    RUBRIC.md asks for: silence outranks a confidently-stated wrong edit.
+
+    **A name PDL knows is not a misspelling.** `content:` is a real PDL field,
+    just not one `TextBlock` takes, and it is within `difflib`'s reach of
+    `context:`. Writing a word PDL has is not mistyping one, and telling that
+    user they meant a different word is worse than the message alone.
+
+    **`pdl__*` is not a correction.** Those are the bookkeeping fields the
+    dumper writes into a trace and nobody writes by hand -- `result:` is one
+    edit from `pdl__result` -- and `near_miss_pool` excludes them from
+    E-SCHEMA-007's pool for the same reason.
+
+    The result keeps `schema["properties"]`' own document order, never a set:
+    `difflib` breaks ties by position and a diagnostic may not depend on
+    `PYTHONHASHSEED`.
+    """
+    if guessed:
+        return []
+    if written in near_miss_pool(defs):
+        return []
+    return [name for name in all_fields if not name.startswith("pdl__")]
 
 
 def scalar_matches(defs, item, data, loc) -> bool:
@@ -818,7 +865,9 @@ def list_length_message(defs, schema, data, loc: PdlLocationType, subject: str) 
     return located_message(where, diag.text)
 
 
-def analyze_list(defs, schema, data, loc: PdlLocationType, subject: str) -> list[str]:
+def analyze_list(  # pylint: disable=too-many-arguments
+    defs, schema, data, loc: PdlLocationType, subject: str, *, guessed: bool = False
+) -> list[str]:
     """Every way a list fails an array schema: its length, then its elements.
 
     Three keywords, and `items` is only one of them. `prefixItems` gives a type
@@ -844,12 +893,17 @@ def analyze_list(defs, schema, data, loc: PdlLocationType, subject: str) -> list
             # generates; saying it twice would be two complaints about one item.
             continue
         newloc = append(loc, "[" + str(index) + "]")
-        ret += analyze_errors(defs, item_schema, item, newloc)
+        ret += analyze_errors(defs, item_schema, item, newloc, guessed=guessed)
     return ret
 
 
 def analyze_discriminated(
-    defs, union: DiscriminatedUnion, data: dict, loc: PdlLocationType
+    defs,
+    union: DiscriminatedUnion,
+    data: dict,
+    loc: PdlLocationType,
+    *,
+    guessed: bool = False,
 ) -> list[str]:
     """Validate `data` against the one branch its discriminator selects.
 
@@ -870,14 +924,14 @@ def analyze_discriminated(
         if unrecognised:
             kept = {key: value for key, value in data.items() if key in recognised}
             return [_no_block_message(defs, data, unrecognised, loc)] + analyze_errors(
-                defs, defs["EmptyBlock"], kept, loc
+                defs, defs["EmptyBlock"], kept, loc, guessed=guessed
             )
-        return analyze_errors(defs, defs["EmptyBlock"], data, loc)
+        return analyze_errors(defs, defs["EmptyBlock"], data, loc, guessed=guessed)
 
     ref_string = union.table.get(tag) if isinstance(tag, str) else None
     if ref_string is None:
         return [_unknown_tag_message(union, data, loc)]
-    return analyze_errors(defs, defs[ref_string], data, loc)
+    return analyze_errors(defs, defs[ref_string], data, loc, guessed=guessed)
 
 
 def _no_block_message(defs, data, unrecognised, loc: PdlLocationType) -> str:
@@ -936,10 +990,21 @@ def _unknown_tag_message(
     return located_message(key_loc, diag.text)
 
 
-def analyze_errors(  # noqa: C901
-    defs, schema, data, loc: PdlLocationType, subject: str = ""
+def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
+    defs,
+    schema,
+    data,
+    loc: PdlLocationType,
+    subject: str = "",
+    *,
+    guessed: bool = False,
 ) -> list[str]:
     """Every way `data` fails `schema`, one independently-located message each.
+
+    `guessed` records that `schema` was **chosen** for this data rather than
+    determined by it -- see `_correction_pool`. Unlike `subject` it propagates
+    all the way down: a property's schema is read out of the guessed branch's
+    `properties`, so everything below a guess is equally a guess.
 
     `subject` names what is being validated, for the callers where the field the
     location points at is not it. `pdl_schema_validator` walks a block's
@@ -995,13 +1060,13 @@ def analyze_errors(  # noqa: C901
     elif "$ref" in schema:
         ref_string = schema["$ref"].split("/")[2]
         ref_type = defs[ref_string]
-        ret += analyze_errors(defs, ref_type, data, loc, subject)
+        ret += analyze_errors(defs, ref_type, data, loc, subject, guessed=guessed)
 
     elif is_array(schema):
         if not isinstance(data, list):
             ret.append(not_a_list_message(defs, schema, data, loc, subject))
         else:
-            ret += analyze_list(defs, schema, data, loc, subject)
+            ret += analyze_list(defs, schema, data, loc, subject, guessed=guessed)
 
     elif is_object(schema):
         if not isinstance(data, dict):
@@ -1022,13 +1087,23 @@ def analyze_errors(  # noqa: C901
                 ):
                     for field in extras:
                         nloc = append(loc, field)
-                        ret.append(located_message(nloc, "Field not allowed: " + field))
+                        diag = field_not_allowed_diagnostic(
+                            written=field,
+                            candidates=_correction_pool(
+                                defs, all_fields, field, guessed
+                            ),
+                        )
+                        ret.append(located_message(nloc, diag.text))
 
                 valid_fields = list(set(all_fields) & set(data.keys()))
                 for field in valid_fields:
                     newloc = append(loc, field)
                     ret += analyze_errors(
-                        defs, schema["properties"][field], data[field], newloc
+                        defs,
+                        schema["properties"][field],
+                        data[field],
+                        newloc,
+                        guessed=guessed,
                     )
             if "additionalProperties" in schema.keys() and not isinstance(
                 schema["additionalProperties"], bool
@@ -1036,13 +1111,19 @@ def analyze_errors(  # noqa: C901
                 for key, value in data.items():
                     nloc = append(loc, key)
                     ret += analyze_errors(
-                        defs, schema["additionalProperties"], value, nloc
+                        defs,
+                        schema["additionalProperties"],
+                        value,
+                        nloc,
+                        guessed=guessed,
                     )
 
     elif is_any_of(schema):
         schema_alternatives = alternatives(schema)
         if len(schema_alternatives) == 2 and nullable(schema):
-            ret += analyze_errors(defs, get_non_null_type(schema), data, loc, subject)
+            ret += analyze_errors(
+                defs, get_non_null_type(schema), data, loc, subject, guessed=guessed
+            )
 
         elif not isinstance(data, dict) and not isinstance(data, list):
             if not any(
@@ -1056,14 +1137,16 @@ def analyze_errors(  # noqa: C901
                 if is_array(item):
                     found = item
             if found is not None:
-                ret += analyze_errors(defs, found, data, loc, subject)
+                ret += analyze_errors(defs, found, data, loc, subject, guessed=guessed)
             else:
                 ret.append(no_array_member_message(defs, schema, data, loc, subject))
 
         elif isinstance(data, dict):
             union = discriminated_union(defs, schema) or deferred_union(defs, schema)
             if union is not None:
-                return ret + analyze_discriminated(defs, union, data, loc)
+                return ret + analyze_discriminated(
+                    defs, union, data, loc, guessed=guessed
+                )
 
             match_ref = {}
             highest_match = 0
@@ -1081,5 +1164,8 @@ def analyze_errors(  # noqa: C901
                 )
 
             else:
-                ret += analyze_errors(defs, match_ref, data, loc, subject)
+                # `guessed=True`, and it is not an accident of this call: nothing
+                # in the data *selected* `match_ref`, a field count did, and the
+                # count is frequently a tie. See `_correction_pool`.
+                ret += analyze_errors(defs, match_ref, data, loc, subject, guessed=True)
     return ret

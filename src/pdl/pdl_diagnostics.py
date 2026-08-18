@@ -2124,6 +2124,13 @@ _NOT_A_BLOCK = "this is not a PDL block: nothing here says what it does"
 
 _NOT_A_FIELD = "{names} are not fields any block accepts."
 
+_DID_YOU_MEAN = "did you mean `{meant}:` instead of `{written}:`?"
+"""The one spelling of a near-miss correction, shared by the two diagnostics
+that offer one. E-SCHEMA-007 says it about a mapping that names no block at all;
+`field_not_allowed_diagnostic` says it about a key on a block that is otherwise
+fine. A reader who has seen one has read the other, and a second phrasing would
+be a second thing to learn for no gain."""
+
 
 def _oxford(names: Sequence[Any], conjunction: str = "or") -> str:
     """``\\`a\\`, \\`b\\` or \\`c\\```, from an ordered sequence and never a set.
@@ -2231,7 +2238,7 @@ def no_block_kind_diagnostic(  # pylint: disable=too-many-arguments
     near = _first_near_miss(keys, near_miss_pool)
     if near is not None:
         written, meant = near
-        suggestion = Suggestion(f"did you mean `{meant}:` instead of `{written}:`?")
+        suggestion = Suggestion(_DID_YOU_MEAN.format(meant=meant, written=written))
     else:
         suggestion = _data_block_suggestion(value, in_list)
 
@@ -2267,6 +2274,50 @@ def _data_block_suggestion(value: Any, in_list: bool) -> Suggestion:
     return Suggestion(
         f"if this {subject} is meant to produce the value `{flow}`, write it as",
         replacement=("- " if in_list else "") + f"data: {flow}",
+    )
+
+
+_FIELD_NOT_ALLOWED = "Field not allowed: {field}"
+
+
+def field_not_allowed_diagnostic(
+    *, written: str, candidates: Sequence[str]
+) -> Diagnostic:
+    """E-SCHEMA-001 and E-SCHEMA-002: a key the block it is written on does not take.
+
+    The message is unchanged -- it is accurate, it is located, and four corpus
+    entries pin it -- and the only addition is the `help:` line the near miss
+    was missing. E-SCHEMA-002 is this diagnostic seen on a key one character
+    from a real one; E-SCHEMA-001 is the same diagnostic where the correction is
+    a doubled letter. They are one message and share one builder, which is why
+    the near miss is decided here rather than at either call site.
+
+    `candidates` is the field names the correction may be drawn from, **in a
+    stable order** -- `difflib` breaks ties by position, and a diagnostic may not
+    depend on `PYTHONHASHSEED`. The caller supplies it already filtered, and an
+    empty sequence means "do not guess": this module cannot tell whether the
+    schema it was handed is the one the user meant, and
+    `pdl_schema_error_analyzer._correction_pool` is where that is known.
+
+    `n=1` and `_NEAR_MISS_CUTOFF`, the same pair every other near miss in this
+    module uses. A list of five candidates would be noise, and the second-best
+    match for a typo of a block field is reliably a different concept rather
+    than a different spelling.
+    """
+    close = difflib.get_close_matches(
+        written, list(candidates), n=1, cutoff=_NEAR_MISS_CUTOFF
+    )
+    return Diagnostic(
+        code="E-SCHEMA-001",
+        message=_FIELD_NOT_ALLOWED.format(field=written),
+        # No `file`, no `spans` and no `block_path`: `located_message` adds the
+        # header and the `  in <path>` line at the call site, from the location
+        # the analyzer is walking. The same division as `no_block_kind_diagnostic`.
+        suggestions=(
+            [Suggestion(_DID_YOU_MEAN.format(meant=close[0], written=written))]
+            if close
+            else []
+        ),
     )
 
 

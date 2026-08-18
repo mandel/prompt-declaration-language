@@ -96,7 +96,12 @@ def test_error2():
     error(
         error2,
         [
-            "line 0 - Field not allowed: parameterss\n  in text[1].parameterss",
+            # The `help:` line is the schema near miss. It reaches this test
+            # unchanged by the absence of a source file: the candidates are the
+            # properties of the block being checked, which come from the schema
+            # rather than from anything `empty_block_location` could resolve.
+            "line 0 - Field not allowed: parameterss\n  in text[1].parameterss"
+            "\n\n  help: did you mean `parameters:` instead of `parameterss:`?",
         ],
     )
 
@@ -173,7 +178,8 @@ def test_error5():
     error(
         error5,
         [
-            "line 0 - Field not allowed: lans\n  in text[1].lans",
+            "line 0 - Field not allowed: lans\n  in text[1].lans"
+            "\n\n  help: did you mean `lang:` instead of `lans:`?",
         ],
     )
 

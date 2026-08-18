@@ -102,8 +102,8 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 
 | ID | Trigger | Current message | Location | Sev |
 | --- | --- | --- | --- | --- |
-| E-SCHEMA-001 [obs] | unknown key | `unknown_field.pdl:5 - Field not allowed: parameterss` | file:line | S3 |
-| E-SCHEMA-002 [obs] | near-miss key (`descrption`) | `nearmiss.pdl:1 - Field not allowed: descrption` — identical to E-SCHEMA-001, **no "did you mean `description`?"** | file:line | S2 |
+| E-SCHEMA-001 [obs] | unknown key | `unknown_field.pdl:5:5 - Field not allowed: parameterss`, the block path, and `help: did you mean \`parameters:\` instead of \`parameterss:\`?` | file:line:col, block path | S3 |
+| E-SCHEMA-002 [obs] | near-miss key (`descrption`) | **The "did you mean" landed**, in `field_not_allowed_diagnostic`, and moved E-SCHEMA-001/-002 and E-LINT-001/-004 together — the linter has no diagnostic of its own here and prints `e.text`. The message is unchanged and the `help:` line is added to it. Candidates are the properties of the block the key is written on, so they are the names that key would really have been read against; `difflib` at the project's `_NEAR_MISS_CUTOFF` (0.7) and `n=1`. Three suppressions, each pinned by `tests/errors/corpus/E-SCHEMA-002-no-suggestion/`: nothing is offered from a union branch chosen by field-count rather than by a discriminator, nothing is offered for a name PDL *has* (`content:` on a `text:` block is not a misspelling of `context:`), and `pdl__*` is never a correction. **Still not caught: `for:` → `fro:`** — see 4.2; a transposition in a three-letter name scores 1 − 1/n = 0.667, below the cutoff, and 0.6 buys it at the price of `parameters:` → `parser:` and `id:` → `kind:` | file:line:col, block path | S2 |
 | E-SCHEMA-003 [obs] | missing required field | `missing_req.pdl:2 - Missing required field: return` | file:line | S3 |
 | E-SCHEMA-004 [obs] | scalar type mismatch | `wrong_type.pdl:2 - 42 should be of type <class 'str'>` — **Python `repr` of a type object** in a user-facing message | file:line | S2 |
 | E-SCHEMA-005 [obs] | value not in enum | **reachable since Phase-3 item 10**, and pinned by `tests/errors/corpus/E-SCHEMA-006/`. The branch was unreachable because the analyzer's scalar-union arm set its "matched" flag from an alternative's `type` and stopped there, and `ParserType`'s first alternative carries both `type: string` and the `enum`, so any string passed. Now: ``prog.pdl:2 - `xml` is not a valid value for `parser:` `` with a caret, the accepted values read out of the schema, and a `help:` | file:line, block path, excerpt, caret | S1 |
@@ -413,7 +413,7 @@ is the whole document) and nothing is rendered at all.
 
 | Source | Mutation | Result |
 | --- | --- | --- |
-| `examples/tutorial/for.pdl` | `for:` → `fro:` | `m_for.pdl:2 - Field not allowed: fro` — correct location, **no "did you mean `for`?"** despite a 1-character edit distance |
+| `examples/tutorial/for.pdl` | `for:` → `fro:` | `m_for.pdl:2:1 - Field not allowed: fro` — correct location, and **still no "did you mean `for`?"** after the E-SCHEMA-002 suggestion landed. Re-measured rather than assumed: `for` *is* a `RepeatBlock` property and the branch is the discriminated one, so nothing suppresses it — `difflib.SequenceMatcher` scores it 0.667. A transposition leaves n−1 of n characters matched, so its ratio is 1 − 1/n and any three-letter name falls below the 0.7 cutoff for arithmetic reasons rather than for want of resemblance. Catching it means either 0.6, which on the same pools adds no ninth true correction and three false ones, or an exact transposition rule at `_first_near_miss` so that all five of PDL's near-miss sites answer it the same way. Neither is a cutoff choice this entry can make on its own |
 | `examples/tutorial/defs.pdl` | reference an undefined def | `Error during the evaluation of ${ … }: '…' is undefined` — no list of what *is* in scope |
 | any example | add a leading `#` comment block | every subsequent reported line shifts (E-EXPR-006) |
 | any example | `- "unterminated` | 13-frame traceback (E-PARSE-001) |
@@ -686,7 +686,13 @@ Then, serialised on the foundation:
    item is *not* allowed to fix are in 7.10.
 10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
     **E-EXPR-001** ("in scope here"). *E-SCHEMA-006/007 delivered; spec
-    `specs/E-SCHEMA-UNION.md`.* Four things the estimate missed, all found by running
+    `specs/E-SCHEMA-UNION.md`. E-SCHEMA-002 delivered, and it moved four entries
+    (E-SCHEMA-001/-002, E-LINT-001/-004) from 8/15 to 11/15 for one function's
+    worth of change, because the linter prints the interpreter's rendered text.
+    The estimate missed one thing, and it is the thing that made the item need a
+    rule rather than a call to `difflib`: the candidate set has to be the branch
+    the block actually is, and four unions have no discriminator to say which
+    that is — see `_correction_pool`. E-EXPR-001 remains.* Four things the estimate missed, all found by running
     it. The E-SCHEMA-006 defect is not a missing analyzer case but a **dead** one — the
     `enum` test could never fire because a `type` test above it had already said yes —
     and the same loop *assigned* its flag from a `$ref` alternative rather than

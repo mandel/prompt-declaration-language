@@ -59,6 +59,12 @@ line1 = {
         "",
         "tests/data/line/hello1.pdl:7:7 - Field not allowed: num_iterations",
         "  in text[2].num_iterations",
+        # The `help:` lines through this file are the schema near miss: the
+        # candidates are the properties of the block the key is written on, so
+        # `maxIterations` is offered here and nothing is offered for a key that
+        # is not near one of *that* block's fields. `num_iterations` is what
+        # this field used to be called, so the suggestion is also the rename.
+        "  help: did you mean `maxIterations:` instead of `num_iterations:`?",
     ],
 }
 
@@ -118,6 +124,7 @@ line7 = {
         "",
         "tests/data/line/hello7.pdl:4:3 - Field not allowed: lans",
         "  in text[1].lans",
+        "  help: did you mean `lang:` instead of `lans:`?",
     ],
 }
 
@@ -200,6 +207,7 @@ line11 = {
         "",
         "tests/data/line/hello11.pdl:7:3 - Field not allowed: defss",
         "  in text[1].defss",
+        "  help: did you mean `defs:` instead of `defss:`?",
     ],
 }
 

@@ -6,6 +6,39 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### A mistyped field name says what you probably meant
+
+A key a block does not accept was reported accurately and unhelpfully: it named
+the field without naming the one you can see at a glance it should have been.
+
+```console
+$ pdl prog.pdl        # descrption: oops / text: hello
+prog.pdl:1:1 - Field not allowed: descrption
+  in descrption
+```
+
+```console
+$ pdl prog.pdl
+prog.pdl:1:1 - Field not allowed: descrption
+  in descrption
+
+  help: did you mean `description:` instead of `descrption:`?
+```
+
+The message is unchanged and the `help:` line is added under it, so nothing that
+matched the old first line stops matching. `pdl-lint` prints the same
+diagnostic, so it gained the suggestion too.
+
+The candidates are the fields of **the block the key is written on**, not of
+blocks in general: `parameters:` is not a field of a `text:` block, so
+`parameterss:` is corrected on a `model:` block and left alone on a `text:` one.
+That also means the suggestion is withheld where PDL cannot tell which kind of
+block it is looking at, rather than guessed — `join:`, `parser:`, `match:`
+patterns and `spec:` types are matched by shape, and a correction drawn from the
+wrong shape would be a confident wrong answer. Three other things are never
+offered: a name that is simply not close to anything, a name PDL *has* but this
+block does not take, and PDL's own `pdl__*` bookkeeping fields.
+
 ### `for:` over a string or bytes is now an error (**breaking**)
 
 **A program that exits `0` today can exit `1` after this change.**

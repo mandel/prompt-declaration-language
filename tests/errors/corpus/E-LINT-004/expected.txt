@@ -4,6 +4,8 @@ $ exit: 1
  - ❌  <WORKDIR>/outside.pdl
      <WORKDIR>/outside.pdl:4:5 - Field not allowed: parameterss
        in text[0].parameterss
+
+       help: did you mean `parameters:` instead of `parameterss:`?
 ----------------------------------------------------------------------------------------------------
 😮  Linting failed for 1 file(s):
  - <WORKDIR>/outside.pdl

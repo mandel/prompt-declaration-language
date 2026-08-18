@@ -597,7 +597,11 @@ parse that was usually right. The owner narrowed it to the unterminated-quote cl
 alone, at the cost of PDL returning a parse the standard library flagged. Both the ruling
 and its cost are in
 [7.10](#closing-finding-1s-worst-class-what-changed-and-what-was-left-alone). Findings 2
-and 3 of 7.10 are the remaining candidates and have **not** been decided.
+and 3 of 7.10 were the remaining candidates and have now been **decided: left as they
+are.** Both depend on how often real model output reaches the silent path, which needs a
+live-model run this repository cannot perform — 127 of its 170 programs exit at the model
+call before a parser ever runs. The reasoning is recorded with the findings themselves;
+§5.5 is closed.
 
 **5.6 — Structured diagnostic records, with a renderer on top. DECIDED.**
 Every diagnostic becomes a record — `id`, `severity`, `file`, `span`, `block path`,
@@ -1256,8 +1260,39 @@ would not find them.
 | # | Trigger | What happens | Why item 9 could not fix it |
 | --- | --- | --- | --- |
 | 1 ~~open~~ **PARTLY CLOSED** | `parser: csv` on malformed CSV | `csv.reader` accepts an unbalanced quote, ragged rows and embedded NULs. `"a,b,c\n\"unterminated,1\nx,y\n"` parses to `[["a","b","c"], ["unterminated,1\nx,y\n"]]` — a wrong parse, no diagnostic, exit 0. The `csv` branch's `except` was reachable **only** through `csv.field_size_limit()`, which is what `E-PARSER-004` pins | Item 9 could not: nothing raised, so there was no raise site to improve. **The unclosed-quote class is now an error** under decision 5.5, via a `strict=True` reader used as a detector. The rest is still accepted in silence *on purpose*: ragged rows and NULs as before, and text after a closing `"` because rejecting it breaks working programs over a trailing space. See below |
-| 2 | a `regex:` parser that does not match | `RegexParser.mode` defaults to `fullmatch`, so a near-miss pattern returns `None` and the program prints `null` at exit 0. A user who wrote `regex: '\('` on the advice of `E-PARSER-005`'s `help:` and whose text is `Hello` lands exactly here — which is why that suggestion is phrased conditionally | Same: the code path returns rather than raises. `m is None` would have to become an error, and a program may legitimately want the `null` |
-| 3 | `parser: json` over prose — **the case [#387](https://github.com/IBM/prompt-declaration-language/issues/387) actually names** | `json_repair` *repairs*: its parser returns `""` when it finds no value, so `parser: json` over a model's prose yields `''` at exit 0 rather than the parse error the taxonomy assumed. Measured: `'not json at all'`, `'the answer is 42'`, `''` and `'hello: world'` all return `''`; `'{"a": 1'` repairs to `{'a': 1}`. It raises only for a non-`str` input, which is the branch `E-PARSER-001` pins | The largest of the three by blast radius. `json_repair` is the dependency PDL chose *because* it repairs; making a repaired-to-empty result an error changes what every `parser: json` program does |
+| 2 ~~open~~ **LEFT AS IS, DECIDED** | a `regex:` parser that does not match | `RegexParser.mode` defaults to `fullmatch`, so a near-miss pattern returns `None` and the program prints `null` at exit 0. A user who wrote `regex: '\('` on the advice of `E-PARSER-005`'s `help:` and whose text is `Hello` lands exactly here — which is why that suggestion is phrased conditionally | Same: the code path returns rather than raises. `m is None` would have to become an error, and a program may legitimately want the `null` |
+| 3 ~~open~~ **LEFT AS IS, DECIDED** | `parser: json` over prose — **the case [#387](https://github.com/IBM/prompt-declaration-language/issues/387) actually names** | `json_repair` *repairs*: its parser returns `""` when it finds no value, so `parser: json` over a model's prose yields `''` at exit 0 rather than the parse error the taxonomy assumed. Measured: `'not json at all'`, `'the answer is 42'`, `''` and `'hello: world'` all return `''`; `'{"a": 1'` repairs to `{'a': 1}`. It raises only for a non-`str` input, which is the branch `E-PARSER-001` pins | The largest of the three by blast radius. `json_repair` is the dependency PDL chose *because* it repairs; making a repaired-to-empty result an error changes what every `parser: json` program does |
+
+**Findings 2 and 3 are deliberately left as they are. This is a decision, not a backlog
+item** — the owner ruled on it after the evidence below, and it should not be re-opened
+as though nobody had looked.
+
+Both turn on the same question: how often does *real model output* land in the silent
+path? That is empirical, and it is the one thing this repository cannot answer. The
+in-tree evidence is silent rather than reassuring:
+
+- **46** `parser: json` sites and **26** `regex:` parser sites, against only **10**
+  programs pinning a `mock_response` — and a mock is text chosen by whoever wrote the
+  test, a fixture rather than a sample. It shows the parser working on a string someone
+  already knew would work.
+- The semantic sweep that justified the three §5.5 changes **cannot be run for these
+  two**. Of the 170 programs under `examples/` and `tests/data/`, **127 exit 1 at the
+  model call** because no model is reachable in CI; they die long before a parser runs.
+  The programs that would exercise the change are precisely the ones that never get
+  that far.
+
+Answering it properly needs a **live-model run**: real credentials against a provider
+LiteLLM supports, the affected programs run, and what the parsers actually receive
+recorded. Modest work, real money, and not something to approximate.
+
+Deciding blind would be worse than not deciding. Finding 3 in particular would change
+what *every* `parser: json` program does, and `json_repair` is the dependency PDL chose
+**because** it repairs — turning a repaired-to-empty result into an error argues with the
+reason it is there. Finding 2 has a legitimate reading too: a program may genuinely want
+the `null` from a non-matching pattern.
+
+If someone later has an endpoint and wants to revisit this, the measurement above is what
+to run first. Until then the behaviour stands.
 
 #### Closing finding 1's worst class: what changed, and what was left alone
 

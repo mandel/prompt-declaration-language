@@ -476,78 +476,128 @@ The hard constraint "never change success-path output" is read as covering progr
 squarely the project's purpose. E-TYPE-006 gets a file:line and a block path. The same
 rule applies to any other success-path stderr warning discovered later.
 
-**5.5 — Duplicate YAML keys and `for:` over a string become ERRORS. DECIDED.**
+**5.5 — Duplicate keys, `for:` over a string, and unterminated CSV quotes become ERRORS. DECIDED.**
 
 > **This overrides the "never change program semantics" hard constraint**, knowingly.
 > Programs that today exit 0 will exit 1.
 
-Blast radius was measured before deciding, not assumed: across ~~**205 `.pdl` files**~~ —
-**265**, see the corrections below — in this repository there are **0 duplicate-key
-sites**, and among **39 `for:` blocks** none binds a string literal. Nothing in-tree
-breaks. The residual risk is to user programs outside the repository — accepted, and it
-should be called out in release notes. Resolves E-PARSE-003 and E-RUNTIME-012, the two
-worst entries in the catalogue.
+Three changes fall under this decision. All three replace a silent wrong answer with a
+diagnostic; all three resolve entries that scored 0 on every rubric dimension.
 
-> **E-PARSE-003 has since landed**, with the owner's explicit sign-off: a mapping key
-> written more than once is an error, where PyYAML's `construct_mapping` assigned into a
-> dict and kept the last value. `text: hello` / `text: world` printed `world` at exit 0
-> and said nothing; it now exits 1.
->
-> **The file count was stale twice over and is corrected here for the third time.** The
-> 205 above missed files, the csv note below raised it to **263**, and a re-scan on the
-> tree this change landed on finds **265** `.pdl` files: 261 parse, and 4 are corpus
-> reproducers that are deliberately broken YAML. The measurement was re-run rather than
-> carried over, with a duplicate-detecting `SafeLoader` over every one of them, and it
-> finds **1** duplicate-key site — `tests/errors/corpus/E-PARSE-003/prog.pdl`, the
-> reproducer that exists to demonstrate the bug. The only duplicate key in the repository
-> is the one documenting that duplicate keys are wrong — which is also the whole of the
-> difference from the **0** claimed above, measured before the corpus existed. No `.pdl`
-> under `examples/` or `tests/data/` changes its exit code: all **170** were run twice before the change to
-> screen for self-nondeterminism, none was, and none moved after it.
->
-> *(Re-running that scan on the tree **after** the change now finds four sites, not one:
-> the three new corpus reproducers `E-PARSE-003`, `-nested` and `-repeated` are the
-> difference, and they are meant to be there. The blast-radius figure is the pre-change
-> one, which is the tree a user's programs were written against.)*
->
-> **Two things about the shape of the change are worth keeping.** The check is in
-> `load_with_marks` and not in the constructor, because that is the last moment at which
-> *both* occurrences exist as nodes with marks of their own — which is what lets the
-> diagnostic say "this one, and the earlier one whose value it replaces" instead of
-> "there is a duplicate". And the exception is deliberately **not** a `yaml.YAMLError`
-> and its message never says "not valid YAML": PyYAML parses the document without
-> complaint, so a user who checked the same file with another YAML tool would be told it
-> is fine, and a diagnostic contradicting the tool beside it teaches distrust. It is a
-> `PDLParseError`, so every existing handler keeps matching.
->
-> **Scope excludes data files, deliberately.** `pdl.py:253` and `:269` call
-> `yaml.safe_load` for `--data` and `-f` scope files, and they are untouched: those carry
-> data values rather than program text, and extending the rule to them is a separate
-> decision with a blast radius of its own that nobody has measured. The asymmetry is
-> stated in the release note rather than left to be discovered.
->
-> `for:` over a string (E-RUNTIME-012) remains the one part of this decision not yet
-> implemented.
+| change | entry | status |
+|---|---|---|
+| a mapping key written more than once | E-PARSE-003 | landed |
+| `for:` over a `str` or `bytes` | E-RUNTIME-012 | decided, in flight |
+| `parser: csv` with an unterminated quote | E-PARSER-004 | landed, **narrowed** — see below |
 
-> **A third change has since landed under this decision**, with the owner's explicit
-> sign-off: `parser: csv` rejects a quoted field that is never closed, instead of
-> swallowing the rest of the output into it and returning a wrong parse at exit 0.
->
-> Its blast radius was measured the same way and is smaller than the two above. Across
-> **263 `.pdl` files** in this repository — the figure that supersedes the 205 quoted
-> above, which was measured earlier and on a `--include=*.pdl` grep that also missed
-> non-`.pdl` call sites — exactly **one** uses `parser: csv`, plus **one** inline program
-> in `tests/test_parser.py:183`. Both are unaffected. Nothing in-tree breaks; the residual
-> risk is to user programs outside the repository, accepted and called out in the release
-> note.
->
-> **The scope was cut during implementation and that is the part worth reading**: the first
-> version also rejected text after a closing `"`, which `strict` cannot be asked to
-> separate, and which rejects a *trailing space* — breaking working programs to fix a parse
-> that was usually right. The owner narrowed it to the unterminated-quote class alone, at
-> the cost of PDL returning a parse the standard library flagged. Both the ruling and its
-> cost are in [7.10](#closing-finding-1s-worst-class-what-changed-and-what-was-left-alone).
-> Findings 2 and 3 of 7.10 are the remaining candidates and have **not** been decided.
+**Blast radius — one scan, re-runnable.**
+
+This figure was wrong three times, and wrong in the same direction every time, because
+each correction was a fresh ad-hoc grep with its own idea of what to count: **205** `.pdl`
+files, then **263**, then **265**; and a claim that no `for:` block binds a string
+literal, which was false. The fix is not a fourth number in the prose. It is
+`tests/errors/blast_radius.py`. Run it and paste what it prints:
+
+```
+census: 268 .pdl files (263 parse, 5 do not)
+  files that do not parse are corpus reproducers for parse errors:
+    tests/errors/corpus/E-LINT-002/prog.pdl
+    tests/errors/corpus/E-PARSE-001/prog.pdl
+    tests/errors/corpus/E-PARSE-002/prog.pdl
+    tests/errors/corpus/E-PARSE-003-merge-key/prog.pdl
+    tests/errors/corpus/E-PARSE-005/prog.pdl
+
+duplicate mapping keys: 4 site(s)
+    tests/errors/corpus/E-PARSE-003/prog.pdl:1 -> ['text']
+    tests/errors/corpus/E-PARSE-003-nested/prog.pdl:2 -> ['code']
+    tests/errors/corpus/E-PARSE-003-repeated/prog.pdl:1 -> ['text', 'defs']
+    tests/errors/corpus/E-PARSE-003-repeated/prog.pdl:4 -> ['x']
+
+`for:` bindings: 128 across 263 programs
+    112 bind a ${ ... } expression (runtime value; not visible here)
+    14 bind a literal list
+    2 bind a literal string or bytes  <- rejected by 5.5
+        tests/data/line/hello26.pdl  question: 'Hello'
+        tests/errors/corpus/E-RUNTIME-012/prog.pdl  i: 'abc'
+    0 bind some other literal
+
+`parser: csv`: 3 site(s) in .pdl files
+PDL programs embedded in .py test sources: 8
+    tests/test_fallback.py:98
+    tests/test_parser.py:106
+    tests/test_parser.py:114
+    tests/test_parser.py:126
+    tests/test_parser.py:183
+    tests/test_runtime_errors.py:62
+    tests/test_runtime_errors.py:67
+    tests/test_runtime_errors.py:73
+    (24 further hits in src/pdl/ are the implementation, not programs)
+```
+
+Reading it: **every duplicate-key site in the repository is a corpus reproducer that
+exists to demonstrate the bug.** Of the two `for:` bindings over a literal string, one is
+the E-RUNTIME-012 reproducer and the other is `tests/data/line/hello26.pdl`, a fixture for
+the *same-length* error that reached it by binding a 5-character string against a 2-item
+list — repaired, as part of the `for:` change, to a 5-element list so that it still tests
+what it was written to test rather than silently becoming a test of the new error.
+So no program that a user would recognise as working breaks, in-tree.
+
+*(The scan above is the **pre-change** tree, which is what a user's programs were written
+against. Re-running it afterwards will show the duplicate-key and `for:` sites reduced to
+the corpus reproducers alone; that is the change working, not a discrepancy.)*
+
+The `205 -> 268` drift is not the corpus growing. **205 was measured with `--include=*.pdl`,
+which missed both files and the PDL programs embedded in `.py` test sources** — the eight
+the scan now lists separately. That omission is why the count moved, and it is why the
+scan reports embedded programs as a first-class category instead of leaving them to a
+grep flag.
+
+**What the scan cannot see, stated so it is not rediscovered.** It is static: it loads
+each program as YAML and inspects literal values. It cannot evaluate `${ ... }`, so a
+binding whose expression yields a string at runtime is invisible to it — and 112 of the
+128 `for:` bindings are expressions. Its `for:` figure is therefore a **lower bound on
+affected sites**, and the interpreter's own semantic sweep (all `.pdl` under `examples/`
+and `tests/data/`, baseline run twice to screen for self-nondeterminism, comparing exit
+codes) is the authority. Both were run for each change and neither found a program that
+changed its exit code.
+
+The residual risk is to user programs outside this repository. Accepted, and called out
+in the release notes for each change.
+
+**Design notes worth keeping.**
+
+*Duplicate keys.* The check is in `load_with_marks`, not in the constructor, because that
+is the last moment at which *both* occurrences exist as nodes carrying their own marks —
+which is what lets the diagnostic say "this one, and the earlier one whose value it
+replaces" rather than "there is a duplicate". The exception is deliberately **not** a
+`yaml.YAMLError` and its message never says "not valid YAML": PyYAML parses the document
+without complaint, so a user checking the same file with another YAML tool would be told
+it is fine, and a diagnostic contradicting the tool beside it teaches distrust. It is a
+`PDLParseError`, so every existing handler keeps matching. `<<` merge keys are exempt
+outright — PyYAML honours *every* merge key in a mapping rather than the last, so a
+repeated `<<:` is a union that loses nothing — and the check runs pre-flatten, because
+after flattening a merged key that the mapping also states explicitly is indistinguishable
+from a repeat.
+
+*Scope excludes data files, deliberately.* `pdl.py:253` and `:269` call `yaml.safe_load`
+for `--data` and `-f` scope files and are untouched: those carry data values rather than
+program text, and extending the rule to them is a separate decision with a blast radius
+nobody has measured. Stated in the release note rather than left to be discovered.
+
+*`for:` was narrowed to `str` and `bytes` only.* The stricter reading — enforce the
+"must be lists" the message has always claimed — was rejected because it breaks working
+code: `examples/tutorial/pdl_scope.pdl` binds `${ pdl_scope.keys() }`, a `dict_keys`, and
+`.keys()` / `.values()` / `zip()` / generator expressions are natural in Jinja. Character
+iteration is never what anyone means; `dict_keys` iteration is at worst unsurprising.
+
+*`parser: csv` was narrowed during implementation, and that is the part worth reading.*
+The first version also rejected text after a closing `"`, which `strict` cannot be asked
+to separate, and which rejects a *trailing space* — breaking working programs to fix a
+parse that was usually right. The owner narrowed it to the unterminated-quote class
+alone, at the cost of PDL returning a parse the standard library flagged. Both the ruling
+and its cost are in
+[7.10](#closing-finding-1s-worst-class-what-changed-and-what-was-left-alone). Findings 2
+and 3 of 7.10 are the remaining candidates and have **not** been decided.
 
 **5.6 — Structured diagnostic records, with a renderer on top. DECIDED.**
 Every diagnostic becomes a record — `id`, `severity`, `file`, `span`, `block path`,

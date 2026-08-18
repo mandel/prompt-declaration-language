@@ -6,7 +6,7 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
-### A retry is reported as one line, not as a traceback
+### A retry is no longer reported at all
 
 A block with `retry:` that failed and was about to be retried used to print the
 whole Python stack, in hardcoded ANSI red whether or not stderr was a terminal —
@@ -22,30 +22,47 @@ pdl.pdl_ast.PDLRuntimeError: code block raised ValueError: transient failure
 ok on attempt 2
 ```
 
-It is now a notice, because that is what it is — PDL has already decided the
-error is recoverable at that point:
+Nothing is written now. A retry is a handled event, and a program that recovers
+— because a later attempt succeeded, or because `fallback:` produced a result —
+runs to its end with an empty standard error:
 
 ```console
 $ pdl prog.pdl
-prog.pdl:1:1 - retrying after ValueError: transient failure (attempt 1 of 2)
 ok on attempt 2
 ```
 
-The counter counts attempts rather than retries: `retry: 1` allows two attempts,
-so the first failure is `attempt 1 of 2`. `retry: -1` retries indefinitely and
-prints `(attempt 1)` with no total. A retry inside a nested block also gets the
-`  in <path>` line every other diagnostic has. Colour is emitted only when stderr
-is a terminal, and `NO_COLOR` is honoured.
-
 **What to update.** Anything grepping stderr for `[Retry i/n]` or for
-`An error occurred in a PDL block`. The blank lines that used to surround the
-banner are gone too.
+`An error occurred in a PDL block`: neither is ever emitted, so a grep for them
+now matches nothing rather than matching a new spelling. The blank lines that
+surrounded the banner are gone with it.
 
-**What does not change.** No program's semantics, result, stdout or exit code.
-In particular, `trace_error_on_retry: true` still appends the *full* error —
+**What does not change.** No program's semantics, result, stdout or exit code. A
+block that runs out of attempts still fails, with the same diagnostic and the
+same exit `1`. `trace_error_on_retry: true` still appends the *full* error —
 traceback included — to the background context, byte for byte as before: the
 model reading that context is a different audience from the person reading the
-terminal, and only the latter's copy was shortened.
+terminal, and only the latter's copy went away.
+
+**What you lose, in exchange.** Two things, both real, and neither of them a
+side effect — this is what suppressing the notice costs.
+
+*A long retry sequence now looks like a hang.* With `delay`/`backoff`, or with
+`retry: -1`, those lines were the only sign that PDL was doing anything at all
+between the start of a block and its result. A block that is waiting 30 seconds
+before its fourth attempt and a block that is stuck are now indistinguishable
+from the outside.
+
+*On a failure, only the last attempt's error survives.* When the attempts run
+out, the exception from the final one is what propagates and is reported; the
+earlier ones were previously on stderr and are now discarded entirely, with no
+copy kept anywhere. A block that fails three times for three different reasons
+— a timeout, then a bad response, then a parse error — reports the parse error
+alone, and the first two cannot be recovered from the output. The only remaining
+channel for that history is `trace_error_on_retry: true`, and it is aimed at the
+model rather than at you: it appends each attempt's error to the context the
+*next attempt* runs with, so a block inside the retried block can read it — it
+is not printed, and a successful final attempt leaves no trace of it in `--trace`
+output.
 
 ### `pdl-lint` now lints every path you name on the command line (**breaking**)
 

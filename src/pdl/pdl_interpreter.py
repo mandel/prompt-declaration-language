@@ -113,7 +113,6 @@ from .pdl_ast import (
     Pattern,
     PatternType,
     PdlCodeBlock,
-    PDLException,
     PDLImportError,
     PdlLocationType,
     PdlParser,
@@ -178,7 +177,6 @@ from .pdl_parser import (
 )
 from .pdl_python_repl import PythonREPL
 from .pdl_scheduler import (
-    colored_if_tty,
     yield_background,
     yield_result,
 )
@@ -483,79 +481,6 @@ def set_error_to_scope_for_retry(
         )
     }
     return scope
-
-
-def retry_cause(exc: BaseException) -> BaseException:
-    """The exception a retry notice should name: the one the user's code raised.
-
-    Everything that fails inside a block reaches the retry handler wrapped in a
-    `PDLRuntimeError`, so `type(exc).__name__` there is always the wrapper and
-    never the failure. `source_exception` is the channel that keeps the original
-    -- `PDLRuntimeError.__init__` already collapses it to the innermost one, and
-    the loop is for the exceptions that do not (`exception_matches` walks the
-    same links for the same reason).
-
-    Guarded against a cycle, because these links are set from caught exceptions
-    and nothing enforces that they form a tree.
-    """
-    seen: set[int] = {id(exc)}
-    while True:
-        source = getattr(exc, "source_exception", None)
-        if not isinstance(source, BaseException) or id(source) in seen:
-            return exc
-        seen.add(id(source))
-        exc = source
-
-
-def retry_notice(exc: BaseException, attempt: int, attempts: float) -> str:
-    """What a *human* is told when a block is about to be retried.
-
-    Deliberately not the string that goes into the scope beside it. This is one
-    line about a handled event on a run that may well succeed, so it says what
-    failed, that PDL is retrying, and where in the sequence of attempts that
-    leaves the block -- and nothing else. It carries no traceback: a stack of
-    interpreter frames describes a crash, and this is the branch PDL takes when
-    it has already decided the error is recoverable.
-
-    "retrying" leads, so that the first two words of a line on an otherwise
-    successful run say that nothing is wrong yet. The counter counts *attempts*,
-    not retries: `retry: 1` allows two attempts, and `[Retry 1/1]` -- the old
-    spelling -- reads as "the last retry" when it means "the first of two
-    attempts failed".
-
-    The cause is spelled `Type: message`, as `code:` blocks already spell one.
-
-    `retry: -1` (and `tries: -1`, its default) means retry indefinitely, so
-    `trial_total` is `inf` and there is no total to count towards: the notice
-    then numbers the attempt and stops, rather than printing `of inf`.
-    """
-    total = "" if attempts == float("inf") else f" of {int(attempts)}"
-    return f"retrying after {retry_cause_text(exc)} (attempt {attempt}{total})"
-
-
-def retry_cause_text(exc: BaseException) -> str:
-    """One bounded line naming the failure a retry notice is about.
-
-    `Type: message` for an exception from outside PDL, which is what the user
-    recognises and what `retry.exceptions` is written in terms of. For a PDL
-    exception that wraps nothing -- a `spec:` mismatch, a `parser:` failure, a
-    `code:` block that never assigned `result` -- the class name is internal
-    jargon and the message is already the diagnosis, so the first line of the
-    message is used on its own. Either way it is the *first* line and it is
-    clipped: a diagnostic that renders as a document elsewhere still gets one
-    line here.
-    """
-    root = retry_cause(exc)
-    if isinstance(root, PDLException):
-        text = root.text.split("\n", 1)[0]
-        label = "" if text else _safe_type_name(root)
-    else:
-        text = _safe_text(root).split("\n", 1)[0]
-        label = _safe_type_name(root)
-    line = f"{label}: {text}" if label and text else (label or text)
-    if len(line) > _RAISED_WIDTH:
-        line = line[:_RAISED_WIDTH] + _CLIP_MARK
-    return line
 
 
 def process_advanced_block(  # noqa: C901
@@ -912,31 +837,30 @@ def process_advance_block_retry(  # noqa: C901
             if block.fallback is None and not do_retry:
                 raise exc from exc
             if do_retry:
-                # Two audiences, two strings.
+                # A retry taken is not reported to the person running the
+                # program. Nothing is printed here, on any path: a block that
+                # recovers -- by a later attempt succeeding, or by `fallback:`
+                # -- must reach its end with stderr untouched, and PDL cannot
+                # know at this point which way the next attempt will go.
                 #
-                # `error` is what `trace_error_on_retry` feeds into
+                # Two consequences, both deliberate and both in the release
+                # note. A long retry sequence (backoff delays, or `retry: -1`)
+                # now shows no sign of progress, so a slow retry looks like a
+                # hang. And when the attempts run out only the *final*
+                # exception propagates, so a block that fails three times for
+                # three different reasons reports the third and loses the
+                # first two entirely.
+                #
+                # `error` is a different thing on a different channel and is
+                # unaffected. `trace_error_on_retry` feeds it into
                 # `pdl_context`, i.e. into the *model's* conversation for the
-                # next attempt: the whole point of that flag is that the model
-                # can read what went wrong, and traceback text is exactly the
-                # kind of detail it can act on.
-                # `set_error_to_scope_for_retry` also compares it byte for byte
-                # against the previous one to collapse a repeat, so its exact
-                # contents participate in control flow. It is unchanged.
-                #
-                # `notice` is what the person watching the run reads. A retry is
-                # a handled event on a run that may still succeed -- and usually
-                # does, or the block would not be retrying -- so it gets one
-                # located line, no stack, and colour only when a terminal is
-                # there to render it.
+                # next attempt -- the whole point of that flag is that the
+                # model can read what went wrong, and traceback text is exactly
+                # the kind of detail it can act on. It is also compared byte for
+                # byte against the previous one to collapse a repeat, so its
+                # contents participate in control flow rather than in output.
                 err_msg = traceback.format_exc()
                 error = f"An error occurred in a PDL block. Error details: {err_msg}"
-                notice = retry_notice(exc, trial_idx + 1, trial_total)
-                if loc is not None:
-                    notice = located_message(loc, notice)
-                print(
-                    colored_if_tty(notice, "yellow", sys.stderr),
-                    file=sys.stderr,
-                )
                 if block.trace_error_on_retry:
                     scope = set_error_to_scope_for_retry(scope, error, block.pdl__id)
 

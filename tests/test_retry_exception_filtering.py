@@ -8,6 +8,16 @@ import pytest
 from pdl.pdl import exec_dict
 from pdl.pdl_ast import PDLRuntimeError
 
+# Whether a retry was taken, observed in the program rather than in PDL's output.
+#
+# These tests used to read the `[Retry 1/2]` banner -- later the one-line retry
+# notice -- off stderr to tell that a retry had happened. Nothing is printed when
+# a retry is taken any more (E-RUNTIME-011), so each reproducer appends to a list
+# passed in through `scope` and the test counts the entries. `retry.tries: 2`
+# means three attempts, so a filter that matches gives three and one that does
+# not gives one.
+_COUNT_ATTEMPT = "attempts.append(1)\n"
+
 
 def test_retry_with_specific_exception_match():
     """Test that retry occurs when exception matches the specified type."""
@@ -18,6 +28,7 @@ def test_retry_with_specific_exception_match():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise ValueError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -30,16 +41,19 @@ def test_retry_with_specific_exception_match():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    # Should see the retry notice since ValueError matches
-    assert "retrying after ValueError: test exception (attempt 1 of 3)" in err_msg
+    # Should retry, since ValueError matches: three attempts for `tries: 2`
+    assert len(attempts) == 3
+    # And say nothing while doing it
+    assert err_msg == ""
 
 
 def test_retry_with_specific_exception_no_match():
@@ -51,6 +65,7 @@ def test_retry_with_specific_exception_no_match():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise RuntimeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -63,17 +78,19 @@ def test_retry_with_specific_exception_no_match():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     exception_raised = False
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except PDLRuntimeError:
             exception_raised = True
         err_msg = buf.getvalue()
 
-    # Should NOT see a retry notice since RuntimeError doesn't match ValueError
-    assert "retrying after" not in err_msg
+    # Should NOT retry, since RuntimeError doesn't match ValueError
+    assert len(attempts) == 1
+    assert err_msg == ""
     # Exception should be raised immediately
     assert exception_raised
 
@@ -87,6 +104,7 @@ def test_retry_with_exception_list_match():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise KeyError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -99,16 +117,18 @@ def test_retry_with_exception_list_match():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    # Should see the retry notice since KeyError is in the list
-    assert "retrying after KeyError: 'test exception' (attempt 1 of 3)" in err_msg
+    # Should retry, since KeyError is in the list
+    assert len(attempts) == 3
+    assert err_msg == ""
 
 
 def test_retry_with_exception_list_no_match():
@@ -120,6 +140,7 @@ def test_retry_with_exception_list_no_match():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise TypeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -132,17 +153,19 @@ def test_retry_with_exception_list_no_match():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     exception_raised = False
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except PDLRuntimeError:
             exception_raised = True
         err_msg = buf.getvalue()
 
-    # Should NOT see a retry notice since TypeError is not in the list
-    assert "retrying after" not in err_msg
+    # Should NOT retry, since TypeError is not in the list
+    assert len(attempts) == 1
+    assert err_msg == ""
     # Exception should be raised immediately
     assert exception_raised
 
@@ -156,6 +179,7 @@ def test_retry_with_default_exception():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise RuntimeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -168,16 +192,18 @@ def test_retry_with_default_exception():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    # Should see the retry notice since default Exception catches all
-    assert "retrying after RuntimeError: test exception (attempt 1 of 3)" in err_msg
+    # Should retry, since default Exception catches all
+    assert len(attempts) == 3
+    assert err_msg == ""
 
 
 def test_retry_backward_compatibility_integer():
@@ -189,6 +215,7 @@ def test_retry_backward_compatibility_integer():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise RuntimeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -198,16 +225,18 @@ def test_retry_backward_compatibility_integer():
         "retry": 2,  # Old-style integer retry
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    # Should see the retry notice - integer retry catches all exceptions
-    assert "retrying after RuntimeError: test exception (attempt 1 of 3)" in err_msg
+    # Should retry - integer retry catches all exceptions
+    assert len(attempts) == 3
+    assert err_msg == ""
 
 
 def test_retry_with_exception_hierarchy():
@@ -219,6 +248,7 @@ def test_retry_with_exception_hierarchy():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise KeyError('test exception')\n",  # KeyError is subclass of LookupError
                         "result = 'success'",
                     ]
@@ -231,16 +261,18 @@ def test_retry_with_exception_hierarchy():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data)
+            _ = exec_dict(data, scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    # Should see the retry notice since KeyError is a subclass of LookupError
-    assert "retrying after KeyError: 'test exception' (attempt 1 of 3)" in err_msg
+    # Should retry, since KeyError is a subclass of LookupError
+    assert len(attempts) == 3
+    assert err_msg == ""
 
 
 def test_retry_with_fallback_and_exception_filter():
@@ -252,6 +284,7 @@ def test_retry_with_fallback_and_exception_filter():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise TypeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -268,8 +301,11 @@ def test_retry_with_fallback_and_exception_filter():
     }
 
     # When exception doesn't match, it should go to fallback
-    result = exec_dict(data)
+    attempts: list[int] = []
+    result = exec_dict(data, scope={"attempts": attempts})
     assert result == "fallback result"
+    # Straight to the fallback: the filter does not match, so no retry
+    assert len(attempts) == 1
 
 
 def test_fallback_is_executed_only_once():
@@ -281,6 +317,7 @@ def test_fallback_is_executed_only_once():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise TypeError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -298,13 +335,17 @@ def test_fallback_is_executed_only_once():
 
     # `yield_result` streams the result of each executed block, so the fallback
     # would show up once per attempt if it were executed more than once.
+    attempts: list[int] = []
     out_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
-        result = exec_dict(data, config={"yield_result": True})
+        result = exec_dict(
+            data, config={"yield_result": True}, scope={"attempts": attempts}
+        )
         out_msg = buf.getvalue()
 
     assert result == "fallback result"
     assert out_msg.count("fallback result") == 1
+    assert len(attempts) == 1
 
 
 def test_retry_with_unknown_exception_name():
@@ -337,6 +378,7 @@ def test_retry_with_exception_matching_python_class():
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise ValueError('test exception')\n",
                         "result = 'success'",
                     ]
@@ -349,15 +391,17 @@ def test_retry_with_exception_matching_python_class():
         },
     }
 
+    attempts: list[int] = []
     err_msg = ""
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(data, scope={"exceptions": ValueError})
+            _ = exec_dict(data, scope={"exceptions": ValueError, "attempts": attempts})
         except Exception:  # pylint: disable=broad-except
             pass
         err_msg = buf.getvalue()
 
-    assert "retrying after ValueError: test exception (attempt 1 of 3)" in err_msg
+    assert len(attempts) == 3
+    assert err_msg == ""
 
 
 # Made with Bob

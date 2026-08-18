@@ -3,7 +3,17 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 
 from pdl.pdl import exec_dict
-from pdl.pdl_scheduler import colored_if_tty
+
+# How many times a block was actually run, taken from the program rather than
+# from anything PDL prints.
+#
+# A retry used to announce itself on stderr, and these tests read that line to
+# tell that a retry had happened at all. It is no longer printed on any path
+# (E-RUNTIME-011), so the count comes from a list passed in through `scope`,
+# which the `code:` block appends to on every attempt. That is the same fact,
+# observed where it happens instead of inferred from a message, and it pins the
+# attempt *count* exactly rather than just the first one.
+_COUNT_ATTEMPT = "attempts.append(1)\n"
 
 
 def repeat_retry_data(n: int):
@@ -16,6 +26,7 @@ def repeat_retry_data(n: int):
                     "lang": "python",
                     "code": {
                         "text": [
+                            _COUNT_ATTEMPT,
                             "raise ValueError('dummy exception')\n",
                             "result = 'World'",
                         ]
@@ -29,35 +40,32 @@ def repeat_retry_data(n: int):
     }
 
 
-def repeat_retry(n: int, should_be_no_error: bool = False):
+def repeat_retry(n: int):
+    attempts: list[int] = []
     err_msg = ""
     # catch stdout string
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(repeat_retry_data(n))
+            _ = exec_dict(repeat_retry_data(n), scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
 
-    if should_be_no_error:
-        assert err_msg == ""
-    else:
-        assert (
-            f"retrying after ValueError: dummy exception (attempt 1 of {n + 1})"
-            in err_msg
-        )
-        # `retry: n` allows n retries, so n + 1 attempts. The notice counts
-        # attempts, and it is a notice: no traceback on a path PDL is recovering
-        # from (E-RUNTIME-011).
-        assert "Traceback (most recent call last)" not in err_msg
+    # `retry: n` allows n retries, so n + 1 attempts.
+    assert len(attempts) == n + 1
+    # And a retry is silent, whichever way it ends: this block never succeeds,
+    # so every attempt but the last was a retry taken, and the run still writes
+    # nothing of its own (E-RUNTIME-011). The final error is raised, not
+    # printed, and is swallowed above.
+    assert err_msg == ""
 
 
 # def test_repeat_retry_negative():
-#     repeat_retry(-1, should_be_no_error=True)
+#     repeat_retry(-1)
 
 
 def test_repeat_retry0():
-    repeat_retry(0, should_be_no_error=True)
+    repeat_retry(0)
 
 
 def test_repeat_retry1():
@@ -80,6 +88,7 @@ def code_retry_data(n: int):
                 "lang": "python",
                 "code": {
                     "text": [
+                        _COUNT_ATTEMPT,
                         "raise ValueError('dummy exception')\n",
                         "result = 'hello, world!'",
                     ]
@@ -90,31 +99,26 @@ def code_retry_data(n: int):
     }
 
 
-def code_retry(n: int, should_be_no_error: bool = False):
+def code_retry(n: int):
+    attempts: list[int] = []
     err_msg = ""
     # catch stdout string
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(code_retry_data(n))
+            _ = exec_dict(code_retry_data(n), scope={"attempts": attempts})
         except Exception:
             pass
         err_msg = buf.getvalue()
-    if should_be_no_error:
-        assert err_msg == ""
-    else:
-        assert (
-            f"retrying after ValueError: dummy exception (attempt 1 of {n + 1})"
-            in err_msg
-        )
-        assert "Traceback (most recent call last)" not in err_msg
+    assert len(attempts) == n + 1
+    assert err_msg == ""
 
 
 # def test_code_retry_negative():
-#     code_retry(-1, should_be_no_error=True)
+#     code_retry(-1)
 
 
 def test_code_retry0():
-    code_retry(0, should_be_no_error=True)
+    code_retry(0)
 
 
 def test_code_retry1():
@@ -134,30 +138,71 @@ def test_code_retry3():
 # ============================================================================
 
 
-def test_retry_notice_has_no_ansi_when_stderr_is_not_a_terminal():
-    """The notice used to carry `\\033[0;31m` ... `\\033[0m` unconditionally.
+def test_a_retry_that_succeeds_reports_nothing():
+    """The whole point of E-RUNTIME-011: a run that recovers is a quiet run.
 
-    Piping stderr to a file or a CI log embedded the escape codes in it.
+    The block fails once and succeeds on its second attempt, so from outside
+    nothing went wrong -- the program produces its result and exits 0. Anything
+    on stderr is then noise a user has to read and dismiss, and this is the
+    reproducer the corpus entry pins byte for byte.
     """
+    data = {
+        "description": "A retry that succeeds on the second attempt",
+        "lang": "python",
+        "retry": 1,
+        "code": (
+            "n = getattr(PDL_SESSION, 'quiet_attempt', 0) + 1\n"
+            "PDL_SESSION.quiet_attempt = n\n"
+            "if n == 1:\n"
+            "    raise ValueError('transient failure')\n"
+            "result = f'ok on attempt {n}'\n"
+        ),
+    }
+
+    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
+        result = exec_dict(data)
+        captured = buf.getvalue()
+
+    assert result == "ok on attempt 2"
+    assert captured == ""
+
+
+def test_a_retry_that_exhausts_reports_only_the_final_error():
+    """The failure path is silent about the retries too, deliberately.
+
+    Nothing is printed when a retry is taken, on any path, so a block that runs
+    out of attempts reports the exception from the *last* one and no history of
+    the earlier ones. That is a real loss on the failure path -- three attempts
+    failing for three different reasons now surface only the third -- and it is
+    pinned here so that it stays a decision rather than becoming an accident in
+    either direction.
+    """
+    attempts: list[int] = []
+    data = {
+        "description": "A retry that never succeeds",
+        "lang": "python",
+        "retry": 2,
+        "code": (
+            "attempts.append(1)\n"
+            "raise ValueError(f'attempt {len(attempts)} failed')\n"
+        ),
+    }
+
+    raised = None
     with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
         try:
-            _ = exec_dict(code_retry_data(1))
-        except Exception:  # pylint: disable=broad-except
-            pass
-        err_msg = buf.getvalue()
+            _ = exec_dict(data, scope={"attempts": attempts})
+        except Exception as exc:  # pylint: disable=broad-except
+            raised = exc
+        captured = buf.getvalue()
 
-    assert "retrying after" in err_msg
-    assert "\033" not in err_msg
-
-
-def test_colored_if_tty_needs_a_terminal():
-    """The gate itself, including the stream that cannot answer the question."""
-
-    class _NoIsatty:  # pylint: disable=too-few-public-methods
-        pass
-
-    assert colored_if_tty("notice", "yellow", io.StringIO()) == "notice"
-    assert colored_if_tty("notice", "yellow", _NoIsatty()) == "notice"  # type: ignore
+    assert len(attempts) == 3
+    assert captured == ""
+    # Only the last attempt's cause survives, and it is raised rather than
+    # printed: the CLI is what turns it into a diagnostic.
+    assert raised is not None
+    assert "attempt 3 failed" in str(raised)
+    assert "attempt 1 failed" not in str(raised)
 
 
 def test_trace_error_on_retry_keeps_the_full_error_in_the_context():
@@ -166,9 +211,13 @@ def test_trace_error_on_retry_keeps_the_full_error_in_the_context():
     `trace_error_on_retry` puts the error into `pdl_context` -- into the *model's*
     conversation for the next attempt, which is the entire point of the flag --
     and `set_error_to_scope_for_retry` compares it against the previous one to
-    collapse a repeat. Shortening what is *printed* must not shorten that, and
+    collapse a repeat. Changing what is *printed* must not change that, and
     nothing else in the suite reads the injected message, so the regression would
     be invisible.
+
+    That string is now the only consumer of the error text at all: nothing is
+    printed for the human on this path any more, so this test is the only thing
+    standing between the detailed message and a well-meant simplification.
     """
     data = {
         "description": "A retry that succeeds, reporting the context it was given",
@@ -193,12 +242,8 @@ def test_trace_error_on_retry_keeps_the_full_error_in_the_context():
     assert "Traceback (most recent call last):" in result
     assert "ValueError: boom" in result
 
-    # What the person watching is told: one line, no stack.
-    assert err_msg.count("\n") == 1
-    assert err_msg.rstrip("\n").endswith(
-        "retrying after ValueError: boom (attempt 1 of 2)"
-    )
-    assert "Traceback" not in err_msg
+    # What the person watching is told: nothing. The run recovered.
+    assert err_msg == ""
 
 
 # ============================================================================

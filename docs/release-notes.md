@@ -6,6 +6,50 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### `for:` over a string or bytes is now an error (**breaking**)
+
+**A program that exits `0` today can exit `1` after this change.**
+
+A `for:` binding is iterated one element at a time, and a string's elements are
+its characters. So this ran the body three times, once per character:
+
+```console
+$ pdl prog.pdl        # for: {i: "abc"} / repeat: ${ i }
+abc
+$ echo $?
+0
+```
+
+The output is the reason this went unnoticed for so long: in a text loop the
+characters join back into the original string, so it looks exactly like a single
+iteration over the whole value. The cost only shows up when the body does real
+work — a `model:` call per character rather than one, and a bill to match.
+
+It now reports the binding, what iterating it would actually do, and how to say
+what you meant:
+
+```
+prog.pdl:2:3 - `for:` needs a list, but `i` is bound to a 3-character string
+  in for.i
+
+2 |   i: "abc"
+  |   ^ a string, not a list
+
+  note: the 3 iterations would bind `i` to "a", "b" and "c".
+  help: write `i: ["abc"]` to run the body once for the whole string, or split
+        it into the elements you meant, with `.split()` or `.splitlines()`.
+```
+
+**Only `str`, `bytes` and `bytearray` are rejected.** Every other iterable keeps
+working, deliberately: `${ x.keys() }`, `${ x.values() }`, `zip(...)`, a
+generator expression and a plain dict are all still valid `for:` bindings. The
+stricter rule — enforcing the "must be lists" the old message always claimed —
+was considered and rejected, because those forms are ordinary Jinja and appear in
+shipped examples.
+
+If you were relying on character iteration, `${ "abc" | list }` or a `.split()`
+gives you it explicitly.
+
 ### A repeated YAML key in a program is now an error (**breaking**)
 
 **A program that exits `0` today can exit `1` after this change.** Like the

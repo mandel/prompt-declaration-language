@@ -1,15 +1,14 @@
 {
   "id": "E-RUNTIME-012",
-  "title": "for over a string iterates characters",
+  "title": "for over a string is rejected",
   "severity": "S0",
-  "expect_exit": 0,
+  "expect_exit": 1,
   "rubric": {
-    "location": 0,
-    "what": 0,
-    "why": 0,
-    "fix": 0,
-    "hygiene": 0,
-    "hygiene_silent_failure": true
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
   },
-  "notes": "No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error."
+  "notes": "Was 0/0/0/0/0 + SIL: `for: {i: \"abc\"}` iterated the three characters and exited 0. Decision 5.5 makes it an error. The guard tested `isinstance(lst, Iterable)` while its own message said \"must be lists\", so every iterable passed; it now rejects `str`/`bytes`/`bytearray` and keeps everything else, because `${ x.keys() }` is ordinary Jinja and `examples/tutorial/pdl_scope.pdl` depends on it. Why is 3 rather than 2 because the diagnostic explains the *silence*, not just the rule: a text loop joins the characters back into the original string, so the output looked right while the body ran once per character -- which is the whole reason this scored 0 before. The `note:` quotes the first characters by name from the user's own value, and is capped at three because the bound value is a runtime one and a 40 kB model output is a plausible binding."
 }

@@ -148,6 +148,7 @@ from .pdl_context import (
 from .pdl_diagnostics import (
     Diagnostic,
     csv_error_is_unclosed_quote,
+    for_not_a_list_diagnostic,
     import_read_diagnostic,
     parser_csv_diagnostic,
     parser_group_diagnostic,
@@ -1533,6 +1534,39 @@ def _split_map_output(
 BlockTVarEvalFor = TypeVar("BlockTVarEvalFor", bound=RepeatBlock | MapBlock)
 
 
+def _for_not_a_list_error(
+    block: RepeatBlock | MapBlock, var: str, value: Any
+) -> PDLRuntimeError:
+    """E-RUNTIME-012, for one binding of a `for:`.
+
+    Both branches of the guard arrive here: the value with no elements at all,
+    which already raised, and `str`/`bytes`, which used to be iterated one
+    character at a time at exit 0 (decision 5.5).
+
+    The location is `for.<var>` exactly as before, so a program that failed here
+    yesterday reports the same line, column and block path today. The *excerpt*
+    is drawn only when the source really has a mark for that path: `append`
+    carries an ancestor's position down on a miss, and a caret pointed at it
+    would name a line the binding is not on.
+    """
+    lst_loc = append(append(block.pdl__location or empty_block_location, "for"), var)
+    target = _marked_path(block.pdl__location, "for", var)
+    exact = target is not None and list(target.path[-2:]) == ["for", var]
+    message = for_not_a_list_diagnostic(
+        var=var,
+        value=value,
+        source=source_text(target.file) if exact and target is not None else None,
+        line=target.line if exact and target is not None else None,
+        col=target.col if exact and target is not None else None,
+    ).text
+    return PDLRuntimeError(
+        message=message,
+        loc=lst_loc,
+        trace=ErrorBlock(msg=message, pdl__location=lst_loc, program=block),
+        fallback=[],
+    )
+
+
 def _evaluate_for_field(
     scope: ScopeType, block: BlockTVarEvalFor, loc: PdlLocationType
 ) -> Tuple[BlockTVarEvalFor, dict[str, list] | None, int | None]:
@@ -1544,18 +1578,10 @@ def _evaluate_for_field(
         lengths = []
         items_res = {}
         for idx, lst in items.items():
-            if not isinstance(lst, Iterable):
-                msg = f"Values inside the For block must be lists but got {type(lst)}."
-                lst_loc = append(
-                    append(block.pdl__location or empty_block_location, "for"),
-                    idx,
-                )
-                raise PDLRuntimeError(
-                    message=msg,
-                    loc=lst_loc,
-                    trace=ErrorBlock(msg=msg, pdl__location=lst_loc, program=block),
-                    fallback=[],
-                )
+            if isinstance(lst, (str, bytes, bytearray)) or not isinstance(
+                lst, Iterable
+            ):
+                raise _for_not_a_list_error(block, idx, lst)
             lst = list(lst)
             items_res[idx] = lst
             lengths.append(len(lst))

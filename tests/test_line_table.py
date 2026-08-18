@@ -473,8 +473,17 @@ line30 = {
     "file": "tests/data/line/hello30.pdl",
     "errors": [
         "",
-        "tests/data/line/hello30.pdl:6:3 - Values inside the For block must be lists but got <class 'int'>.",
+        "tests/data/line/hello30.pdl:6:3 - `for:` needs a list, but `k` is bound to the integer `42`",
         "  in for.k",
+        "",
+        "6 |   k: ${ val }",
+        "  |   ^ an integer, not a list",
+        "",
+        "  A `for:` binding is iterated one element at a time. This value has no",
+        "  elements, so there is nothing for the loop to iterate.",
+        "",
+        "  help: write `k: [42]` to run the body once for it, or bind an expression",
+        "        that yields a list.",
     ],
 }
 

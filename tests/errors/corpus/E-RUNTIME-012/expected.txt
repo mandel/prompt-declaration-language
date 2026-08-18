@@ -1,7 +1,21 @@
-$ exit: 0
+$ exit: 1
 
 --- stdout ---
-abc
+(empty)
 
 --- stderr ---
-(empty)
+prog.pdl:2:3 - `for:` needs a list, but `i` is bound to a 3-character string
+  in for.i
+
+2 |   i: "abc"
+  |   ^ a string, not a list
+
+  A `for:` binding is iterated one element at a time. Iterating a string gives
+  its characters, so this loop would run 3 times, once per character, rather
+  than once for the string as a whole. In a text loop the characters then join
+  back into the original string, so the output can look correct while the body
+  has run once for every character in it.
+
+  note: the 3 iterations would bind `i` to "a", "b" and "c".
+  help: write `i: ["abc"]` to run the body once for the whole string, or split
+        it into the elements you meant, with `.split()` or `.splitlines()`.

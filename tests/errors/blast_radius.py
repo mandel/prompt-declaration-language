@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 import sys
 from collections import Counter
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +45,7 @@ EXPR = re.compile(r"\$\{")
 PY_KEYS = ("parser: csv", "parser: yaml", "parser: json")
 
 
-class _DupDetectingLoader(yaml.SafeLoader):
+class _DupDetectingLoader(yaml.SafeLoader):  # pylint: disable=too-many-ancestors
     """SafeLoader that records duplicate mapping keys instead of dropping them."""
 
 
@@ -61,6 +62,51 @@ def _install_dup_detector(sink: list[tuple[int, list[Any]]]) -> None:
     )
 
 
+def _rel(path: Path) -> Path:
+    return path.relative_to(REPO)
+
+
+@dataclass
+class Census:
+    """Every `.pdl` file, whether it parses, and its duplicate-key sites."""
+
+    parsed: list[tuple[Path, Any]] = field(default_factory=list)
+    unparseable: list[Path] = field(default_factory=list)
+    dup_sites: list[tuple[Path, int, list[Any]]] = field(default_factory=list)
+    total: int = 0
+
+
+@dataclass
+class ForStats:
+    """Every `for:` binding in the corpus, split by what it binds."""
+
+    bindings: int = 0
+    expression_valued: int = 0
+    list_valued: int = 0
+    literal_text: list[tuple[Path, str, str]] = field(default_factory=list)
+    literal_other: list[tuple[Path, str, str]] = field(default_factory=list)
+
+
+def _take_census() -> Census:
+    census = Census()
+    paths = sorted(REPO.rglob("*.pdl"))
+    census.total = len(paths)
+    for path in paths:
+        sink: list[tuple[int, list[Any]]] = []
+        _install_dup_detector(sink)
+        try:
+            data = yaml.load(
+                path.read_text(encoding="utf-8"), Loader=_DupDetectingLoader
+            )
+        except Exception:  # pylint: disable=broad-except
+            census.unparseable.append(path)
+            continue
+        census.parsed.append((path, data))
+        for lineno, keys in sink:
+            census.dup_sites.append((path, lineno, keys))
+    return census
+
+
 def _walk_for_bindings(node: Any, out: list[tuple[str, Any]]) -> None:
     """Collect every `for:` binding's name and literal value."""
     if isinstance(node, dict):
@@ -73,6 +119,24 @@ def _walk_for_bindings(node: Any, out: list[tuple[str, Any]]) -> None:
     elif isinstance(node, list):
         for value in node:
             _walk_for_bindings(value, out)
+
+
+def _for_stats(parsed: list[tuple[Path, Any]]) -> ForStats:
+    stats = ForStats()
+    for path, data in parsed:
+        found: list[tuple[str, Any]] = []
+        _walk_for_bindings(data, found)
+        for name, value in found:
+            stats.bindings += 1
+            if isinstance(value, str) and EXPR.search(value):
+                stats.expression_valued += 1
+            elif isinstance(value, (str, bytes)):
+                stats.literal_text.append((path, name, repr(value)[:60]))
+            elif isinstance(value, list):
+                stats.list_valued += 1
+            else:
+                stats.literal_other.append((path, name, type(value).__name__))
+    return stats
 
 
 def _count_parser_csv(node: Any) -> int:
@@ -88,51 +152,15 @@ def _count_parser_csv(node: Any) -> int:
     return total
 
 
-def main() -> int:
-    pdl_files = sorted(REPO.rglob("*.pdl"))
-    parsed: list[tuple[Path, Any]] = []
-    unparseable: list[Path] = []
-    dup_sites: list[tuple[Path, int, list[Any]]] = []
+def _py_hits() -> tuple[list[str], int]:
+    """Embedded PDL programs in .py sources, and implementation hits separately.
 
-    for path in pdl_files:
-        sink: list[tuple[int, list[Any]]] = []
-        _install_dup_detector(sink)
-        try:
-            data = yaml.load(path.read_text(encoding="utf-8"), Loader=_DupDetectingLoader)
-        except Exception:  # pylint: disable=broad-except
-            unparseable.append(path)
-            continue
-        parsed.append((path, data))
-        for line, keys in sink:
-            dup_sites.append((path, line, keys))
-
-    literal_str: list[tuple[Path, str, str]] = []
-    literal_other: list[tuple[Path, str, str]] = []
-    expression_valued = 0
-    list_valued = 0
-    bindings = 0
-
-    for path, data in parsed:
-        found: list[tuple[str, Any]] = []
-        _walk_for_bindings(data, found)
-        for name, value in found:
-            bindings += 1
-            if isinstance(value, str) and EXPR.search(value):
-                expression_valued += 1
-            elif isinstance(value, (str, bytes)):
-                literal_str.append((path, name, repr(value)[:60]))
-            elif isinstance(value, list):
-                list_valued += 1
-            else:
-                literal_other.append((path, name, type(value).__name__))
-
-    csv_sites = sum(_count_parser_csv(d) for _, d in parsed)
-
-    # Hits inside `src/pdl/` are the implementation handling these keys, not PDL
-    # programs; counting them together with embedded test programs produced a
-    # number that looked alarming and meant nothing. Split them.
-    py_hits: list[str] = []
-    impl_hits = 0
+    Hits inside `src/pdl/` are the implementation handling these keys, not PDL
+    programs; counting them together produced a number that looked alarming and
+    meant nothing.
+    """
+    hits: list[str] = []
+    impl = 0
     for py in sorted(REPO.rglob("*.py")):
         if py.name == Path(__file__).name:
             continue
@@ -141,41 +169,59 @@ def main() -> int:
         except Exception:  # pylint: disable=broad-except
             continue
         is_impl = "src/pdl/" in py.as_posix()
-        for num, line in enumerate(text.splitlines(), 1):
-            if any(key in line for key in PY_KEYS):
+        for num, source_line in enumerate(text.splitlines(), 1):
+            if any(key in source_line for key in PY_KEYS):
                 if is_impl:
-                    impl_hits += 1
+                    impl += 1
                 else:
-                    py_hits.append(f"{py.relative_to(REPO)}:{num}")
+                    hits.append(f"{_rel(py)}:{num}")
+    return hits, impl
 
-    rel = lambda p: p.relative_to(REPO)  # noqa: E731
 
-    print(f"census: {len(pdl_files)} .pdl files "
-          f"({len(parsed)} parse, {len(unparseable)} do not)")
+def _print_census(census: Census) -> None:
+    print(
+        f"census: {census.total} .pdl files "
+        f"({len(census.parsed)} parse, {len(census.unparseable)} do not)"
+    )
     print("  files that do not parse are corpus reproducers for parse errors:")
-    for path in unparseable:
-        print(f"    {rel(path)}")
+    for path in census.unparseable:
+        print(f"    {_rel(path)}")
 
-    print(f"\nduplicate mapping keys: {len(dup_sites)} site(s)")
-    for path, line, keys in dup_sites:
-        print(f"    {rel(path)}:{line} -> {keys}")
+    print(f"\nduplicate mapping keys: {len(census.dup_sites)} site(s)")
+    for path, lineno, keys in census.dup_sites:
+        print(f"    {_rel(path)}:{lineno} -> {keys}")
 
-    print(f"\n`for:` bindings: {bindings} across {len(parsed)} programs")
-    print(f"    {expression_valued} bind a ${{ ... }} expression (runtime value; not visible here)")
-    print(f"    {list_valued} bind a literal list")
-    print(f"    {len(literal_str)} bind a literal string or bytes  <- rejected by 5.5")
-    for path, name, value in literal_str:
-        print(f"        {rel(path)}  {name}: {value}")
-    print(f"    {len(literal_other)} bind some other literal")
-    for path, name, kind in literal_other:
-        print(f"        {rel(path)}  {name}: <{kind}>")
 
+def _print_for_stats(stats: ForStats, programs: int) -> None:
+    print(f"\n`for:` bindings: {stats.bindings} across {programs} programs")
+    print(
+        f"    {stats.expression_valued} bind a ${{ ... }} expression "
+        f"(runtime value; not visible here)"
+    )
+    print(f"    {stats.list_valued} bind a literal list")
+    print(
+        f"    {len(stats.literal_text)} bind a literal string or bytes"
+        f"  <- rejected by 5.5"
+    )
+    for path, name, value in stats.literal_text:
+        print(f"        {_rel(path)}  {name}: {value}")
+    print(f"    {len(stats.literal_other)} bind some other literal")
+    for path, name, kind in stats.literal_other:
+        print(f"        {_rel(path)}  {name}: <{kind}>")
+
+
+def main() -> int:
+    census = _take_census()
+    _print_census(census)
+    _print_for_stats(_for_stats(census.parsed), len(census.parsed))
+
+    csv_sites = sum(_count_parser_csv(d) for _, d in census.parsed)
+    hits, impl = _py_hits()
     print(f"\n`parser: csv`: {csv_sites} site(s) in .pdl files")
-    print(f"PDL programs embedded in .py test sources: {len(py_hits)}")
-    for hit in py_hits:
+    print(f"PDL programs embedded in .py test sources: {len(hits)}")
+    for hit in hits:
         print(f"    {hit}")
-    print(f"    ({impl_hits} further hits in src/pdl/ are the implementation, not programs)")
-
+    print(f"    ({impl} further hits in src/pdl/ are the implementation, not programs)")
     return 0
 
 

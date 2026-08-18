@@ -2793,3 +2793,204 @@ def unlocated_schema_diagnostic(file: str) -> Diagnostic:
         notes=[Note("rule", _UNLOCATED_RULE), Note("note", _UNLOCATED_NOTE)],
         suggestions=[Suggestion(_UNLOCATED_HELP)],
     )
+
+
+# --------------------------------------------------------------------------
+# `for:` bindings: E-RUNTIME-012
+# --------------------------------------------------------------------------
+#
+# Decision 5.5's other semantic change. The guard at the raise site tested
+# `isinstance(lst, Iterable)` while its message said "must be lists", so `str`,
+# `bytes`, `dict`, `set`, generators and `dict_keys` all passed it. Only `str`
+# and `bytes` are rejected now: iterating characters -- or bytes as integers --
+# is never what a `for:` means, while a `dict_keys` from `${ x.keys() }` is
+# ordinary Jinja and is left working.
+#
+# Two diagnostics share this section because they share a rule. The string one
+# reports a program that used to *succeed*, so it carries the reason the success
+# was false: a text loop joins the characters back into the original string, and
+# the output looks right while the body has run once per character.
+
+_FOR_RULE = "A `for:` binding is iterated one element at a time."
+
+
+def _for_headline(var: str, bound: str) -> str:
+    """One sentence shape for all three branches: the rule, then what was found."""
+    return f"`for:` needs a list, but `{var}` is bound to {bound}"
+
+
+_FOR_SPLIT_HELP = (
+    "or split it into the elements you meant, with `.split()` or `.splitlines()`."
+)
+
+_ITERATIONS_SHOWN = 3
+"""How many of a string's characters are named individually in the `note:`.
+
+The value is a runtime one and unbounded -- a 40 kB model output is a plausible
+`for:` binding -- so it is counted in full and quoted in part, never
+interpolated whole."""
+
+
+def _character_note(var: str, value: str) -> str:
+    """What the first iterations would actually bind, in the user's own text."""
+    total = len(value)
+    shown = [json.dumps(c) for c in value[:_ITERATIONS_SHOWN]]
+    listed = ", ".join(shown[:-1]) + f" and {shown[-1]}" if len(shown) > 1 else shown[0]
+    if total <= _ITERATIONS_SHOWN:
+        head = (
+            f"the {total} iterations would bind"
+            if total > 1
+            else "the one iteration would bind"
+        )
+        return f"{head} `{var}` to {listed}."
+    return (
+        f"the first {len(shown)} of {total} iterations would bind `{var}` to {listed}."
+    )
+
+
+def _for_string_diagnostic(var: str, value: str) -> tuple[str, str, str, Suggestion]:
+    """Headline, caret label, rule and help for a `for:` over text."""
+    total = len(value)
+    if total == 0:
+        headline = _for_headline(var, "an empty string")
+        rule = (
+            f"{_FOR_RULE} Iterating a string gives its characters, and this string "
+            "has none, so the body would never run at all."
+        )
+    else:
+        headline = _for_headline(var, f"a {total}-character string")
+        times = "once" if total == 1 else f"{total} times"
+        rule = (
+            f"{_FOR_RULE} Iterating a string gives its characters, so this loop "
+            f"would run {times}, once per character, rather than once for the "
+            "string as a whole. In a text loop the characters then join back "
+            "into the original string, so the output can look correct while the "
+            "body has run once for every character in it."
+        )
+    inline = _inline_value(value)
+    if inline:
+        help_text = (
+            f"write `{var}: [{inline}]` to run the body once for the whole "
+            f"string, {_FOR_SPLIT_HELP}"
+        )
+    else:
+        help_text = (
+            "wrap the expression in a list -- `${ [ ... ] }` -- to run the body "
+            f"once for the whole string, {_FOR_SPLIT_HELP}"
+        )
+    return headline, "a string, not a list", rule, Suggestion(help_text)
+
+
+def _for_bytes_diagnostic(var: str, value: bytes) -> tuple[str, str, str, Suggestion]:
+    """Headline, caret label, rule and help for a `for:` over binary data.
+
+    Rejected alongside `str` and described apart from it, because iterating
+    `bytes` binds *integers*: a message about characters would be wrong here.
+    """
+    total = len(value)
+    if total == 0:
+        headline = _for_headline(var, "empty binary data")
+        rule = (
+            f"{_FOR_RULE} Iterating binary data gives one integer per byte, and "
+            "this value has no bytes, so the body would never run at all."
+        )
+    else:
+        headline = _for_headline(var, f"{total} bytes of binary data")
+        times = "once" if total == 1 else f"{total} times"
+        rule = (
+            f"{_FOR_RULE} Iterating binary data gives one integer per byte, so "
+            f"this loop would run {times}, binding `{var}` to a number between 0 "
+            "and 255 each time, rather than once for the value as a whole."
+        )
+    return (
+        headline,
+        "binary data, not a list",
+        rule,
+        Suggestion(
+            "wrap the expression in a list -- `${ [ ... ] }` -- to run the body "
+            "once for the whole value, or decode it to text and split it into "
+            "the elements you meant."
+        ),
+    )
+
+
+def _for_scalar_diagnostic(var: str, value: Any) -> tuple[str, str, str, Suggestion]:
+    """Headline, caret label, rule and help for a `for:` over a value with no elements.
+
+    This is the branch that already raised, and it raised with
+    `but got <class 'int'>` -- a Python repr in a message the user reads. The
+    guard does not change here; only its vocabulary does.
+    """
+    name = _pdl_type(value)
+    inline = _inline_value(value)
+    if name == "null":
+        # `[null]` is a legal edit and almost never the intended one: a `for:`
+        # over `null` is an expression that produced nothing, not a loop over a
+        # one-element list. The generic help is the honest one here.
+        inline = ""
+        bound = "`null`"
+        label = "`null`, not a list"
+    elif name and inline:
+        bound = f"the {name} `{inline}`"
+        label = f"{_with_article(name)}, not a list"
+    elif name:
+        bound = _with_article(name)
+        label = f"{_with_article(name)}, not a list"
+    else:
+        bound = "a value that is not a list"
+        label = "not a list"
+    rule = (
+        f"{_FOR_RULE} This value has no elements, so there is nothing for the "
+        "loop to iterate."
+    )
+    if inline:
+        help_text = (
+            f"write `{var}: [{inline}]` to run the body once for it, or bind an "
+            "expression that yields a list."
+        )
+    else:
+        help_text = "bind a list, or an expression that yields one."
+    return _for_headline(var, bound), label, rule, Suggestion(help_text)
+
+
+def for_not_a_list_diagnostic(
+    *,
+    var: str,
+    value: Any,
+    source: str | None = None,
+    line: int | None = None,
+    col: int | None = None,
+) -> Diagnostic:
+    """E-RUNTIME-012. A `for:` binding that is not a list.
+
+    `source`/`line`/`col` are the mark of `for.<var>` itself, and are passed only
+    when the source really has one: the caret has to land on the binding the
+    message names, and pointing it at an ancestor's line would be the confidently
+    wrong location `RUBRIC.md` ranks below no excerpt at all.
+
+    No `file` and no `block_path`: the header prefix and the `  in <path>` line
+    are added by `located_message` at the raise site, as they are for the
+    `parser:` series.
+    """
+    notes: list[Note] = []
+    if isinstance(value, str):
+        headline, label, rule, suggestion = _for_string_diagnostic(var, value)
+        if value:
+            notes.append(Note("note", _character_note(var, value)))
+    elif isinstance(value, (bytes, bytearray)):
+        headline, label, rule, suggestion = _for_bytes_diagnostic(var, bytes(value))
+    else:
+        headline, label, rule, suggestion = _for_scalar_diagnostic(var, value)
+    spans = (
+        [Span(line=line, col=col, label=label, primary=True)]
+        if source is not None and line is not None
+        else []
+    )
+    return Diagnostic(
+        code="E-RUNTIME-012",
+        message=headline,
+        spans=spans,
+        source=source,
+        notes=[Note("rule", rule)] + notes,
+        suggestions=[suggestion],
+    )

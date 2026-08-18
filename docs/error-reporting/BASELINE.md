@@ -6,10 +6,10 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 ## Summary
 
-- **64 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
-- **623 / 930** rubric points (**67%**), over the **62** scored entries.
+- **65 corpus entries**, covering 55 of the **69** error IDs in the taxonomy.
+- **653 / 945** rubric points (**69%**), over the **63** scored entries.
 - **0 entries leak a Python traceback** to the user.
-- **2 entries fail silently** — a broken program that exits 0 and reports nothing at all.
+- **1 entry fails silently** — a broken program that exits 0 and reports nothing at all.
 
 **14 taxonomy IDs have no reproducer**, so every score below is a score of the covered subset and not of PDL's diagnostics as a whole:
 
@@ -23,11 +23,11 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 
 | Dimension | Score | of | Mean |
 | --- | ---: | ---: | ---: |
-| Location | 111 | 186 | 1.79 |
-| What | 135 | 186 | 2.18 |
-| Why | 131 | 186 | 2.11 |
-| Fix | 82 | 186 | 1.32 |
-| Hygiene | 164 | 186 | 2.65 |
+| Location | 117 | 189 | 1.86 |
+| What | 141 | 189 | 2.24 |
+| Why | 137 | 189 | 2.17 |
+| Fix | 88 | 189 | 1.40 |
+| Hygiene | 170 | 189 | 2.70 |
 
 ## By error class
 
@@ -40,7 +40,7 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | E-MODEL | 3 | 22 | 45 | 7.3 |
 | E-PARSE | 7 | 91 | 105 | 13.0 |
 | E-PARSER | 9 | 107 | 135 | 11.9 |
-| E-RUNTIME | 6 | 51 | 90 | 8.5 |
+| E-RUNTIME | 7 | 81 | 105 | 11.6 |
 | E-SCHEMA | 13 | 134 | 195 | 10.3 |
 | E-TYPE | 4 | 31 | 60 | 7.8 |
 
@@ -51,7 +51,6 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | ID | Sev | LOC | WHA | WHY | FIX | HYG | Total | | Flags | Title |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
 | `E-PARSER-004-after-quote` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | text after a quoted field's closing quote is silently tolerated |
-| `E-RUNTIME-012` | S0 | 0 | 0 | 0 | 0 | 0 | **0** | `░░░░░░░░░░` | SIL | for over a string iterates characters |
 | `E-PARSE-004` | S2 | 0 | 0 | 0 | 0 | 2 | **2** | `█░░░░░░░░░` |  | empty program file |
 | `E-MODEL-003` | S0 | 0 | 0 | 0 | 0 | 3 | **3** | `██░░░░░░░░` |  | handled model failure still prints a traceback |
 | `E-SCHEMA-008` | S1 | 2 | 0 | 2 | 0 | 1 | **5** | `███░░░░░░░` |  | contribute value fails its union |
@@ -111,6 +110,8 @@ Scale and conventions are in [`RUBRIC.md`](RUBRIC.md). `N/S` marks an entry that
 | `E-PARSE-003-nested` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | duplicate mapping key inside a block |
 | `E-PARSE-003-repeated` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | one key three times, a second key twice, and a third repeat nested |
 | `E-PARSER-006` | S2 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | regex parser spec naming a group the pattern does not define |
+| `E-RUNTIME-012` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | for over a string is rejected |
+| `E-RUNTIME-012-bytes` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | for over bytes is rejected |
 | `E-SCHEMA-009-items-crash` | S0 | 3 | 3 | 3 | 3 | 3 | **15** | `██████████` |  | a fixed-length list of the wrong length |
 | `E-PARSE-003-merge-key` | S0 | — | — | — | — | — | — | | N/S | merge keys and aliases are not repeated keys |
 | `E-RUNTIME-011` | S0 | — | — | — | — | — | — | | N/S | retry succeeds on the second attempt (exit 0, silent) |
@@ -271,8 +272,11 @@ Shape of the reproducer, unchanged: **a retry that succeeds on the second attemp
 
 Historical: the header read `prog.pdl:0` until phase-3 item 0, when a top-level block's empty path fell through `get_line` to a literal 0 (DROP #4). The normalizer note that every traceback frame here named a real path, and so was rewritten to `line <LINE>`, no longer applies to anything in the golden. INVENTORY's E-RUNTIME-011 row is `[src]` and describes only the *retry exhausted* shape, with location `file:line`; observed, the banner fired on retries taken, not on exhaustion, where the exception is simply re-raised as a normal PDL error.
 
-**`E-RUNTIME-012`** — for over a string iterates characters  
-No diagnostic. Silently iterates characters and exits 0. Decision 5.5 makes this an error.
+**`E-RUNTIME-012`** — for over a string is rejected  
+Was 0/0/0/0/0 + SIL: `for: {i: "abc"}` iterated the three characters and exited 0. Decision 5.5 makes it an error. The guard tested `isinstance(lst, Iterable)` while its own message said "must be lists", so every iterable passed; it now rejects `str`/`bytes`/`bytearray` and keeps everything else, because `${ x.keys() }` is ordinary Jinja and `examples/tutorial/pdl_scope.pdl` depends on it. Why is 3 rather than 2 because the diagnostic explains the *silence*, not just the rule: a text loop joins the characters back into the original string, so the output looked right while the body ran once per character -- which is the whole reason this scored 0 before. The `note:` quotes the first characters by name from the user's own value, and is capped at three because the bound value is a runtime one and a 40 kB model output is a plausible binding.
+
+**`E-RUNTIME-012-bytes`** — for over bytes is rejected  
+The other half of 5.5's `for:` rule, which nothing else covers. Bytes are the case where iteration is not merely surprising but changes the *type* of what is bound -- one integer per byte, 0-255 -- so a body expecting text gets numbers. Kept as its own entry rather than folded into E-RUNTIME-012 because the explanation is genuinely different from the character one and would otherwise never be exercised: a `bytes` binding can only arrive from a `code:` block, so no YAML-literal reproducer can reach it.
 
 **`E-SCHEMA-001`** — unknown field in a model block  
 Best-in-class today. Accurate line, PDL vocabulary. Location 1 -> 2 with phase-3 item 7: the previous note recorded 'No column, no block path', and `  in text[1].parameterss` supplies the path. The leading segments are the value -- they say the offending key is on the second block of `text:`, which `prog.pdl:5` alone does not. Still no column and no list of valid fields.

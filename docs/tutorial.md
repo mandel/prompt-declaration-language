@@ -1141,10 +1141,19 @@ answered on attempt 3
 ```
 
 Retries come *in addition* to the initial execution: `retry: 5` allows six executions in total.
-Each retry is reported on standard error as `[Retry <i>/<tries>]`, together with the error that
-triggered it. If the block still fails after the last retry, the error is propagated, unless the
-block also has a `fallback` field, in which case the fallback is executed instead. Adding
-`trace_error_on_retry: true` appends each error to the background context, which is useful when
+Each retry is reported on standard error as a single line naming the block, what failed and which
+attempt it was, for example
+
+```
+retry.pdl:10:3 - retrying after ConnectionError: attempt 1: service unavailable (attempt 1 of 6)
+  in text[0]
+```
+
+A retry is a handled event, not a failure, so the notice carries no stack trace and no colour
+unless standard error is a terminal. If the block still fails after the last retry, the error is
+propagated as a normal PDL error, unless the block also has a `fallback` field, in which case the
+fallback is executed instead. Adding `trace_error_on_retry: true` appends each error to the
+background context — with its full detail, which is more than the notice shows — and is useful when
 the retried block is a model call that should be told about its previous mistake.
 
 ### Retry configuration

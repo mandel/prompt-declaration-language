@@ -3,6 +3,7 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 
 from pdl.pdl import exec_dict
+from pdl.pdl_scheduler import colored_if_tty
 
 
 def repeat_retry_data(n: int):
@@ -41,7 +42,14 @@ def repeat_retry(n: int, should_be_no_error: bool = False):
     if should_be_no_error:
         assert err_msg == ""
     else:
-        assert f"[Retry 1/{n}]" in err_msg
+        assert (
+            f"retrying after ValueError: dummy exception (attempt 1 of {n + 1})"
+            in err_msg
+        )
+        # `retry: n` allows n retries, so n + 1 attempts. The notice counts
+        # attempts, and it is a notice: no traceback on a path PDL is recovering
+        # from (E-RUNTIME-011).
+        assert "Traceback (most recent call last)" not in err_msg
 
 
 # def test_repeat_retry_negative():
@@ -94,7 +102,11 @@ def code_retry(n: int, should_be_no_error: bool = False):
     if should_be_no_error:
         assert err_msg == ""
     else:
-        assert f"[Retry 1/{n}]" in err_msg
+        assert (
+            f"retrying after ValueError: dummy exception (attempt 1 of {n + 1})"
+            in err_msg
+        )
+        assert "Traceback (most recent call last)" not in err_msg
 
 
 # def test_code_retry_negative():
@@ -115,6 +127,78 @@ def test_code_retry2():
 
 def test_code_retry3():
     code_retry(3)
+
+
+# ============================================================================
+# What a retry reports, and to whom (E-RUNTIME-011)
+# ============================================================================
+
+
+def test_retry_notice_has_no_ansi_when_stderr_is_not_a_terminal():
+    """The notice used to carry `\\033[0;31m` ... `\\033[0m` unconditionally.
+
+    Piping stderr to a file or a CI log embedded the escape codes in it.
+    """
+    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
+        try:
+            _ = exec_dict(code_retry_data(1))
+        except Exception:  # pylint: disable=broad-except
+            pass
+        err_msg = buf.getvalue()
+
+    assert "retrying after" in err_msg
+    assert "\033" not in err_msg
+
+
+def test_colored_if_tty_needs_a_terminal():
+    """The gate itself, including the stream that cannot answer the question."""
+
+    class _NoIsatty:  # pylint: disable=too-few-public-methods
+        pass
+
+    assert colored_if_tty("notice", "yellow", io.StringIO()) == "notice"
+    assert colored_if_tty("notice", "yellow", _NoIsatty()) == "notice"  # type: ignore
+
+
+def test_trace_error_on_retry_keeps_the_full_error_in_the_context():
+    """The scope string is a second audience, and it keeps every byte of detail.
+
+    `trace_error_on_retry` puts the error into `pdl_context` -- into the *model's*
+    conversation for the next attempt, which is the entire point of the flag --
+    and `set_error_to_scope_for_retry` compares it against the previous one to
+    collapse a repeat. Shortening what is *printed* must not shorten that, and
+    nothing else in the suite reads the injected message, so the regression would
+    be invisible.
+    """
+    data = {
+        "description": "A retry that succeeds, reporting the context it was given",
+        "lang": "python",
+        "code": (
+            "n = getattr(PDL_SESSION, 'e11_attempt', 0) + 1\n"
+            "PDL_SESSION.e11_attempt = n\n"
+            "if n == 1:\n"
+            "    raise ValueError('boom')\n"
+            "result = str(pdl_context)\n"
+        ),
+        "retry": 1,
+        "trace_error_on_retry": True,
+    }
+
+    with io.StringIO() as buf, redirect_stdout(buf), redirect_stderr(buf):
+        result = exec_dict(data)
+        err_msg = buf.getvalue()
+
+    # What the model is told on the second attempt: unchanged, traceback included.
+    assert "An error occurred in a PDL block. Error details:" in result
+    assert "Traceback (most recent call last):" in result
+    assert "ValueError: boom" in result
+
+    # What the person watching is told: one line, no stack.
+    assert err_msg.count("\n") == 1
+    assert err_msg.rstrip("\n").endswith(
+        "retrying after ValueError: boom (attempt 1 of 2)"
+    )
+    assert "Traceback" not in err_msg
 
 
 # ============================================================================

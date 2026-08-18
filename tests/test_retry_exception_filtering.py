@@ -38,8 +38,8 @@ def test_retry_with_specific_exception_match():
             pass
         err_msg = buf.getvalue()
 
-    # Should see retry message since ValueError matches
-    assert "[Retry 1/2]" in err_msg
+    # Should see the retry notice since ValueError matches
+    assert "retrying after ValueError: test exception (attempt 1 of 3)" in err_msg
 
 
 def test_retry_with_specific_exception_no_match():
@@ -72,8 +72,8 @@ def test_retry_with_specific_exception_no_match():
             exception_raised = True
         err_msg = buf.getvalue()
 
-    # Should NOT see retry message since RuntimeError doesn't match ValueError
-    assert "[Retry" not in err_msg
+    # Should NOT see a retry notice since RuntimeError doesn't match ValueError
+    assert "retrying after" not in err_msg
     # Exception should be raised immediately
     assert exception_raised
 
@@ -107,8 +107,8 @@ def test_retry_with_exception_list_match():
             pass
         err_msg = buf.getvalue()
 
-    # Should see retry message since KeyError is in the list
-    assert "[Retry 1/2]" in err_msg
+    # Should see the retry notice since KeyError is in the list
+    assert "retrying after KeyError: 'test exception' (attempt 1 of 3)" in err_msg
 
 
 def test_retry_with_exception_list_no_match():
@@ -141,8 +141,8 @@ def test_retry_with_exception_list_no_match():
             exception_raised = True
         err_msg = buf.getvalue()
 
-    # Should NOT see retry message since TypeError is not in the list
-    assert "[Retry" not in err_msg
+    # Should NOT see a retry notice since TypeError is not in the list
+    assert "retrying after" not in err_msg
     # Exception should be raised immediately
     assert exception_raised
 
@@ -176,8 +176,8 @@ def test_retry_with_default_exception():
             pass
         err_msg = buf.getvalue()
 
-    # Should see retry message since default Exception catches all
-    assert "[Retry 1/2]" in err_msg
+    # Should see the retry notice since default Exception catches all
+    assert "retrying after RuntimeError: test exception (attempt 1 of 3)" in err_msg
 
 
 def test_retry_backward_compatibility_integer():
@@ -206,8 +206,8 @@ def test_retry_backward_compatibility_integer():
             pass
         err_msg = buf.getvalue()
 
-    # Should see retry message - integer retry catches all exceptions
-    assert "[Retry 1/2]" in err_msg
+    # Should see the retry notice - integer retry catches all exceptions
+    assert "retrying after RuntimeError: test exception (attempt 1 of 3)" in err_msg
 
 
 def test_retry_with_exception_hierarchy():
@@ -239,8 +239,8 @@ def test_retry_with_exception_hierarchy():
             pass
         err_msg = buf.getvalue()
 
-    # Should see retry message since KeyError is a subclass of LookupError
-    assert "[Retry 1/2]" in err_msg
+    # Should see the retry notice since KeyError is a subclass of LookupError
+    assert "retrying after KeyError: 'test exception' (attempt 1 of 3)" in err_msg
 
 
 def test_retry_with_fallback_and_exception_filter():
@@ -357,7 +357,7 @@ def test_retry_with_exception_matching_python_class():
             pass
         err_msg = buf.getvalue()
 
-    assert "[Retry 1/2]" in err_msg
+    assert "retrying after ValueError: test exception (attempt 1 of 3)" in err_msg
 
 
 # Made with Bob

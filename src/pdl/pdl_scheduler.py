@@ -5,7 +5,7 @@ from sys import stderr
 from threading import Thread
 from time import time_ns
 from traceback import print_exc
-from typing import TYPE_CHECKING, Any, Callable
+from typing import IO, TYPE_CHECKING, Any, Callable
 
 from termcolor import colored
 
@@ -100,6 +100,35 @@ def color_of_role(role: str):
         case "available_tools":
             color = "magenta"
     return color
+
+
+def colored_if_tty(text: str, color: str, stream: IO[str]) -> str:
+    """`colored`, but decided by the stream actually being written to.
+
+    `termcolor.can_colorize` asks `sys.stdout`, which is the wrong question for
+    anything written to stderr: `pdl prog.pdl 2> run.log` would still embed
+    escape codes in the log, and a CI transcript would carry them too. The stream
+    is passed in rather than read from `sys` so that a redirected `sys.stderr`
+    (`redirect_stderr`, pytest's capture) is tested rather than the interpreter's
+    original one.
+
+    `no_color` rather than `force_color`, so `NO_COLOR` still wins: a terminal is
+    a floor for colouring, not an instruction to colour. Everything else --
+    `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` -- stays termcolor's decision, so this
+    module keeps exactly one colour convention. The cost of composing rather than
+    re-implementing that policy is that termcolor's own `sys.stdout` test still
+    applies underneath, so `pdl prog.pdl > out` drops the colour from a diagnostic
+    that stayed on the terminal. That is the harmless direction of the two: a
+    missing colour, never an escape code in a file.
+
+    A stream with no `isatty` (a bare file-like object handed to
+    `redirect_stderr`) counts as not a terminal, which is the safe direction: the
+    cost of guessing wrong is a missing colour, not a corrupted transcript.
+    """
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty) or not isatty():
+        return text
+    return colored(text, color, no_color=False)
 
 
 def yield_result(result: Any, kind: BlockKind) -> None:

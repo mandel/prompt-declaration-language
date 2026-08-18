@@ -6,6 +6,47 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### A retry is reported as one line, not as a traceback
+
+A block with `retry:` that failed and was about to be retried used to print the
+whole Python stack, in hardcoded ANSI red whether or not stderr was a terminal —
+on a run that then went on to succeed and exit `0`:
+
+```console
+$ pdl prog.pdl
+[0;31m[Retry 1/1] prog.pdl:1:1 - An error occurred in a PDL block. Error details: Traceback (most recent call last):
+  File ".../pdl_interpreter.py", line 794, in process_advance_block_retry
+    ... 5 more frames ...
+pdl.pdl_ast.PDLRuntimeError: code block raised ValueError: transient failure
+[0m
+ok on attempt 2
+```
+
+It is now a notice, because that is what it is — PDL has already decided the
+error is recoverable at that point:
+
+```console
+$ pdl prog.pdl
+prog.pdl:1:1 - retrying after ValueError: transient failure (attempt 1 of 2)
+ok on attempt 2
+```
+
+The counter counts attempts rather than retries: `retry: 1` allows two attempts,
+so the first failure is `attempt 1 of 2`. `retry: -1` retries indefinitely and
+prints `(attempt 1)` with no total. A retry inside a nested block also gets the
+`  in <path>` line every other diagnostic has. Colour is emitted only when stderr
+is a terminal, and `NO_COLOR` is honoured.
+
+**What to update.** Anything grepping stderr for `[Retry i/n]` or for
+`An error occurred in a PDL block`. The blank lines that used to surround the
+banner are gone too.
+
+**What does not change.** No program's semantics, result, stdout or exit code.
+In particular, `trace_error_on_retry: true` still appends the *full* error —
+traceback included — to the background context, byte for byte as before: the
+model reading that context is a different audience from the person reading the
+terminal, and only the latter's copy was shortened.
+
 ### `pdl-lint` now lints every path you name on the command line (**breaking**)
 
 **A `pdl-lint` invocation that exits `0` today can exit `1` after this change.**

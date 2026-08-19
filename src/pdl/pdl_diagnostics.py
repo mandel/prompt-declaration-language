@@ -6,7 +6,7 @@ data; `render` turns it into the text a user sees. Keeping the two apart is what
 lets the same record feed the CLI today and a machine-readable channel later
 (decision 5.6).
 
-The rendering contract, from `docs/error-reporting/specs/E-BOUNDARY.md`:
+The rendering contract:
 
 * Line 1 is ``<origin>:<line>:<col> - <message>``, once. ``:col`` is dropped when
   unknown, ``:line`` too, and the whole prefix is dropped when the diagnostic is

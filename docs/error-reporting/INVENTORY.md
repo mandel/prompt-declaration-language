@@ -165,7 +165,7 @@ All produced by `analyze_errors`; all reach the user via `PDLParseError` → `ge
 
 ### E-PARSER — output parsers (`parser:`)
 
-**Phase-3 item 9 is delivered** (spec `specs/E-PARSER.md`). Every one of these used to be
+**Phase-3 item 9 is delivered.** Every one of these used to be
 raised with **`loc=None`**, so `generate` printed a bare message with no file at all — no
 location prefix and no `  in <block path>` line — and none showed the offending text
 (issue #387). `parse_result` now takes a keyword-only `loc` and the call site passes
@@ -694,8 +694,7 @@ Then, serialised on the foundation:
 8. **E-EXPR-004 and E-EXPR-006** — the cross-file wrong-line bug and the comment-shift
    bug, both fixed by 5.1/5.2; this item is the regression tests proving it.
 9. **E-PARSER-001…006** — thread location into `parse_result` (six raise sites
-   passing `loc=None`), and include the offending text (issue #387). *Delivered; spec
-   `specs/E-PARSER.md`.* Three corrections from pinning the series: `jsonl` reported
+   passing `loc=None`), and include the offending text (issue #387). *Delivered.* Three corrections from pinning the series: `jsonl` reported
    `JSON` and a per-line position that always read `line 1`; `yaml` used `repr(exc)` and
    so discarded PyYAML's own readable report; and the `csv` branch's `except` is
    **unreachable on malformed CSV**, which parses to nonsense and exits 0, so the real
@@ -705,8 +704,7 @@ Then, serialised on the foundation:
    traceback too, fixed by the same explicit compile step. The three silent failures the
    item is *not* allowed to fix are in 7.10.
 10. **E-SCHEMA-006/007** via 5.3, then **E-SCHEMA-002** ("did you mean") and
-    **E-EXPR-001** ("in scope here"). *E-SCHEMA-006/007 delivered; spec
-    `specs/E-SCHEMA-UNION.md`. E-SCHEMA-002 delivered, and it moved four entries
+    **E-EXPR-001** ("in scope here"). *E-SCHEMA-006/007 delivered. E-SCHEMA-002 delivered, and it moved four entries
     (E-SCHEMA-001/-002, E-LINT-001/-004) from 8/15 to 11/15 for one function's
     worth of change, because the linter prints the interpreter's rendered text.
     The estimate missed one thing, and it is the thing that made the item need a
@@ -951,18 +949,6 @@ self-assigns `__cause__` on *every* runtime error leaving the retry wrapper, so
 `while e.__cause__: e = e.__cause__` never terminates. Pre-existing, unrelated to any
 change here, and confirmed on an untouched expression error. The original exception is on
 `__context__`, which is what the release note documents.
-
-**Spec `file:line` citations go stale.** *Resolved by anchoring, not by sweeping.* The
-drift is larger than it looked: `call_python` has moved from line 2644 to 3506 since
-`E-CODE-002.md` was written, and `parse_file` moved 18 → 155 while `E-BOUNDARY.md` was
-still being edited. But every citation checked resolved correctly *at the commit its spec
-was written against* — they were never wrong, only unanchored.
-
-Re-verifying them on each refactor would be unbounded work with a bad failure mode: a
-half-swept spec reads as current while some of it is not. Instead each spec now carries a
-blockquote naming its anchor commit, and `specs/README.md` records the convention —
-citations are pinned, read them with `git show <anchor>:<path>`, and where a line number
-and a symbol name disagree, the symbol name is what was meant.
 
 ### 7.6 What Phase-3 item 0 landed, and the one question it could not answer
 
@@ -1431,7 +1417,7 @@ documentation or a validation bug and wants its own item.
 ### 7.11 What Phase-3 item 10 found, and the two questions it did not take
 
 **The `errors == []` fallback is still reachable, and it needed its own reproducer.**
-`specs/E-SCHEMA-UNION.md` predicted that after the discriminator work "nothing in the
+The union work predicted that after the discriminator change "nothing in the
 corpus reaches it". Measured rather than assumed: every program under `tests/data` and
 `examples` was loaded and mutated field-by-field — 10 920 invalid programs — and 6 of
 them reach it, all through `retry: {exceptions: ...}`. One arm of

@@ -14,5 +14,5 @@
     "fix": 2,
     "hygiene": 3
   },
-  "notes": "Fixed (spec docs/error-reporting/specs/E-BOUNDARY.md). `PDLIsADirectoryError` is also an `IsADirectoryError`. Classification is on `Path.is_dir()` rather than errno, because Windows raises `PermissionError` for `open()` on a directory. `sub/` holds no `.pdl` file here, so the reply is the shape of the fix rather than a name; with one program inside it becomes `did you mean `pdl sub/main.pdl`?` and scores 3."
+  "notes": "Fixed. `PDLIsADirectoryError` is also an `IsADirectoryError`. Classification is on `Path.is_dir()` rather than errno, because Windows raises `PermissionError` for `open()` on a directory. `sub/` holds no `.pdl` file here, so the reply is the shape of the fix rather than a name; with one program inside it becomes `did you mean `pdl sub/main.pdl`?` and scores 3."
 }

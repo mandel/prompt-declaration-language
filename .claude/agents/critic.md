@@ -66,7 +66,7 @@ is wrong and what would fix it. "Could be better" is not a rejection.
 ## Do not reject for
 
 - Wording you would have phrased differently. You are not the author.
-- A missing caret or column when the entry's spec says the location foundation
+- A missing caret or column when the entry's `notes` say the location foundation
   has not landed yet.
 - Provider text in `E-MODEL-*`. Per the rubric you score how PDL *frames* a
   provider failure, not what LiteLLM chose to say. That text is stubbed

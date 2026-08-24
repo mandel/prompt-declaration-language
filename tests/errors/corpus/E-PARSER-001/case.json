@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSER-001",
+  "title": "json parser on non-JSON (issue #387)",
+  "severity": "S1",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Fixed. Two changes, one shared and one specific to this entry. Shared: `process_advance_block_retry` now builds its parser callable as `partial(parse_result, block.parser, loc=...)`, so the location travels *into* the deferred call -- `lazy_apply` means the exception surfaces at `future_result.result()` in `generate`, and a `try` around the call site would never see it. That is the same shape the `spec:` checker beside it already used, and it is what gives all seven entries a `prog.pdl:N` header and an `  in parser` line where they had none. Specific: this reproducer's block produces the Python `int` 3, and `json_repair.loads` subscripts it, which is why the old message was a `TypeError` about subscripting rather than anything about JSON. The corrected diagnosis is that a `parser:` was applied to a value that is already structured, so `_require_parser_text` checks the input before any parser runs and `parser_not_text_diagnostic` names the type in PDL's own vocabulary (`integer`, the name `spec:` uses) rather than Python's. The accepted set per parser is exactly what each accepts today, measured: `json` and `yaml` take `bytes`, `jsonl`, `csv` and `regex` reject it with a `TypeError` already, so no working program starts failing. The value is shown inline only when `json.dumps` of it is 40 characters or fewer -- the wall that keeps E-PARSER-006's `in hello` defect from recurring here. No excerpt and no gutter caveat, because there is no text to excerpt. Note that this is *not* where issue #387's own reproducer lands: `json_repair` repairs rather than raises, so `parser: json` over prose returns a wrong value at exit 0 (INVENTORY 7.10, finding 3), which is a semantic change under decision 5.5 and is deliberately not made here. `parser_json_diagnostic` covers the raising branch and is currently unreachable through `json_repair`."
+}

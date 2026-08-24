@@ -1,0 +1,11 @@
+defs:
+  f:
+    function:
+      a: str
+      b: int
+    return: "${ a }${ b }"
+text:
+  - call: ${ f }
+    args:
+      a: "x"
+      b: 1

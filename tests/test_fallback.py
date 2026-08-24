@@ -72,9 +72,23 @@ fallback: "Error"
 """
     with pytest.raises(PDLRuntimeError) as exc:
         _ = exec_str(prog_str)
+    # `<program>:4` where this used to say `line 4`: a program parsed from a
+    # string now has a named source in the registry, under the same label its
+    # YAML errors already used. The line is unchanged.
+    #
+    # `  in fallback.spec` is phase-3 item 7: the block path is rendered under
+    # the complaint's header. It says something the line alone does not -- that
+    # the value being type-checked is the *fallback's* result, not the model
+    # block's.
+    #
+    # `:1` is the column, now rendered beside the line (§7.9/§7.11). It is the
+    # position of `fallback:`, the construct `fallback.spec` names: the program
+    # has no `spec:` under the fallback to point at, so `append` carried the
+    # parent's mark down, and the header says exactly what the path says.
     assert (
-        str(exc.value.message)
-        == "Type errors during spec checking:\nline 4 - Error should be of type <class 'int'>"
+        str(exc.value.message) == "Type errors during spec checking:\n"
+        "<program>:4:1 - Error should be of type <class 'int'>\n"
+        "  in fallback.spec"
     )
 
 

@@ -7,7 +7,24 @@ import yaml
 from pydantic import ValidationError
 
 from .pdl_ast import PDLException, PdlLocationType, Program, empty_block_location
-from .pdl_location_utils import get_line_map
+from .pdl_diagnostics import (
+    ORIGIN_PROGRAM,
+    Diagnostic,
+    duplicate_key_diagnostic,
+    source_read_diagnostic,
+    undecodable_diagnostic,
+    unlocated_schema_diagnostic,
+    yaml_diagnostic,
+)
+from .pdl_location_utils import (
+    UNNAMED_SOURCE,
+    DuplicateKeyError,
+    SourceMark,
+    is_unnamed,
+    load_with_marks,
+    program_location,
+    register_source,
+)
 from .pdl_schema_error_analyzer import analyze_errors
 
 
@@ -15,22 +32,345 @@ class PDLParseError(PDLException):
     pass
 
 
+# Reading and YAML-parsing a PDL source is the parser's boundary, so the catch
+# belongs here rather than in `main`: `parse_file` is reached from the `pdl`
+# CLI, `pdl-infer`, `pdl-lint`, the SDK's `exec_file` and `include:`, and every
+# one of those already handles `PDLParseError`.
+#
+# One small class per concrete errno, rather than one shared `OSError` subclass.
+# It costs three declarations and it is the whole reason this is not an SDK
+# break: a subclass of `OSError` is *not* a subclass of `FileNotFoundError`, so
+# a shared class would silently stop `except FileNotFoundError` from matching
+# around `exec_file`. Inheriting the specific errno class instead keeps
+# `except FileNotFoundError`, `except IsADirectoryError`, `except
+# PermissionError`, `except OSError` and `except PDLParseError` all matching,
+# and callers additionally gain `.message` and `.diagnostic`.
+# `tests/test_parse_errors.py::test_shims_keep_every_except_clause_matching`
+# pins that, because nothing else does.
+#
+# Any *other* `OSError` is deliberately re-raised untouched (see `parse_file`).
+#
+# `UnicodeDecodeError` is the one exception to the shim rule, and the one
+# documented SDK break in this group: it cannot be subclassed usefully, because
+# its constructor requires exactly five arguments, so no shim can both carry a
+# PDL message and stay catchable as a `UnicodeDecodeError`. INVENTORY.md 7.1
+# decided to raise `PDLUnicodeDecodeError` anyway and take the break, because a
+# decode failure is the one entry here whose diagnostic gain -- a real line,
+# column, excerpt and caret -- is largest. The decode payload is carried across
+# so the caught object is still usable; see the class.
+
+
+class PDLLocatedParseError(PDLParseError):
+    """A `PDLParseError` that carries the structured record behind its text."""
+
+    def __init__(self, diagnostic: Diagnostic):
+        super().__init__([diagnostic.text])
+        self.diagnostic = diagnostic
+
+    def __str__(self) -> str:
+        """Render the diagnostic, not the message list.
+
+        `PDLParseError.message` is a `list[str]`, so the inherited `__str__`
+        gives a bracketed, quoted, backslash-escaped list repr. That is the same
+        defect `.text` exists to fix at the CLI sites, and an embedder calling
+        `print(exc)` or `logging.exception(...)` hits it just as squarely.
+        """
+        return self.diagnostic.text
+
+
+class PDLOSParseError(PDLLocatedParseError, OSError):
+    """Base for the errno shims: a located parse error that is also an `OSError`.
+
+    Exists so the shim table can be typed as carrying both halves. Without it,
+    the second element is a `type[PDLLocatedParseError]` and copying `errno`
+    onto it does not type-check, even though every member really is an
+    `OSError`.
+    """
+
+
+# The three shims below each report 8 ancestors against pylint's limit of 7.
+# That depth is the design, not an accident: `PDLException` -> `PDLParseError`
+# -> `PDLLocatedParseError` -> `PDLOSParseError` is the PDL half, and
+# `FileNotFoundError` -> `OSError` is the half that keeps `except
+# FileNotFoundError` matching. Neither half can be shortened without giving up
+# something the SDK contract depends on.
+class PDLFileNotFoundError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, FileNotFoundError
+):
+    """`open` failed with ENOENT. Also a `FileNotFoundError`, on purpose."""
+
+
+class PDLIsADirectoryError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, IsADirectoryError
+):
+    """`open` failed with EISDIR. Also an `IsADirectoryError`, on purpose."""
+
+
+class PDLPermissionError(  # pylint: disable=too-many-ancestors
+    PDLOSParseError, PermissionError
+):
+    """`open` failed with EACCES. Also a `PermissionError`, on purpose.
+
+    Needed for more than the obvious case: Windows raises `PermissionError` for
+    `open()` on a directory, which is why the triage in `source_read_diagnostic`
+    classifies on `Path.is_dir()` rather than on the errno.
+    """
+
+
+class PDLUnicodeDecodeError(PDLLocatedParseError):
+    """The source file is not UTF-8. **Not** a `UnicodeDecodeError`.
+
+    It cannot be one: `UnicodeDecodeError.__init__` requires exactly five
+    arguments, so a subclass carrying a PDL message cannot be constructed at
+    all. `except UnicodeDecodeError` around `exec_file`/`parse_file` therefore
+    stops matching -- the single deliberate SDK break of the boundary work,
+    decided in `docs/error-reporting/INVENTORY.md` 7.1 and written up in
+    `docs/release-notes.md`.
+
+    Matching the class is only half of a migration, so the decode data is
+    carried across verbatim: `encoding`, `object`, `start`, `end` and `reason`
+    all read as they would on the exception this replaces, and
+    `except PDLParseError as e: e.start` is the mechanical rewrite. The one
+    difference is an improvement: whenever the file could be re-read,
+    `start`/`end` index the **file**, rather than whatever the decoder happened
+    to be handed (see `undecodable_source_error`). The exception the codec
+    itself raised stays reachable through `__cause__`.
+    """
+
+    def __init__(self, diagnostic: Diagnostic, exc: UnicodeDecodeError):
+        super().__init__(diagnostic)
+        self.encoding = exc.encoding
+        self.object = exc.object
+        self.start = exc.start
+        self.end = exc.end
+        self.reason = exc.reason
+
+
+class PDLYamlError(PDLLocatedParseError, yaml.YAMLError):
+    """`yaml.safe_load` failed. Also a `yaml.YAMLError`, on purpose.
+
+    Not a `MarkedYAMLError`: a caller narrow enough to catch that specifically
+    stops matching. `except yaml.YAMLError` is the far more common clause and
+    keeps working.
+    """
+
+
+class PDLDuplicateKeyError(PDLLocatedParseError):
+    """A mapping key was written more than once (E-PARSE-003).
+
+    **Not** a `yaml.YAMLError`, and that is the deliberate part. Every other
+    failure in this module is one because PyYAML raised it; this one PyYAML is
+    perfectly happy with. `text: a` written twice parses, builds a dict holding
+    the second value, and any other YAML tool the user reaches for will confirm
+    it. The rule that a PDL program may not do that is PDL's own, taken under
+    decision 5.5 of `docs/error-reporting/INVENTORY.md` because the alternative
+    is discarding a block in silence.
+
+    Two consequences, both wanted. `except yaml.YAMLError` around `parse_file`
+    does not catch it, so a caller that means "the document is malformed" is not
+    handed a document that is not; and `str(exc)`, which is the rendered
+    diagnostic, never claims the file is invalid YAML. It remains a
+    `PDLParseError`, so every `except PDLParseError` -- which is what the CLI,
+    `pdl-lint`, `include:` and `import:` all use -- keeps matching, and the new
+    failure reaches the user as a formatted diagnostic like any other.
+    """
+
+
+SHIMMED_OS_ERRORS: tuple[tuple[type[OSError], type[PDLOSParseError]], ...] = (
+    (FileNotFoundError, PDLFileNotFoundError),
+    (IsADirectoryError, PDLIsADirectoryError),
+    (PermissionError, PDLPermissionError),
+)
+
+
 def parse_file(pdl_file: str | Path) -> tuple[Program, PdlLocationType]:
-    with open(pdl_file, "r", encoding="utf-8") as pdl_fp:
-        prog_str = pdl_fp.read()
+    try:
+        with open(pdl_file, "r", encoding="utf-8") as pdl_fp:
+            prog_str = pdl_fp.read()
+    except (FileNotFoundError, IsADirectoryError, PermissionError) as exc:
+        raise source_read_error(Path(pdl_file), exc) from exc
+    except UnicodeDecodeError as exc:
+        raise undecodable_source_error(Path(pdl_file), exc) from exc
+    # Every other `OSError` propagates unchanged. Narrowing a shim to each
+    # concrete errno is what makes those additive, and there is no honest way to
+    # extend that to an open set of errno classes without breaking
+    # `except <SpecificError>` for the ones not named above.
     return parse_str(prog_str, file_name=str(pdl_file))
 
 
+def source_read_error(
+    path: Path, exc: OSError, *, data_file: bool = False
+) -> PDLOSParseError:
+    """Wrap a failed `open` in the shim matching its own errno."""
+    diagnostic = source_read_diagnostic(path, exc, data_file=data_file)
+    # The shim is chosen from the type of the exception actually raised, never
+    # from the branch the diagnostic took: on Windows a directory raises
+    # `PermissionError`, and it must stay catchable as one.
+    for cls, shim in SHIMMED_OS_ERRORS:
+        if isinstance(exc, cls):
+            wrapped = shim(diagnostic)
+            # Keeping the class catchable is not enough: `except OSError as e`
+            # reaching for `e.errno`, `e.strerror` or `e.filename` would
+            # otherwise find `None`, because `OSError.__init__` never ran with
+            # the original arguments. Carry the payload across so the caught
+            # object is a drop-in for the one it replaces.
+            wrapped.errno = exc.errno
+            wrapped.strerror = exc.strerror
+            wrapped.filename = exc.filename
+            wrapped.filename2 = exc.filename2
+            return wrapped
+    raise exc  # pragma: no cover - `parse_file` catches only the three above
+
+
+def undecodable_source_error(
+    path: Path, exc: UnicodeDecodeError
+) -> PDLUnicodeDecodeError:
+    """Wrap a decode failure, recomputing its position from the raw bytes.
+
+    `exc.start` is an offset into whatever the decoder was handed, which
+    through a `TextIOWrapper` is not promised to be the whole file. `read()` on
+    a fresh handle decodes in one piece today, so the number happens to be a
+    file offset; reading the same file line by line reports an offset thousands
+    of bytes short. That is an implementation detail of `TextIOWrapper`, and a
+    reported line should not rest on one -- a location that is silently wrong is
+    worse than no location, and this is cheap to compute honestly.
+
+    So the file is read again as bytes and decoded again in one piece, which
+    raises the same failure with an offset that is a file offset by
+    construction, and which yields the bytes the excerpt is built from. That is
+    one extra read, on the failure path only. If the second read does not
+    reproduce the failure -- the file was deleted, or replaced between the two
+    reads -- the original exception is kept and no position is claimed.
+    """
+    payload = exc
+    raw: bytes | None
+    try:
+        raw = path.read_bytes()
+    except OSError:  # pragma: no cover - readable a moment ago, gone now
+        raw = None
+    if raw is not None:
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError as file_exc:
+            payload = file_exc
+        else:  # pragma: no cover - the file changed between the two reads
+            raw = None
+    diagnostic = undecodable_diagnostic(
+        str(path),
+        raw,
+        payload.start if raw is not None else None,
+        payload.end,
+        payload.reason,
+    )
+    return PDLUnicodeDecodeError(diagnostic, payload)
+
+
+def yaml_error(  # pylint: disable=too-many-arguments
+    exc: yaml.YAMLError,
+    source: str,
+    file_name: str,
+    *,
+    origin: str = ORIGIN_PROGRAM,
+    program: str | None = None,
+    code: str = "E-PARSE-001",
+) -> PDLYamlError:
+    """Wrap a PyYAML failure, and give its marks the real filename.
+
+    The renderer builds the header from `file_name` and the excerpt from
+    `source`, so it never reads `mark.name`. Setting the name anyway costs two
+    lines and makes `str(exc)` correct for any SDK caller, for `pdl-lint`, and
+    for anything that logs `__cause__`, all of which otherwise say
+    `"<unicode string>"` -- the one label guaranteed not to tell the user which
+    of their inputs is broken. Wrapping the source in a named `io.StringIO` would
+    also fix the name, but the stream path reads in chunks and truncates
+    `mark.buffer`, which is exactly the excerpt data.
+    """
+    if isinstance(exc, yaml.MarkedYAMLError):
+        for mark in (exc.problem_mark, exc.context_mark):
+            if mark is not None:
+                mark.name = file_name
+    return PDLYamlError(
+        yaml_diagnostic(
+            exc,
+            source,
+            origin=origin,
+            file=file_name,
+            program=program,
+            code=code,
+        )
+    )
+
+
+def duplicate_key_error(
+    exc: DuplicateKeyError, source: str, file_name: str
+) -> PDLDuplicateKeyError:
+    """Give a repeated key the file it was found in, and render it.
+
+    `load_with_marks` collected the facts -- both marks, the count, the mapping's
+    block path -- and stopped there, because it is handed a source and never a
+    name. This is the only place that has both.
+    """
+    found = exc.duplicate
+    return PDLDuplicateKeyError(
+        duplicate_key_diagnostic(
+            key=found.key,
+            file=file_name,
+            source=source,
+            first_line=found.first.line,
+            first_col=found.first.col,
+            again_line=found.again.line,
+            again_col=found.again.col,
+            count=found.count,
+            block_path=found.path,
+            siblings=found.siblings,
+            # `total` counts every (mapping, key) site, this one included, and
+            # the siblings of this mapping are already named a line above, so
+            # they are not counted twice.
+            other_mappings=exc.total - 1 - len(found.siblings),
+        )
+    )
+
+
 @lru_cache(maxsize=128)
+def _parse_str_cached(
+    pdl_str: str, file_name: str
+) -> tuple[Program, PdlLocationType, dict[str, SourceMark]]:
+    """`parse_str`'s body. The marks come back out so the caller can re-register."""
+    try:
+        prog_dict, marks = load_with_marks(pdl_str)
+    except DuplicateKeyError as exc:
+        raise duplicate_key_error(exc, pdl_str, file_name) from exc
+    except yaml.YAMLError as exc:
+        raise yaml_error(exc, pdl_str, file_name) from exc
+    # The source is registered before anything can fail on it: `parse_dict`
+    # reports schema errors through `append`, which resolves against exactly
+    # this entry, and a diagnostic about a file PDL could not find its text for
+    # is the failure mode this registry exists to remove.
+    register_source(file_name, pdl_str, marks)
+    loc = program_location(file_name, marks)
+    prog = parse_dict(prog_dict, loc)
+    return prog, loc, marks
+
+
 def parse_str(
     pdl_str: str, file_name: str | None = None
 ) -> tuple[Program, PdlLocationType]:
+    """Parse a PDL source, and make sure the registry describes *this* source.
+
+    The cache is on the body, not on this function, because the registry entry
+    has to be re-asserted on a hit as well as on a miss. A name can be shared by
+    more than one text within a run -- `<program>` by two `exec_str` calls, one
+    nested `<program:...#code>` by two turns of a `for:` loop -- and on a cache
+    hit the body does not run, so nothing would put this text's marks back. The
+    locations built during the cached parse would then be resolved against the
+    other text's marks, which is a wrong *line*, not merely a wrong excerpt.
+    Re-registering identical text is a dictionary lookup and a string compare
+    (see `SourceRegistry.register`).
+    """
     if file_name is None:
-        file_name = ""
-    prog_dict = yaml.safe_load(pdl_str)
-    line_table = get_line_map(pdl_str)
-    loc = PdlLocationType(path=[], file=file_name, table=line_table)
-    prog = parse_dict(prog_dict, loc)
+        file_name = UNNAMED_SOURCE
+    prog, loc, marks = _parse_str_cached(pdl_str, file_name)
+    register_source(file_name, pdl_str, marks)
     return prog, loc
 
 
@@ -47,10 +387,15 @@ def parse_dict(pdl_dict: dict[str, Any], loc: PdlLocationType | None = None) -> 
             loc = empty_block_location
         errors = analyze_errors(defs, defs["Program"], pdl_dict, loc)
         if errors == []:
-            if loc.file == "":
-                errors = ["The PDL program does not respect the schema."]
-            else:
-                errors = [f"The file PDL {loc.file} does not respect the schema."]
+            # `<program>` is a display name, not a file name: a fallback naming
+            # it as a file would invite the user to go and look for it. Since
+            # decision 5.3 the analyzer answers block unions from PDL's own
+            # discriminator, and no program in the corpus reaches this branch;
+            # it stays because "the analyzer had nothing to say" is a state the
+            # analyzer can still be in, and saying so is better than pretending
+            # the program was merely wrong in some unstated way.
+            file = "" if is_unnamed(loc.file) else loc.file
+            errors = [unlocated_schema_diagnostic(file).text]
         raise PDLParseError(errors) from exc
     return prog
 

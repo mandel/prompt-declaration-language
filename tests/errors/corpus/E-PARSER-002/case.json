@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-002",
+  "title": "jsonl parser on non-JSONL text",
+  "severity": "S1",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Fixed. The richest entry of the series and the one that shows the shared shape whole: a located headline, an excerpt row in the block's *output* coordinates with a caret, the rule that was broken, the caveat that says whose line numbers those are, and the action. All three of the old defects are gone. The parser is named correctly -- it said `ill-formed JSON` for a `jsonl` parser. The failing line number is real: `parse_result` now enumerates the split it was already performing, where before every message read `line 1` whichever line failed, because each line is loaded as its own document and `JSONDecodeError.lineno` is therefore always 1. And the offending line is shown (issue #387), inside an `output:N | ` gutter rather than as a bare `N | ` row that would read as a line of the `.pdl` file -- a confidently-stated wrong location, which RUBRIC ranks below showing nothing. The caret column is `exc.colno`, which was always correct *within* the line, and the caret label is `exc.msg` verbatim: the JSON parser's vocabulary about JSON, which is the format the user asked for, reproduced with no case transformation so there is no rule to get wrong. One extra branch earns its own suggestion: when the whole output parses with `json.loads` the user wrote `jsonl` for a single pretty-printed document, and `_is_one_json_document` (one extra `json.loads`, on the failure path only) switches the help to `use `parser: json``. Fix scores 2 rather than 3 on this reproducer: the branch taken names what a valid line must be and offers removing the parser, but it cannot produce the edit, because a line of prose has no mechanical repair into JSON."
+}

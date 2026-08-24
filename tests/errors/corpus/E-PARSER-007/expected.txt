@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `parser:` with a `pdl:` sub-program is not implemented
+  in parser
+
+  A `parser:` may be `json`, `jsonl`, `yaml`, `csv`, or a `regex:` parser. The
+  `pdl:` form is part of PDL's schema, so a program using it loads, but the
+  interpreter has no implementation for it and cannot run this block.
+
+  note: this is a gap in PDL itself, not a mistake in this program.
+  help: use `json`, `jsonl`, `yaml`, `csv` or a `regex:` parser, or parse the
+        output in a `code:` block.

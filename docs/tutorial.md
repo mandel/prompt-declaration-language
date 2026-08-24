@@ -1086,9 +1086,15 @@ If we disable structured decoding by setting the field `structuredDecoding` to f
 
 ```
 {'name': 'John', 'age': 'twentyfive'}
-examples/tutorial/type_error.pdl:24 - Type errors during spec checking:
-examples/tutorial/type_error.pdl:24 - twentyfive should be of type <class 'int'>
+examples/tutorial/type_error.pdl:24:5 - Type errors during spec checking:
+  in text[0].spec
+examples/tutorial/type_error.pdl:24:26 - twentyfive should be of type <class 'int'>
+  in text[0].spec.age
 ```
+
+The two headers name the same line and different columns: `24:5` is the `spec:`
+key the check belongs to, `24:26` is the `age:` entry inside it that the result
+violated. The `  in <path>` line under each says the same thing as a block path.
 
 
 
@@ -1135,11 +1141,18 @@ answered on attempt 3
 ```
 
 Retries come *in addition* to the initial execution: `retry: 5` allows six executions in total.
-Each retry is reported on standard error as `[Retry <i>/<tries>]`, together with the error that
-triggered it. If the block still fails after the last retry, the error is propagated, unless the
-block also has a `fallback` field, in which case the fallback is executed instead. Adding
-`trace_error_on_retry: true` appends each error to the background context, which is useful when
-the retried block is a model call that should be told about its previous mistake.
+
+A retry is silent: nothing is written to standard error when an attempt fails and another one is
+started, so a program that recovers produces exactly the output it would have produced had it
+worked the first time. The flip side is that a long retry sequence — one with `delay`/`backoff`, or
+`retry: -1` — shows no sign of progress while it runs, and that when the attempts run out only the
+*last* error is reported: the earlier attempts' errors are not kept anywhere.
+
+If the block still fails after the last retry, the error is propagated as a normal PDL error,
+unless the block also has a `fallback` field, in which case the fallback is executed instead.
+Adding `trace_error_on_retry: true` appends each error, in full detail, to the context the next
+attempt runs with, and is useful when the retried block is a model call that should be told about
+its previous mistake.
 
 ### Retry configuration
 

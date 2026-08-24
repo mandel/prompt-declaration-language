@@ -1,0 +1,17 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:6 - not valid YAML: expected the end of the list, but found another value
+
+2 |   - "hello
+  |     ^ this double quote opens a string that is never closed on this line
+3 |   - "world"
+  |      ^ so YAML read everything up to here as one value
+
+  A PDL program is a YAML document: it must parse as YAML before any PDL rule
+  is checked.
+
+  help: close the string on line 2

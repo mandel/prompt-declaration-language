@@ -1,0 +1,8 @@
+$ exit: 0
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:5 - Error during the evaluation of ${ undefined_here }: 'undefined_here' is undefined
+  in text[0]

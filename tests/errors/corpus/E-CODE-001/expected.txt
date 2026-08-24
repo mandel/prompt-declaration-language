@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - code block raised ZeroDivisionError: division by zero
+  in code
+
+code:1 | result = 1/0
+       |          ^^^
+
+  Python code in a `code:` block must run to completion; an exception that
+  escapes it stops the program.
+
+  note: `code:N` line numbers are within the block's code, not the PDL file.

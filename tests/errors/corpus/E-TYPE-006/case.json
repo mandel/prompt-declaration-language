@@ -1,0 +1,14 @@
+{
+  "id": "E-TYPE-006",
+  "title": "deprecated type syntax warning on a SUCCESSFUL run",
+  "severity": "S1",
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 2,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 2
+  },
+  "notes": "Exits 0. Excellent What/Why/Fix -- it names the old and new spelling -- and zero Location. Fires repeatedly for one declaration. Decision 5.4 puts it in scope."
+}

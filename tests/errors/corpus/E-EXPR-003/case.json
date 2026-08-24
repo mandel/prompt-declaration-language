@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-003",
+  "title": "attribute missing on an object",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "'dict object' has no attribute 'x' -- Jinja vocabulary, and 'attribute' for a subscript the user wrote as ['x']. Location 1 -> 2 (phase-3 item 7): `  in text` is rendered and `prog.pdl:1` is the `text:` entry's own mark. Same recorded dissent as E-EXPR-002 about block scalars."
+}

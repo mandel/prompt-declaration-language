@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-002",
+  "title": "Jinja syntax error",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "TemplateSyntaxError carries .lineno/.source; only str(exc) is interpolated. Location 1 -> 2 (phase-3 item 7): `  in text` is rendered and `prog.pdl:1` is the `text:` entry's own mark. Recorded dissent, for whoever rescores this: the mark of a mapping entry is its *key*, so a template written as a multi-line block scalar would report the key's line and not the expression's -- on this reproducer the two coincide. The scored mechanism is 'the location of the block the message is about', which is accurate at PDL's unit of location; the missing precision is inside the expression, and that is a Location 3 criterion (caret span), not a 2 one."
+}

@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:5 - Error during the evaluation of ${ missing_var }: 'missing_var' is undefined
+  in text[1]

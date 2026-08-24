@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional, TypedDict
 from matplotlib import pyplot as plt
 
 from ._version import version
-from .pdl import InterpreterConfig, load_initial_scope, scope_error_text
+from .pdl import InterpreterConfig, _load_initial_scope, _scope_error_text
 from .pdl_ast import (
     PDLException,
     PdlLocationType,
@@ -255,18 +255,18 @@ def main():
         parser.print_help()
         return 0
 
-    # Shares `load_initial_scope` with `pdl` rather than repeating it: this
+    # Shares `_load_initial_scope` with `pdl` rather than repeating it: this
     # sequence used to be a byte-for-byte copy, and a copy keeps every traceback
     # the `pdl` entry point no longer produces.
     defaults_origin, defaults_file = "builtin", ""
     try:
-        initial_scope, defaults_origin, defaults_file = load_initial_scope(
+        initial_scope, defaults_origin, defaults_file = _load_initial_scope(
             args.data_file, args.data, program=args.pdl
         )
         validate_scope(initial_scope)
     except PDLScopeError as exc:
         print(
-            scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
+            _scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
             file=sys.stderr,
         )
         return 1

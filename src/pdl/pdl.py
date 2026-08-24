@@ -220,7 +220,7 @@ def pdl(func):
 MODEL_DEFAULTS_KEY = "pdl_model_default_parameters"
 
 
-def load_initial_scope(
+def _load_initial_scope(
     data_file: str | None,
     data: str | None,
     program: str | None = None,
@@ -283,7 +283,7 @@ def load_initial_scope(
     return initial_scope, origin, origin_file
 
 
-def scope_error_text(
+def _scope_error_text(
     exc: PDLScopeError, origin: str, origin_file: str, program: str | None
 ) -> str:
     """Render a scope-validation failure, naming the input that supplied it."""
@@ -381,13 +381,13 @@ def main():
     # is never about the program: it has not been read yet.
     defaults_origin, defaults_file = "builtin", ""
     try:
-        initial_scope, defaults_origin, defaults_file = load_initial_scope(
+        initial_scope, defaults_origin, defaults_file = _load_initial_scope(
             args.data_file, args.data, program=args.pdl
         )
         validate_scope(initial_scope)
     except PDLScopeError as exc:
         print(
-            scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
+            _scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
             file=sys.stderr,
         )
         return 1

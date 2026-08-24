@@ -809,7 +809,7 @@ Not decided, because nothing forced it yet. Two siblings raised a bare
 `UnicodeDecodeError`; one is now closed and would each need their own corpus entry and
 golden:
 
-- `load_initial_scope` (`pdl.py:245-246`), the `-f` data file. **Still open.** One
+- `_load_initial_scope` (`pdl.py:245-246`), the `-f` data file. **Still open.** One
   `except` clause away from the same treatment, but it is a second error ID, not this
   one.
 - `process_import`, which opens the imported file itself instead of calling `parse_file`.

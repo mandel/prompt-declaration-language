@@ -384,8 +384,8 @@ def advance_block_to_dict(  # noqa: C901
         d["expectations"] = [
             expectation_to_dict(b, json_compatible) for b in block.expectations
         ]
-    # if block.pdl__location is not None:
-    #     d["pdl__location"] = location_to_dict(block.pdl__location)
+    if block.pdl__location is not None:
+        d["pdl__location"] = location_to_dict(block.pdl__location)
     if block.fallback is not None:
         d["fallback"] = block_to_dict(block.fallback, json_compatible)
     # Warning: remember to update timing here at the end! this ensures
@@ -577,15 +577,25 @@ def location_to_dict(location: PdlLocationType) -> dict[str, Any]:
     """Serialise a location into a trace.
 
     `table` is gone -- it was always dumped empty, so no reader can have been
-    using it -- and `line`/`col` take its place.
+    using it -- and `line`/`col` take its place. `0` means unknown, per
+    `PdlLocationType`; the key is always written rather than omitted, so a
+    reader distinguishes "no position recorded" from "no location at all" by
+    the value rather than by the field's absence.
 
-    Dead as it stands: the only call is commented out at `:387-388`, so
-    `pdl --trace` writes no `pdl__location` at all. Kept and updated rather than
-    left stale, because it is the serialiser of record for the field and a dead
-    function that dumps a field the model no longer has is a trap for whoever
-    uncomments those two lines. Note that the *schema* and the viewer's
-    generated types do carry the field, and `model_dump()` on a block emits it,
-    so the shape is public even though the trace writer skips it.
+    Live: `block_to_dict` calls this for every block carrying a location, so
+    `pdl --trace` now writes `pdl__location` throughout. The emitted shape --
+    `path`, `file`, `line`, `col` -- is exactly the `PdlLocationType` in the
+    viewer's generated `pdl_ast.d.ts`, and the viewer already strips the field
+    for display in `remove_internal_block_fields`, so it renders traces with
+    and without it unchanged.
+
+    `file` mirrors how the program was named on the command line rather than
+    being normalised: `pdl prog.pdl` records `prog.pdl` and `pdl /abs/prog.pdl`
+    records the absolute path. Verified both ways rather than assumed. So two
+    traces of the same program can differ in this field, and a trace taken by
+    absolute path is not portable between machines. Left as-is deliberately --
+    normalising would need a root the trace does not record, and relativising
+    against the wrong one loses the ability to find the file again.
     """
     return {
         "path": location.path,

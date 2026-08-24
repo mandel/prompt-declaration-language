@@ -47,8 +47,16 @@ from typing import Any, Callable, Sequence
 import yaml
 
 WIDTH = 78
-"""Wrap column for prose. Excerpt and suggestion *code* are never wrapped: a
-broken command line is worse than a long one."""
+"""Wrap column for prose, shared by every diagnostic PDL renders.
+
+`pdl_interpreter` and `pdl_linter` import `_wrap` from here rather than keeping
+their own: the two renderers used to wrap at 76 and 78 respectively, so one tool
+produced two paragraph shapes depending on which code path raised. Excerpt and
+suggestion *code* are never wrapped -- a broken command line is worse than a
+long one."""
+
+CLIP_MARK = "..."
+"""Appended to a line the wrap could not break. See `_wrap`."""
 
 EXCERPT_MAX = 75
 """Characters of source shown around a caret, matching PyYAML's own
@@ -219,17 +227,34 @@ def join_path(path: Sequence[str]) -> str:
     return out
 
 
-def _wrap(text: str, initial: str, subsequent: str) -> list[str]:
+def _wrap(text: str, initial: str = "  ", subsequent: str = "  ") -> list[str]:
+    """Wrap one paragraph into an indented body block, and clip it.
+
+    Wrapping alone is not a wall. `break_long_words=False` keeps identifiers,
+    paths and URLs intact -- worth having, since a hyphenated module name split
+    across two lines is no longer greppable -- but it means a single unbreakable
+    token comes back longer than `WIDTH`, and callers pass text that came from
+    outside: an exception's message, a module name, a variable name, a field
+    name a user typed. A 400-character identifier in a `NameError` produced a
+    410-character `help:` line. The clip is what makes the width a bound.
+
+    A clipped line is `WIDTH + len(CLIP_MARK)` characters, not `WIDTH`: the mark
+    has to be visible past the column, or a truncated line reads as a complete
+    one.
+    """
     if not text:
         return []
-    return textwrap.wrap(
-        text,
-        width=WIDTH,
-        initial_indent=initial,
-        subsequent_indent=subsequent,
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
+    return [
+        line if len(line) <= WIDTH else line[:WIDTH] + CLIP_MARK
+        for line in textwrap.wrap(
+            text,
+            width=WIDTH,
+            initial_indent=initial,
+            subsequent_indent=subsequent,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    ]
 
 
 def _suggestion_lines(suggestion: Suggestion) -> list[str]:

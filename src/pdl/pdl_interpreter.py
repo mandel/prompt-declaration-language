@@ -146,7 +146,10 @@ from .pdl_context import (
     ensure_context,
 )
 from .pdl_diagnostics import (
+    CLIP_MARK,
+    WIDTH,
     Diagnostic,
+    _wrap,
     csv_error_is_unclosed_quote,
     for_not_a_list_diagnostic,
     import_read_diagnostic,
@@ -2846,8 +2849,6 @@ _MISSING_RESULT_GENERIC_HELP = (
 
 _PRINT_NOTE = "`print(...)` writes to stdout; it does not set the block's value."
 
-_MISSING_RESULT_WIDTH = 76
-
 _MISSING_RESULT_MAX_NAMES = 5
 
 
@@ -2942,14 +2943,7 @@ def _missing_result_diagnostic(code: str, assigned: list[str]) -> str:
             replacement = f"result = {assigned[-1]}"
 
     lines = [_MISSING_RESULT_MESSAGE, ""]
-    lines += textwrap.wrap(
-        f"{_MISSING_RESULT_RULE} {evidence}",
-        width=_MISSING_RESULT_WIDTH,
-        initial_indent="  ",
-        subsequent_indent="  ",
-        break_long_words=False,
-        break_on_hyphens=False,
-    )
+    lines += _wrap(f"{_MISSING_RESULT_RULE} {evidence}")
     lines.append("")
     if note is not None:
         lines.append(f"  note: {note}")
@@ -3037,12 +3031,6 @@ _MODULE_ENV_NOTE = (
 
 _SCOPE_NAMES_NOTE = "PDL variables in scope are usable by name"
 
-_RAISED_WIDTH = 76
-
-# The exception's own text is wrapped a little wider than the prose: it is
-# often a single unbreakable sentence from a library.
-_RAISED_DETAIL_WIDTH = 78
-
 # How much of `str(exc)` fits on the header line before it moves to a paragraph
 # of its own. A fixed budget rather than a measured fit: the header is completed
 # by `located_message` at print time, so its final length is not known here.
@@ -3050,19 +3038,21 @@ _RAISED_DETAIL_CLIP = 60
 
 _RAISED_MAX_DETAIL_LINES = 5
 
-# What a clipped line ends with, in every position that clips.
-_CLIP_MARK = "..."
-
 # Stands in for an exception message that could not be rendered at all.
 _UNPRINTABLE = "<unprintable message>"
 
 # How much of one source line the gutter shows. The excerpt needs a wall of its
 # own: `_RAISED_DETAIL_CLIP` bounds the exception's text, but nothing bounded the
 # line the user wrote, so a 440-character line printed a 450-character row with a
-# 449-character caret under it -- the same wall the detail paragraph has, missed
-# at a different position. Chosen so that gutter + source + both clip marks stay
-# beside the 78 the detail paragraph wraps at.
-_RAISED_SOURCE_WIDTH = 66
+# 449-character caret under it -- the same wall the prose has, missed at a
+# different position.
+#
+# Derived from `WIDTH` rather than hardcoded, so the relationship survives a
+# change to the wrap column: the row is `<gutter> | <source>` and the source may
+# carry a clip mark at each end. `_RAISED_SOURCE_GUTTER` is the widest gutter
+# these diagnostics render (`regex:NN`, `output:NN`, `code:NN` plus `" | "`).
+_RAISED_SOURCE_GUTTER = 12
+_RAISED_SOURCE_WIDTH = WIDTH - _RAISED_SOURCE_GUTTER
 
 # How much of the line before the caret survives when the excerpt is windowed.
 # Enough to see what the failing expression is attached to.
@@ -3217,12 +3207,12 @@ def _excerpt(
     if len(source) <= _RAISED_SOURCE_WIDTH:
         return source, start, end
     if start is None:
-        return source[:_RAISED_SOURCE_WIDTH] + _CLIP_MARK, None, None
+        return source[:_RAISED_SOURCE_WIDTH] + CLIP_MARK, None, None
 
     window_start = min(max(start - _RAISED_SOURCE_LEAD, 0), len(source))
     text = source[window_start : window_start + _RAISED_SOURCE_WIDTH]
-    prefix = _CLIP_MARK if window_start else ""
-    suffix = _CLIP_MARK if window_start + len(text) < len(source) else ""
+    prefix = CLIP_MARK if window_start else ""
+    suffix = CLIP_MARK if window_start + len(text) < len(source) else ""
     start = min(start - window_start, len(text)) + len(prefix)
     if end is not None:
         end = min(end - window_start + len(prefix), len(prefix) + len(text))
@@ -3350,30 +3340,6 @@ def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
     return f"{name}: {first}", None
 
 
-def _wrap(text: str, subsequent: str = "  ", width: int = _RAISED_WIDTH) -> list[str]:
-    """Wrap one paragraph into the two-space-indented body block, and clip it.
-
-    Wrapping alone is not a wall. `break_long_words=False` keeps identifiers,
-    paths and URLs intact -- worth having, since a hyphenated module name split
-    across two lines is no longer greppable -- but it means a single unbreakable
-    token comes back longer than `width`, and every caller passes text that came
-    from outside: an exception's message, a module name, a variable name. A
-    400-character identifier in a `NameError` produced a 410-character `help:`
-    line. The clip is what makes the width a bound.
-    """
-    return [
-        line if len(line) <= width else line[:width] + _CLIP_MARK
-        for line in textwrap.wrap(
-            text,
-            width=width,
-            initial_indent="  ",
-            subsequent_indent=subsequent,
-            break_long_words=False,
-            break_on_hyphens=False,
-        )
-    ]
-
-
 def _detail_paragraph(text: str) -> list[str]:
     """The exception's own text, when it did not fit on the header line.
 
@@ -3383,7 +3349,7 @@ def _detail_paragraph(text: str) -> list[str]:
     """
     lines: list[str] = []
     for paragraph in text.split("\n"):
-        lines += _wrap(paragraph, width=_RAISED_DETAIL_WIDTH) or [""]
+        lines += _wrap(paragraph) or [""]
     if len(lines) > _RAISED_MAX_DETAIL_LINES:
         hidden = len(lines) - _RAISED_MAX_DETAIL_LINES
         lines = lines[:_RAISED_MAX_DETAIL_LINES] + [f"  ... ({hidden} more lines)"]
@@ -3393,7 +3359,7 @@ def _detail_paragraph(text: str) -> list[str]:
 def _clip(text: str) -> str:
     first = text.split("\n", 1)[0]
     if len(first) > _RAISED_DETAIL_CLIP:
-        return first[:_RAISED_DETAIL_CLIP].rstrip() + _CLIP_MARK
+        return first[:_RAISED_DETAIL_CLIP].rstrip() + CLIP_MARK
     return first
 
 

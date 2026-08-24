@@ -87,15 +87,16 @@ from pdl.pdl_ast_utils import iter_block_children
 # same failure seen from two tools, and E-CODE-001 already chose how to render it.
 # A second, near-identical renderer here would drift -- the caveat's wording most
 # of all, which is the one sentence a reader may have already seen from `pdl`.
-# Private names, because the interpreter's diagnostic vocabulary is not public API;
-# if a third caller ever needs them they belong in `pdl_diagnostics`.
+# Private names, because the interpreter's diagnostic vocabulary is not public API.
+# `_wrap` came from here until it acquired this third caller and moved to
+# `pdl_diagnostics`, which is where the rest of these belong if they gain one.
+from pdl.pdl_diagnostics import _wrap
 from pdl.pdl_interpreter import (
     _RAISED_GUTTER_CAVEAT,
     EXPR_START_STRING,
     _gutter,
     _safe_text,
     _syntax_error_rows,
-    _wrap,
 )
 from pdl.pdl_parser import PDLParseError
 from pdl.pdl_parser import parse_file as parse_pdl_file

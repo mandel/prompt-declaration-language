@@ -1,0 +1,19 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `parser: csv` cannot read a field longer than 131072 characters
+  in parser
+
+output:1 | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ...
+
+  `parser: csv` reads the block's output as comma-separated rows. Python's
+  `csv` module refuses any single field longer than 131072 characters. This is
+  a size limit, not a syntax error.
+
+  note: the block's output is 131073 characters with no `,` and no line break,
+        so it is a single field.
+  note: `output:N` counts lines of the block's output, not of the PDL file.
+  help: if this output is not CSV, remove `parser: csv`.

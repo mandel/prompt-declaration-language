@@ -1,0 +1,13 @@
+description: three unknown fields, none of which may be corrected
+text:
+  - text: a name PDL has never had
+    zzzz: 1
+  - text: a real PDL field, on a block that does not take it
+    content: 1
+  - repeat:
+      text: one
+    for:
+      i: [1, 2]
+    join:
+      as: array
+      wth: ", "

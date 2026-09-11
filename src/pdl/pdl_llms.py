@@ -17,6 +17,7 @@ from .pdl_ast import (
 )
 from .pdl_interpreter_state import InterpreterState
 from .pdl_lazy import PdlConst, PdlLazy, lazy_apply
+from .pdl_scheduler import make_model_call_done_callback
 from .pdl_schema_utils import pdltype_to_jsonschema
 from .pdl_utils import message_post_processing
 
@@ -92,53 +93,10 @@ class LitellmModel:
         message = lazy_apply((lambda x: x[0]), pdl_future)
         response = lazy_apply((lambda x: x[1]), pdl_future)
 
-        # update the end timestamp when the future is done
-        def update_end_nanos(future):
-            import time
-
-            result = future.result()[1]
-            if (
-                block.pdl__usage is not None
-                and result["usage"] is not None
-                and result["usage"]["completion_tokens"] is not None
-                and result["usage"]["prompt_tokens"] is not None
-            ):
-                block.pdl__usage.model_calls = 1
-                block.pdl__usage.completion_tokens = result["usage"][
-                    "completion_tokens"
-                ]
-                block.pdl__usage.prompt_tokens = result["usage"]["prompt_tokens"]
-                state.add_usage(block.pdl__usage)
-
-            if block.pdl__timing is not None:
-                block.pdl__timing.end_nanos = time.time_ns()
-
-                # report call completion and its duration
-                start = (
-                    block.pdl__timing.start_nanos
-                    if block.pdl__timing.start_nanos is not None
-                    else 0
-                )
-                exec_nanos = block.pdl__timing.end_nanos - start
-                if "PDL_VERBOSE_ASYNC" in environ:
-                    print(
-                        f"Asynchronous model call to {model_id} completed in {(exec_nanos)/1000000}ms",
-                        file=stderr,
-                    )
-                    msg = future.result()[0]
-                    if msg["content"] is not None:
-                        from termcolor import colored
-
-                        from .pdl_ast import BlockKind
-                        from .pdl_scheduler import color_of
-
-                        print(
-                            colored(msg["content"], color=color_of(BlockKind.MODEL)),
-                            file=stderr,
-                        )
-                        print("\n", file=stderr)
-
-        future.add_done_callback(update_end_nanos)
+        # Record usage and the end timestamp when the future is done. The
+        # callback is shared with the OpenAI backend and guards the failed and
+        # cancelled cases; see `make_model_call_done_callback`.
+        future.add_done_callback(make_model_call_done_callback(state, block, model_id))
 
         return message, response
 

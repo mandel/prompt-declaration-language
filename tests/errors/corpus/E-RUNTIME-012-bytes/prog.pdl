@@ -1,0 +1,8 @@
+defs:
+  raw:
+    lang: python
+    code: |
+      result = b"hi"
+for:
+  chunk: ${ raw }
+repeat: ${ chunk }

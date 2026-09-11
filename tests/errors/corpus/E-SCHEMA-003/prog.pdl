@@ -1,0 +1,5 @@
+defs:
+  f:
+    function:
+      x: string
+text: hello

@@ -1,0 +1,15 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:18 - the list in `jitter:` should have exactly 2 items, but it has 3
+  in retry.jitter
+
+3 |   jitter: [1, 2, 3]
+  |                  ^ one item too many
+
+  A list here has exactly 2 items, written `[number, number]`.
+
+  help: keep the first 2 items: jitter: [1, 2]

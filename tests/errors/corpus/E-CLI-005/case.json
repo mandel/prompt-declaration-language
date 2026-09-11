@@ -1,0 +1,20 @@
+{
+  "id": "E-CLI-005",
+  "title": "python -m pdl.pdl reports success on failure",
+  "severity": "S0",
+  "entry": "python-m-pdl",
+  "argv": [
+    "--stream",
+    "none",
+    "prog.pdl"
+  ],
+  "expect_exit": 0,
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 2
+  },
+  "notes": "Location 1 -> 2 (phase-3 item 7): `  in text[0]` is now rendered, and `prog.pdl:2` is the list item's own mark rather than an ancestor's, so the pair names the offending block exactly. Not 3: no column, no excerpt, no caret. Nothing else about this entry moved -- the defect is the exit code, not the diagnostic."
+}

@@ -1,0 +1,4 @@
+text:
+  - model: ollama/granite
+    input: hi
+    fallback: recovered

@@ -104,6 +104,9 @@ celerybeat.pid
 # Environments
 .env
 .venv
+# Secondary interpreter venvs, e.g. .venv312 for regenerating pdl-schema.json,
+# which must be produced on Python >= 3.12 (see AGENTS.md).
+.venv[0-9]*
 env/
 venv/
 ENV/

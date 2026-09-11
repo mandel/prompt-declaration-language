@@ -1,0 +1,5 @@
+text: |
+  a,b,c
+  "unterminated,1
+  x,y
+parser: csv

@@ -1,0 +1,10 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - Type errors during spec checking:
+  in spec
+prog.pdl:2:1 - hello should be of type <class 'int'>
+  in spec

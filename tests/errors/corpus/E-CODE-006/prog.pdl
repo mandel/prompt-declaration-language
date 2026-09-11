@@ -1,0 +1,12 @@
+text:
+- lang: python
+  code: |
+    def embed(text):
+        return 1 / 0
+    PDL_SESSION.embed = embed
+    result = ""
+- lang: python
+  code: |
+    key = "a line the reader is looking at"
+    other = key.upper()
+    result = PDL_SESSION.embed(key)

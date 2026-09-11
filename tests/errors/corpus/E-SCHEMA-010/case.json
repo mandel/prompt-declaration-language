@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-010",
+  "title": "several schema faults report in unstable order",
+  "severity": "S1",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_unstable_order": true
+  },
+  "notes": "The reproducer changed with the E-SCHEMA-UNION work and the flag did not, which is the whole point of the change to this entry. The old reproducer was `description: x / texts: [a] / foo: 1 / bar: 2`; under the new discriminator that program is one no-block diagnostic, and one message cannot come out in the wrong order. The ordering defect was only *hidden* by that, never fixed: it lives in the `set` differences in `analyze_errors`' object arm -- `set(required) - set(data)` and `set(data) - set(properties)` -- which decision 5.3 does not touch. This reproducer is the old one with the near-miss key corrected, which is what the old program's new `help:` tells the user to do, plus a third unknown field: follow the fix and PDL goes back to reporting several `Field not allowed` messages in `PYTHONHASHSEED` order. `test_order_instability_is_real` re-proves that across six seeds on every run, so the flag cannot go stale in either direction -- and two unknown fields were not enough to make it move, which is why there are three. Location 1 -> 2: the two `Missing required field` complaints that used to point at `prog.pdl:1` for a fault whose real subject was the whole document were the `FunctionBlock` misselection, and they are gone; every message left names an offending key with its own line and its own `  in <path>`. What, Why and Fix are E-SCHEMA-001's, because the messages are E-SCHEMA-001's. Hygiene stays 0 while the order stays unstable, whatever the rest of the row says."
+}

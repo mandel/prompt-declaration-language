@@ -12,6 +12,7 @@ from .pdl_ast import (
     ExpressionType,
     FunctionBlock,
     LocalizedExpression,
+    PDLScopeError,
     get_sampling_defaults,
 )
 from .pdl_dumper import as_json, block_to_dict
@@ -209,16 +210,41 @@ def validate_scope(scope: dict):
 
 
 def validate_pdl_model_defaults(model_defaults: list[dict[str, dict[str, Any]]]):
-    """Throw an exception if the model_defaults is not in expected format"""
+    """Throw an exception if the model_defaults is not in expected format
 
-    for model_default in model_defaults:
-        assert isinstance(model_default, dict)
+    The two `assert`s this used to carry were stripped under `-O` and, when they
+    did fire, produced a bare `AssertionError`. They are real checks now, and all
+    three shapes raise the same located error so the caller can say which input
+    supplied the value.
+    """
+    key = "pdl_model_default_parameters"
+    if not isinstance(model_defaults, list):
+        raise PDLScopeError(
+            f"malformed `{key}`: it is not a list of entries",
+            path=[key],
+            value=model_defaults,
+            reason="not-a-list",
+        )
+    for index, model_default in enumerate(model_defaults):
+        path = [key, f"[{index}]"]
+        if not isinstance(model_default, dict):
+            raise PDLScopeError(
+                f"malformed `{key}`: entry {index} is not a mapping of "
+                "model-name pattern to parameters",
+                path=path,
+                value=model_default,
+                reason="entry-not-a-mapping",
+            )
         for model_glob, glob_defaults in model_default.items():
             if not isinstance(glob_defaults, dict):
-                raise ValueError(
-                    f"invalid defaults {glob_defaults} for model matcher {model_glob}"
+                raise PDLScopeError(
+                    f"malformed `{key}`: the pattern {model_glob} is mapped to "
+                    f"{glob_defaults}, which is not a table of parameters",
+                    path=path,
+                    pattern=model_glob,
+                    value=glob_defaults,
+                    reason="value-not-a-table",
                 )
-            assert isinstance(glob_defaults, dict)
 
 
 def redact_secrets(data: Any, secrets: list[str]) -> Any:

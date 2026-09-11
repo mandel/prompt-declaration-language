@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `contribute:` should be a list, but `result` is a string
+  in contribute
+
+2 | contribute: result
+  | ^
+
+  `contribute:` is a list, even when it has only one element. Each item may be
+  `result`, `context`, `stdout` or `stderr`.
+
+  help: put the value in a list: contribute: [result]

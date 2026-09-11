@@ -1,0 +1,16 @@
+{
+  "id": "E-MODEL-001",
+  "title": "unrecognised model provider",
+  "severity": "S0",
+  "env": {
+    "PDL_TEST_MODEL": "bad_request"
+  },
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "The diagnostic is printed once, by generate() on the main thread, and located. The duplicate report -- 'exception calling callback for <Future ...>' plus ~20 frames -- was removed by guarding the futures done-callback now shared by pdl_llms.py and pdl_openai.py (pdl_scheduler.make_model_call_done_callback): a failed or cancelled future returns before any work and before any print, so the failed path has exactly one writer to stderr and the old main-thread/event-loop-thread interleaving cannot occur. Location moved 0 -> 1 when the burial was removed, and 1 -> 2 with phase-3 item 7: `  in text[0]` names the model block, and `prog.pdl:2` is that list item's own mark. It moves in step with E-MODEL-002, as the previous note said it should. Hygiene 3 with one recorded dissent: 'litellm.BadRequestError:' is a Python exception class name reaching the user, and a scorer who counts that as leakage would score this entry H2. What and Fix stay at 1 deliberately -- raising them needs provider-name knowledge PDL does not have at this raise site, where model_id is an opaque string it passed through."
+}

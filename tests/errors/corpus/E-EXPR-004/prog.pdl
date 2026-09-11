@@ -1,0 +1,5 @@
+defs:
+  lib:
+    import: sub/imported
+text:
+  - call: ${ lib.f }

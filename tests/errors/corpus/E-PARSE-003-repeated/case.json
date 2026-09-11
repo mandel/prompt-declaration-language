@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSE-003-repeated",
+  "title": "one key three times, a second key twice, and a third repeat nested",
+  "severity": "S0",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Pins that the message stays true when there is more than one thing to say, which is the failure mode a two-position diagnostic invites: the carets are under one specific pair, so nothing in the headline, the excerpt or the `help:` may describe any other. It does not. The headline counts `text` at three rather than saying \"twice\", the two carets are the *first two* of the three and a `note:` says so in as many words, the `help:` reads \"remove all but one\" instead of \"remove one of them\", the second repeated key of the same mapping -- `defs` -- gets a `note:` of its own, and the repeat inside the flow mapping on line 4 (`{x: 1, x: 2}`, a different mapping and so a different site) is counted in a third. The three notes are exclusive by construction rather than by luck: `duplicate_key_error` subtracts this site and the siblings it has just named from the document total, so a program whose only repeats are in one mapping emits no third note and cannot double-count. Which pair is chosen is not the walk order. `find_duplicate_keys` sorts by the position of the **second** occurrence, so \"the first duplicate\" means the first one a reader scrolling the file reaches -- `text` at line 3, ahead of `defs` at line 4 column 1 and of `x` at line 4 column 13. A depth-first order would have answered differently for no reason the reader could see. The flow mapping is doing a second job here: it is the shape the pre-foundation regex line map could not read at all (DROP #2), and the check inherits real marks, so a repeat inside `{...}` is found with a column that is right."
+}

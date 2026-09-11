@@ -1,0 +1,17 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `xml` is not a valid value for `parser:`
+  in parser
+
+2 | parser: xml
+  | ^
+
+  `parser:` accepts `json`, `jsonl`, `yaml` or `csv`, or a mapping with a
+  `regex:` or `pdl:` key.
+
+  help: remove `parser:` to leave the output as text, or use one of `json`,
+        `jsonl`, `yaml` or `csv`.

@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-004",
+  "title": "scalar type mismatch",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "\"42 should be of type <class 'str'>\" -- a Python type repr in a user-facing message. Location 1 -> 2 (phase-3 item 7): `  in role` is rendered and `prog.pdl:2` is that entry's own mark, so line and path both name the offending element."
+}

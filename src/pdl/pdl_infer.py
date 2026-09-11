@@ -1,17 +1,18 @@
 import argparse
+import sys
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict
 
-import yaml
 from matplotlib import pyplot as plt
 
 from ._version import version
-from .pdl import InterpreterConfig
+from .pdl import InterpreterConfig, _load_initial_scope, _scope_error_text
 from .pdl_ast import (
+    PDLException,
     PdlLocationType,
+    PDLScopeError,
     PdlUsage,
     Program,
-    get_default_model_parameters,
 )
 from .pdl_distributions import Categorical, viz
 from .pdl_inference import (
@@ -254,13 +255,24 @@ def main():
         parser.print_help()
         return 0
 
-    initial_scope = {"pdl_model_default_parameters": get_default_model_parameters()}
-    if args.data_file is not None:
-        with open(args.data_file, "r", encoding="utf-8") as scope_fp:
-            initial_scope = initial_scope | yaml.safe_load(scope_fp)
-    if args.data is not None:
-        initial_scope = initial_scope | yaml.safe_load(args.data)
-    validate_scope(initial_scope)
+    # Shares `_load_initial_scope` with `pdl` rather than repeating it: this
+    # sequence used to be a byte-for-byte copy, and a copy keeps every traceback
+    # the `pdl` entry point no longer produces.
+    defaults_origin, defaults_file = "builtin", ""
+    try:
+        initial_scope, defaults_origin, defaults_file = _load_initial_scope(
+            args.data_file, args.data, program=args.pdl
+        )
+        validate_scope(initial_scope)
+    except PDLScopeError as exc:
+        print(
+            _scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
+            file=sys.stderr,
+        )
+        return 1
+    except PDLException as exc:
+        print(exc.text, file=sys.stderr)
+        return 1
 
     config = InterpreterConfig(
         cwd=Path(args.pdl).parent,

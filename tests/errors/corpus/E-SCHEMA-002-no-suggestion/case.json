@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-002-no-suggestion",
+  "title": "unknown fields the near miss must stay silent about",
+  "severity": "S3",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "The negative half of E-SCHEMA-002, and the regression the `did you mean` suggestion invites: a suggester that always guesses is worse than none, so the three cases where it must produce nothing are pinned as a golden rather than left to a code comment. One offending key per mapping, deliberately: `extras` in `analyze_errors` is a `set` difference, so two extras in *one* block would order themselves by `PYTHONHASHSEED` -- the defect `E-SCHEMA-010` carries `hygiene_unstable_order` for -- and this entry is about the absence of a line, which a flaky order would obscure. **`zzzz`** is the base case: nothing in `TextBlock` is within `difflib`'s reach, so nothing is offered, and a cutoff lowered far enough to answer it would answer everything. **`content`** is the case a naive implementation gets wrong in the other direction: it is a real PDL field -- it names a kind of block, and `E-SCHEMA-007`'s message lists it -- that `TextBlock` does not accept, and it is one edit from `context:`, which `TextBlock` does. Writing a word PDL has is not mistyping one, so `_correction_pool` withholds a correction for any name in `near_miss_pool`. **`wth`** is the case that made the suggestion need a rule rather than a call to `difflib`: `JoinType` is one of the four unions with no discriminator (`ParserType`, `PatternType` and `PdlTypeType` are the others), so `analyze_errors` picks the branch sharing the most field names with the data, and here `JoinText` and `JoinArray` **tie** on `as` with the tie broken by document order. `JoinText` has `with:`; the user wrote `as: array` and meant `JoinArray`, which does not, so \"did you mean `with:`?\" would be a correction to a field still not allowed where they wrote it. The `array should be: text` line below it is that mis-selection stating itself, and it is left in the golden as the evidence: the branch reporting these two messages is not the branch the program is. Scored 8/15 and expected to stay there while the suggestion is unavailable -- `fix: 0` here is the honest score for \"there is no next action to give\", not a gap waiting to be closed, and closing it would mean inventing one. What a future change may not do is turn any of these three into a `help:` line."
+}

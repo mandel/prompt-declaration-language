@@ -5159,7 +5159,7 @@
     },
     "PdlLocationType": {
       "additionalProperties": false,
-      "description": "Internal data structure to keep track of the source location information.",
+      "description": "Internal data structure to keep track of the source location information.\n\n`path` is the block path inside the file, e.g. `[\"text\", \"[2]\", \"model\"]`.\n`line` and `col` are 1-based positions of that block in `file`, taken from\nthe YAML parser's own marks; `0` means unknown.\n\nThe per-file line data that used to sit here as `table` now lives in\n`pdl_location_utils.SOURCES`, keyed by `file`. A location that carried its\nfile's line table could be -- and was -- built with one file's `path` and\nanother file's table; see DROP #6 in `docs/error-reporting/INVENTORY.md`.",
       "properties": {
         "path": {
           "items": {
@@ -5172,18 +5172,20 @@
           "title": "File",
           "type": "string"
         },
-        "table": {
-          "additionalProperties": {
-            "type": "integer"
-          },
-          "title": "Table",
-          "type": "object"
+        "line": {
+          "default": 0,
+          "title": "Line",
+          "type": "integer"
+        },
+        "col": {
+          "default": 0,
+          "title": "Col",
+          "type": "integer"
         }
       },
       "required": [
         "path",
-        "file",
-        "table"
+        "file"
       ],
       "title": "PdlLocationType",
       "type": "object"

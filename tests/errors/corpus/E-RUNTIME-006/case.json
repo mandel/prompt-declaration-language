@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-006",
+  "title": "for lists of unequal length",
+  "severity": "S2",
+  "rubric": {
+    "location": 1,
+    "what": 3,
+    "why": 0,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "States the rule perfectly in PDL vocabulary, then shows neither which lists nor what lengths. Pure Why failure. Location stays 1 after phase-3 item 7, which added `  in for`: both the line and the path name the `for:` key, and the offending elements are the two lists inside it, on lines 2 and 3. This is the shape the rubric means by 'the enclosing key rather than the offending element', and it is the same gap as the Why 0 -- a diagnostic that named `i` and `j` would have a line for each of them too."
+}

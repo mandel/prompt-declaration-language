@@ -1,0 +1,2 @@
+text: "id,name\n1,\"Ada\" Lovelace\n2,\"Grace\" \n"
+parser: csv

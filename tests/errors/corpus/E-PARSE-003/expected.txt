@@ -1,0 +1,18 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - the key `text` is written twice in the same mapping
+
+1 | text: hello
+  | ^ first written here
+2 | text: world
+  | ^ written again here
+
+  A YAML mapping gives each key one value. Most YAML readers accept a key
+  written more than once and silently keep the last value, discarding the ones
+  before it; PDL rejects the program instead of choosing between them for you.
+
+  help: remove one of them, or merge them into a single `text:`.

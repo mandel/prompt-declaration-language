@@ -1,0 +1,14 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1 - cannot import `nosuch`: no such file `nosuch.pdl`
+  in import
+
+  `import: nosuch` looks for the file `nosuch.pdl`: PDL appends `.pdl` to an
+  import path that does not already end in it. Nothing exists at that path,
+  and the current directory contains no other `.pdl` files.
+
+  help: check the path; it is resolved relative to the current directory.

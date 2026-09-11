@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSE-001",
+  "title": "unterminated quoted scalar",
+  "severity": "S0",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Fixed. Read the 15 narrowly: it is available because PyYAML computed both marks and kept the whole program in `mark.buffer`, and it is not the class average -- the generic branch of the same recognizer scores 12. The second caret is moved from `context_mark` to the unpaired quote by the one heuristic in the design (odd count of `\"` or `'` after masking escapes, scanning from the context line to the problem line); when it does not fire the diagnostic degrades to the generic branch rather than guessing. No block path, because a document that did not parse has no blocks."
+}

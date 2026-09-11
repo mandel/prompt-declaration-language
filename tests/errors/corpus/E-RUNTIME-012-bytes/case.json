@@ -1,0 +1,14 @@
+{
+  "id": "E-RUNTIME-012-bytes",
+  "title": "for over bytes is rejected",
+  "severity": "S0",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "The other half of 5.5's `for:` rule, which nothing else covers. Bytes are the case where iteration is not merely surprising but changes the *type* of what is bound -- one integer per byte, 0-255 -- so a body expecting text gets numbers. Kept as its own entry rather than folded into E-RUNTIME-012 because the explanation is genuinely different from the character one and would otherwise never be exercised: a `bytes` binding can only arrive from a `code:` block, so no YAML-literal reproducer can reach it."
+}

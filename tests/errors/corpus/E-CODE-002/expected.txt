@@ -1,0 +1,14 @@
+$ exit: 1
+
+--- stdout ---
+hi
+
+--- stderr ---
+prog.pdl:2:1 - code block finished without assigning `result`
+  in code
+
+  A `code:` block's value is whatever its code assigns to the variable
+  `result`. This block assigned nothing.
+
+  note: `print(...)` writes to stdout; it does not set the block's value.
+  help: assign the value instead of printing it:  result = 'hi'

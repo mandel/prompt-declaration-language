@@ -1,0 +1,6 @@
+description: test
+text:
+  - "Hello"
+  - model: ollama/granite
+    parameterss:
+      temperature: 0

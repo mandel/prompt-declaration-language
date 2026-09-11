@@ -1,0 +1,17 @@
+{
+  "id": "E-MODEL-003",
+  "title": "handled model failure still prints a traceback",
+  "severity": "S0",
+  "env": {
+    "PDL_TEST_MODEL": "connect_error"
+  },
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "The one entry in the corpus whose correct output is no diagnostic at all. `fallback:` catches the model failure on the main thread, the program recovers, prints `recovered` and exits 0 -- and before the fix it also dumped 'exception calling callback for <Future ...>' plus ~20 frames from the futures done-callback, on a run that succeeded. So the duplicate report was not merely noise on a failing run: it was a traceback on a success path. Scored only on Hygiene, because there is nothing to locate, no rule to state, no value to show and no action to suggest; Location/What/Why/Fix are 0 by construction and cannot move, and Hygiene 3 is this entry's ceiling. It pins the contract the guard in pdl_scheduler.make_model_call_done_callback establishes: a model failure a program handles is silent. Anyone grepping stderr for evidence that a fallback fired will notice the change; that is intended."
+}

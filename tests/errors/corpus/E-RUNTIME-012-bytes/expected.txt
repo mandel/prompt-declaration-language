@@ -1,0 +1,20 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:7:3 - `for:` needs a list, but `chunk` is bound to 2 bytes of binary data
+  in for.chunk
+
+7 |   chunk: ${ raw }
+  |   ^ binary data, not a list
+
+  A `for:` binding is iterated one element at a time. Iterating binary data
+  gives one integer per byte, so this loop would run 2 times, binding `chunk`
+  to a number between 0 and 255 each time, rather than once for the value as a
+  whole.
+
+  help: wrap the expression in a list -- `${ [ ... ] }` -- to run the body
+        once for the whole value, or decode it to text and split it into the
+        elements you meant.

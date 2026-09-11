@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+--data:1:5 - not valid YAML: expected a value, but the input ended
+
+1 | {a:
+  |     ^ a value is expected here
+
+  `--data` (`-d`) is read as a YAML mapping of variable names to values.
+
+  note: this is the command-line argument, not `prog.pdl`; the program was
+        never read.
+  help: give the key a value and close the brace, e.g. -d '{a: 1}'

@@ -1,0 +1,7 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1:1 - file nofile.txt not found

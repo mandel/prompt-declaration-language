@@ -1,0 +1,22 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:5:1 - `parser: csv` found a quoted field that is never closed
+  in parser
+
+output:2 | "unterminated,1
+         | ^ this quote is never closed
+
+  `parser: csv` reads the block's output as comma-separated rows. A `"` at the
+  start of a field quotes it, and everything up to the matching `"` is part of
+  that field -- including commas and line breaks. This one has no matching
+  `"`, so the reader ran to the end of the block's output still inside it.
+
+  note: the 1 line below it was read as part of this field rather than as a
+        row of its own.
+  note: `output:N` counts lines of the block's output, not of the PDL file.
+  help: add the closing `"`, or remove the opening one if the field was not
+        meant to be quoted.

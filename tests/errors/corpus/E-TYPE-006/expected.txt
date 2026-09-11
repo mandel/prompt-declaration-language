@@ -1,0 +1,10 @@
+$ exit: 0
+
+--- stdout ---
+x1
+
+--- stderr ---
+Deprecated type syntax: use string instead of str.
+Deprecated type syntax: use integer instead of int.
+Deprecated type syntax: use string instead of str.
+Deprecated type syntax: use integer instead of int.

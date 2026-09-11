@@ -1,0 +1,12 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:5 - Attempting to include invalid yaml: sub/included.pdl
+  in text[0]
+sub/included.pdl:2:1 - Field not allowed: descrption
+  in descrption
+
+  help: did you mean `description:` instead of `descrption:`?

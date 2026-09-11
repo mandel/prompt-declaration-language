@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-001",
+  "title": "include names a missing file",
+  "severity": "S0",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 2
+  },
+  "notes": "Traceback gone as a side effect of E-BOUNDARY: `process_include` already caught `PDLParseError`, so it now catches the new `PDLFileNotFoundError` and renders it. The wording is still wrong and belongs to phase-3 item 4: `Attempting to include invalid yaml` says `yaml` about a missing file (issue #410), and the `pdl --help` suggestion is the program-argument branch's, not the include branch's. The include site was `:0` and is now `:1`, the line the `include:` block starts on (phase-3 item 0). Phase-3 item 7 does not move this golden: the `include:` block is the whole program, so its path is `[]` and no `  in` line is rendered -- compare E-RUNTIME-002, whose `import:` sits inside a `text:` and does print `  in import`. Two stacked claim lines for one error keep hygiene at 2. Location 1 -> 2 when `get_loc_string` began rendering `:col`: `prog.pdl:1:1` is an accurate line *plus* a second coordinate, which is what rubric item 1 asks for at 2, and the column is the only way this entry could ever get one -- an empty path renders nothing. The line is accurate rather than coarse on INVENTORY 7.9's test: `does_not_exist.pdl` is the whole value of the `include:` entry, so it has no mark of its own and the entry's mark is its position. That is the same reading that keeps the four `code:` entries at 1, where the offending statement is strictly inside a multi-line scalar and the header names the construct around it."
+}

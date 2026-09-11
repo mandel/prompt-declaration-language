@@ -1,12 +1,15 @@
 # pylint: disable=import-outside-toplevel
+import ast
 import builtins
 import csv
+import difflib
 import json
 import random
 import re
 import shlex
 import subprocess  # nosec
 import sys
+import textwrap
 import time
 import traceback
 import types
@@ -110,6 +113,7 @@ from .pdl_ast import (
     Pattern,
     PatternType,
     PdlCodeBlock,
+    PDLImportError,
     PdlLocationType,
     PdlParser,
     PDLRuntimeError,
@@ -141,11 +145,40 @@ from .pdl_context import (
     deserialize,
     ensure_context,
 )
+from .pdl_diagnostics import (
+    CLIP_MARK,
+    WIDTH,
+    Diagnostic,
+    _wrap,
+    csv_error_is_unclosed_quote,
+    for_not_a_list_diagnostic,
+    import_read_diagnostic,
+    parser_csv_diagnostic,
+    parser_group_diagnostic,
+    parser_json_diagnostic,
+    parser_jsonl_diagnostic,
+    parser_not_implemented_diagnostic,
+    parser_not_text_diagnostic,
+    parser_regex_diagnostic,
+    parser_regex_match_diagnostic,
+    parser_yaml_diagnostic,
+)
 from .pdl_interpreter_state import InterpreterState, ScopeType
 from .pdl_lazy import PdlConst, PdlDict, PdlLazy, PdlList, lazy_apply
 from .pdl_llms import LitellmModel
-from .pdl_location_utils import append, get_loc_string
-from .pdl_parser import PDLParseError, parse_file, parse_str
+from .pdl_location_utils import (
+    SOURCES,
+    append,
+    located_message,
+    nested_source_name,
+    source_text,
+)
+from .pdl_parser import (
+    PDLParseError,
+    parse_file,
+    parse_str,
+    undecodable_source_error,
+)
 from .pdl_python_repl import PythonREPL
 from .pdl_scheduler import (
     yield_background,
@@ -241,13 +274,20 @@ def generate(
         if trace_file:
             write_trace(trace_file, trace)
     except PDLParseError as exc:
-        print("\n".join(exc.message), file=sys.stderr)
+        print(exc.text, file=sys.stderr)
         return 1
     except PDLRuntimeError as exc:
-        if exc.loc is None:
+        # A carried diagnostic is already rendered, location line included, so
+        # it is printed as it stands. The test is the carrier class rather than
+        # the presence of a `.diagnostic` attribute: the parse-error shims carry
+        # one too, and they reach here wrapped in prose that a bare attribute
+        # test would silently drop.
+        if isinstance(exc.source_exception, PDLImportError):
+            message = exc.source_exception.diagnostic.text
+        elif exc.loc is None:
             message = exc.message
         else:
-            message = get_loc_string(exc.loc) + exc.message
+            message = located_message(exc.loc, exc.message)
         print(message, file=sys.stderr)
         if trace_file and exc.pdl__trace is not None:
             write_trace(trace_file, exc.pdl__trace)
@@ -695,7 +735,13 @@ def process_advance_block_retry(  # noqa: C901
             )
             trace = trace.model_copy(update={"pdl__result": result})
             if block.parser is not None:
-                parser_func = partial(parse_result, block.parser)
+                # The location travels into the callable, not around the call:
+                # `lazy_apply` defers the parser, so the exception surfaces at
+                # `future_result.result()` in `generate` and a `try` here would
+                # never see it. Same shape as the `spec` checker below.
+                parser_func = partial(
+                    parse_result, block.parser, loc=_marked_path(loc, "parser")
+                )
                 result = lazy_apply(parser_func, result)
                 if init_state.yield_result:
                     yield_result(result, block.kind)
@@ -795,16 +841,30 @@ def process_advance_block_retry(  # noqa: C901
             if block.fallback is None and not do_retry:
                 raise exc from exc
             if do_retry:
+                # A retry taken is not reported to the person running the
+                # program. Nothing is printed here, on any path: a block that
+                # recovers -- by a later attempt succeeding, or by `fallback:`
+                # -- must reach its end with stderr untouched, and PDL cannot
+                # know at this point which way the next attempt will go.
+                #
+                # Two consequences, both deliberate and both in the release
+                # note. A long retry sequence (backoff delays, or `retry: -1`)
+                # now shows no sign of progress, so a slow retry looks like a
+                # hang. And when the attempts run out only the *final*
+                # exception propagates, so a block that fails three times for
+                # three different reasons reports the third and loses the
+                # first two entirely.
+                #
+                # `error` is a different thing on a different channel and is
+                # unaffected. `trace_error_on_retry` feeds it into
+                # `pdl_context`, i.e. into the *model's* conversation for the
+                # next attempt -- the whole point of that flag is that the
+                # model can read what went wrong, and traceback text is exactly
+                # the kind of detail it can act on. It is also compared byte for
+                # byte against the previous one to collapse a repeat, so its
+                # contents participate in control flow rather than in output.
                 err_msg = traceback.format_exc()
                 error = f"An error occurred in a PDL block. Error details: {err_msg}"
-                if loc is None:
-                    message = error
-                else:
-                    message = get_loc_string(loc) + error
-                print(
-                    f"\n\033[0;31m[Retry {trial_idx+1}/{max_retry}] {message}\033[0m\n",
-                    file=sys.stderr,
-                )
                 if block.trace_error_on_retry:
                     scope = set_error_to_scope_for_retry(scope, error, block.pdl__id)
 
@@ -1477,6 +1537,39 @@ def _split_map_output(
 BlockTVarEvalFor = TypeVar("BlockTVarEvalFor", bound=RepeatBlock | MapBlock)
 
 
+def _for_not_a_list_error(
+    block: RepeatBlock | MapBlock, var: str, value: Any
+) -> PDLRuntimeError:
+    """E-RUNTIME-012, for one binding of a `for:`.
+
+    Both branches of the guard arrive here: the value with no elements at all,
+    which already raised, and `str`/`bytes`, which used to be iterated one
+    character at a time at exit 0 (decision 5.5).
+
+    The location is `for.<var>` exactly as before, so a program that failed here
+    yesterday reports the same line, column and block path today. The *excerpt*
+    is drawn only when the source really has a mark for that path: `append`
+    carries an ancestor's position down on a miss, and a caret pointed at it
+    would name a line the binding is not on.
+    """
+    lst_loc = append(append(block.pdl__location or empty_block_location, "for"), var)
+    target = _marked_path(block.pdl__location, "for", var)
+    exact = target is not None and list(target.path[-2:]) == ["for", var]
+    message = for_not_a_list_diagnostic(
+        var=var,
+        value=value,
+        source=source_text(target.file) if exact and target is not None else None,
+        line=target.line if exact and target is not None else None,
+        col=target.col if exact and target is not None else None,
+    ).text
+    return PDLRuntimeError(
+        message=message,
+        loc=lst_loc,
+        trace=ErrorBlock(msg=message, pdl__location=lst_loc, program=block),
+        fallback=[],
+    )
+
+
 def _evaluate_for_field(
     scope: ScopeType, block: BlockTVarEvalFor, loc: PdlLocationType
 ) -> Tuple[BlockTVarEvalFor, dict[str, list] | None, int | None]:
@@ -1488,18 +1581,10 @@ def _evaluate_for_field(
         lengths = []
         items_res = {}
         for idx, lst in items.items():
-            if not isinstance(lst, Iterable):
-                msg = f"Values inside the For block must be lists but got {type(lst)}."
-                lst_loc = append(
-                    append(block.pdl__location or empty_block_location, "for"),
-                    idx,
-                )
-                raise PDLRuntimeError(
-                    message=msg,
-                    loc=lst_loc,
-                    trace=ErrorBlock(msg=msg, pdl__location=lst_loc, program=block),
-                    fallback=[],
-                )
+            if isinstance(lst, (str, bytes, bytearray)) or not isinstance(
+                lst, Iterable
+            ):
+                raise _for_not_a_list_error(block, idx, lst)
             lst = list(lst)
             items_res[idx] = lst
             lengths.append(len(lst))
@@ -1857,6 +1942,68 @@ def process_contribute(
     return scope, trace
 
 
+_CONTRIBUTE_RULE = (
+    "A `contribute` entry is either `result` or `context`, or a mapping with a "
+    "single key naming where to contribute."
+)
+
+
+# Keyed on the exact type rather than tested with isinstance, so that `bool`
+# resolves to "a boolean" instead of being caught by its `int` base class.
+_PDL_TYPE_NAMES: dict[type, str] = {
+    bool: "a boolean",
+    int: "a number",
+    float: "a number",
+    str: "a string",
+    list: "a list",
+    dict: "a mapping",
+    type(None): "null",
+}
+
+
+def _pdl_type_name(value: Any) -> str:
+    """Name a value's type the way the PDL documentation does."""
+    return _PDL_TYPE_NAMES.get(type(value), f"a {type(value).__name__}")
+
+
+def _bad_contribution_message(elem: Any) -> str:
+    """Explain why a `contribute` entry is not usable.
+
+    Reports the keys the user wrote rather than the parsed value: by this point
+    a mapping's values are `ContributeValue` models, whose repr is PDL's
+    internals rather than anything the user typed.
+    """
+    keys = list(elem) if isinstance(elem, dict) else []
+    if not isinstance(elem, dict):
+        headline = (
+            f"contribute entry must be a string or a mapping, "
+            f"but got {_pdl_type_name(elem)}"
+        )
+        evidence = f"This one is {elem!r}."
+        suggestion = ""
+    elif not keys:
+        headline = "contribute entry is an empty mapping"
+        evidence = "A mapping entry needs exactly one key; this one has none."
+        suggestion = ""
+    else:
+        headline = f"contribute entry has {len(keys)} keys, expected exactly 1"
+        named = ", ".join(f"`{k}`" for k in keys)
+        evidence = f"This one maps {named}."
+        # Two list items written at one indent level collapse into a single
+        # mapping, which is the usual way to arrive here. Name the user's own
+        # keys: a generic example would point at the wrong shape, since
+        # `result` and `context` are spelled as bare strings, not mappings.
+        items = " then ".join(f"`- {k}:`" for k in keys)
+        suggestion = f"\n\n  help: give each key its own entry in the list: {items}"
+    body = textwrap.fill(
+        f"{_CONTRIBUTE_RULE} {evidence}",
+        width=76,
+        initial_indent="  ",
+        subsequent_indent="  ",
+    )
+    return f"{headline}\n\n{body}{suggestion}"
+
+
 def process_contribution(
     block: AdvancedBlockType,
     elem: ContributeElement,
@@ -1872,7 +2019,7 @@ def process_contribution(
             target = elem
         case dict():
             if len(elem) != 1:
-                msg = "Contributions are expected to be strings or dictionaries of length 1 but got {elem}"
+                msg = _bad_contribution_message(elem)
                 raise PDLRuntimeError(
                     msg,
                     loc=loc,
@@ -1891,7 +2038,7 @@ def process_contribution(
                 ) from exc
             elem = {target: ContributeValue(value=value_trace)}
         case _:
-            msg = "Contributions are expected to be strings or dictionaries of length 1 but got {elem}"
+            msg = _bad_contribution_message(elem)
             raise PDLRuntimeError(
                 msg,
                 loc=loc,
@@ -2515,6 +2662,33 @@ def process_call_code(
                         }
                     )
                 )
+            except _MissingResultError as exc:
+                # The code ran fine; it just never set the block's value. Point
+                # at the `code` key rather than at the block as a whole, and
+                # keep the `Python Code error:` prefix off a message that is
+                # about a PDL rule.
+                raise PDLRuntimeError(
+                    exc.message,
+                    loc=append(loc, "code"),
+                    trace=block.model_copy(
+                        update={"code": code_s, "pdl__defsite": block.pdl__id}
+                    ),
+                    source_exception=exc,
+                ) from exc
+            except _CodeBlockRaised as exc:
+                # The diagnostic is already rendered -- `call_python` is the only
+                # place the frames and the block's own source both exist. Point
+                # at the `code` key rather than at the block as a whole, and keep
+                # the `Python Code error:` category label off a message that
+                # already says what happened.
+                raise PDLRuntimeError(
+                    exc.message,
+                    loc=append(loc, "code"),
+                    trace=block.model_copy(
+                        update={"code": code_s, "pdl__defsite": block.pdl__id}
+                    ),
+                    source_exception=exc,
+                ) from exc
             except PDLRuntimeExpressionError as exc:
                 raise PDLRuntimeError(
                     f"Python Code error: {exc.message}",
@@ -2527,8 +2701,18 @@ def process_call_code(
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
+                # Near-unreachable now that `call_python` renders its own
+                # diagnostic. It used to say that only a failure building the
+                # background context above could land here; that was wrong,
+                # because the message builder itself could raise -- and then
+                # this arm reported *its* error, at `:0`, as if it were the
+                # user's. `_raised_diagnostic` is total for exactly that reason,
+                # so what remains here is the background context and whatever a
+                # future edit adds to the arm. `repr`, not
+                # `traceback.format_exc()`, so this is not a second latent
+                # traceback leak in the same `match` arm.
                 raise PDLRuntimeError(
-                    f"Python Code error: {traceback.format_exc()}",
+                    f"Python Code error: {exc!r}",
                     loc=loc,
                     trace=block.model_copy(
                         update={"code": code_s, "pdl__defsite": block.pdl__id}
@@ -2608,7 +2792,7 @@ def process_call_code(
                 ) from exc
         case PdlCodeBlock():
             try:
-                result = call_pdl(code_s, execution_scope)
+                result = call_pdl(code_s, execution_scope, append(loc, "code"))
                 background = DependentContext(
                     PdlList(
                         [
@@ -2641,21 +2825,790 @@ def process_call_code(
 __PDL_SESSION = types.SimpleNamespace()
 
 
+class _MissingResultError(PDLRuntimeExpressionError):
+    """A Python `code:` block ran to completion without assigning `result`.
+
+    Module private on purpose: `call_python` has neither the block nor its
+    location, so it cannot raise a located error itself. `process_call_code`
+    catches this before the general `PDLRuntimeExpressionError` clause and
+    re-raises it as a `PDLRuntimeError` on the block's `code` key, without the
+    `Python Code error:` prefix -- that prefix says the code errored, and this
+    code did not.
+    """
+
+
+_MISSING_RESULT_MESSAGE = "code block finished without assigning `result`"
+
+_MISSING_RESULT_RULE = (
+    "A `code:` block's value is whatever its code assigns to the variable `result`."
+)
+
+_MISSING_RESULT_GENERIC_HELP = (
+    "a code block must end by assigning its value, e.g. `result = ...`"
+)
+
+_PRINT_NOTE = "`print(...)` writes to stdout; it does not set the block's value."
+
+_MISSING_RESULT_MAX_NAMES = 5
+
+
+def _assigned_names(namespace: dict[str, Any], bound_before: set[str]) -> list[str]:
+    """The names a code block bound, in binding order.
+
+    Ordered `dict` iteration, never a `set` difference: the message must not
+    depend on `PYTHONHASHSEED`. Imported modules and private/dunder names are
+    dropped, as is anything the PDL scope already provided -- which means a name
+    that was in scope and got reassigned does not show up here.
+    """
+    return [
+        name
+        for name, value in namespace.items()
+        if name not in bound_before
+        and name != "__builtins__"
+        and not name.startswith("_")
+        and not isinstance(value, types.ModuleType)
+    ]
+
+
+def _print_expression(code: str) -> tuple[bool, str | None]:
+    """Whether the code mentions `print`, and what it printed.
+
+    The second element is the source of the argument of the block's only
+    top-level `print(<expr>)` call, when there is exactly one such call and it
+    takes a single positional argument. That is the case where the fix can be
+    spelled out; anything else only earns the generic advice.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:  # pragma: no cover - the code compiled a moment ago
+        return False, None
+    uses_print = any(
+        isinstance(node, ast.Name) and node.id == "print" for node in ast.walk(tree)
+    )
+    if not uses_print:
+        return False, None
+    calls = [
+        stmt.value
+        for stmt in tree.body
+        if isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name)
+        and stmt.value.func.id == "print"
+    ]
+    if len(calls) != 1:
+        return True, None
+    call = calls[0]
+    if len(call.args) != 1 or call.keywords or isinstance(call.args[0], ast.Starred):
+        return True, None
+    return True, ast.unparse(call.args[0])
+
+
+def _name_list(names: list[str]) -> str:
+    shown = ", ".join(f"`{name}`" for name in names[:_MISSING_RESULT_MAX_NAMES])
+    if len(names) > _MISSING_RESULT_MAX_NAMES:
+        shown += f", and {len(names) - _MISSING_RESULT_MAX_NAMES} more"
+    return shown
+
+
+def _missing_result_diagnostic(code: str, assigned: list[str]) -> str:
+    """The message body for a `code:` block that never assigned `result`.
+
+    One diagnostic, several renderings: the evidence sentence says what was
+    found, the `help:` line says what to do about it.
+    """
+    note: str | None = None
+    replacement: str | None = None
+    if len(assigned) == 0:
+        evidence = "This block assigned nothing."
+        uses_print, printed = _print_expression(code)
+        if uses_print:
+            note = _PRINT_NOTE
+        if printed is not None:
+            suggestion = "assign the value instead of printing it"
+            replacement = f"result = {printed}"
+        else:
+            suggestion = _MISSING_RESULT_GENERIC_HELP
+    elif len(assigned) == 1:
+        evidence = f"This block assigned `{assigned[0]}`, but not `result`."
+        suggestion = "assign it to `result`"
+        replacement = f"result = {assigned[0]}"
+    else:
+        near = difflib.get_close_matches("result", assigned, n=1, cutoff=0.6)
+        if near:
+            evidence = f"This block assigned `{near[0]}`, but not `result`."
+            suggestion = "did you mean to name it `result`?"
+        else:
+            evidence = f"This block assigned {_name_list(assigned)}, but not `result`."
+            suggestion = "assign one of them to `result`"
+            replacement = f"result = {assigned[-1]}"
+
+    lines = [_MISSING_RESULT_MESSAGE, ""]
+    lines += _wrap(f"{_MISSING_RESULT_RULE} {evidence}")
+    lines.append("")
+    if note is not None:
+        lines.append(f"  note: {note}")
+    if replacement is None:
+        lines.append(f"  help: {suggestion}")
+    else:
+        lines.append(f"  help: {suggestion}:  {replacement}")
+    return "\n".join(lines)
+
+
+class _CodeBlockRaised(PDLRuntimeExpressionError):
+    """A Python `code:` block let an exception escape.
+
+    Module private for the same reason as `_MissingResultError`: `call_python`
+    holds the evidence (the code and the traceback) but neither the block nor
+    its location, so it cannot raise a located error itself. `process_call_code`
+    catches this before the general `PDLRuntimeExpressionError` clause and
+    re-raises it on the block's `code` key, without the `Python Code error:`
+    prefix -- the message already says what happened, and the prefix is a
+    category label rather than a rule.
+    """
+
+
+# The name given to `compile` for every execution of every `code:` block. It is
+# shared, deliberately, and it is *not* what tells one block's traceback frames
+# from another's -- `_unit_code_objects` is.
+#
+# The name is observable. Python prints it from the user's own code: a
+# `warnings.warn` in a block reports `<code-block>:2: UserWarning`, and a block
+# that catches its own exception and calls `traceback.format_exc()` gets a string
+# containing `File "<code-block>", line 3` -- which can then be assigned to
+# `result` and become the program's output. Making the name unique per execution
+# (`<code-block-1>`, `<code-block-2>`, ...) therefore changes success-path output,
+# and in a `for:`/`repeat:` loop it makes that output differ between iterations of
+# a single block that used to produce identical strings. Diagnostics may not buy
+# accuracy with a change to what a working program prints, so the discriminator
+# has to be something the user cannot see.
+_CODE_BLOCK_FILENAME = "<code-block>"
+
+
+def _unit_code_objects(unit: types.CodeType) -> dict[int, types.CodeType]:
+    """Every code object belonging to one compiled `code:` block, by identity.
+
+    `compile` returns a fresh code object per call even when the filename is
+    identical, and the code objects of nested `def`s, `lambda`s and
+    comprehensions are reachable from `co_consts`, recursively. So the set of
+    code objects reachable from one `compile` result is exactly "the frames whose
+    line numbers index *this* block's source", which is the question the
+    diagnostic needs answered and the one a filename cannot answer.
+
+    Keyed by `id`, but the dict holds the code objects as values, which is what
+    makes the key safe: nothing here can be collected and have its address
+    reused while the mapping is alive.
+    """
+    objects = {id(unit): unit}
+    for const in unit.co_consts:
+        if isinstance(const, types.CodeType):
+            objects.update(_unit_code_objects(const))
+    return objects
+
+
+_RAISED_RULE = (
+    "Python code in a `code:` block must run to completion; an exception that "
+    "escapes it stops the program."
+)
+
+# Only emitted when something was printed with a `code:N` gutter above it. The
+# note goes away entirely once file lines are available (phase-3 item 0).
+#
+# A `note:` line, not a tail on the rule paragraph: E-CODE-002 puts a comparable
+# side-fact (`print(...)` writes to stdout) on its own `note:`, and the two
+# diagnostics are meant to be indistinguishable in shape. The rule paragraph
+# states the rule; how to read the evidence is a note. It names the `code:N`
+# gutter rather than saying "above", because it is emitted last among the notes
+# and a preceding `note: raised inside ..., line 2 of another `code:` block`
+# carries a line number this caveat does not describe.
+_RAISED_GUTTER_CAVEAT = (
+    "`code:N` line numbers are within the block's code, not the PDL file."
+)
+
+_MODULE_ENV_NOTE = (
+    "a `code:` block runs in the same Python environment as `pdl` itself, with "
+    "the program's directory on `sys.path`."
+)
+
+_SCOPE_NAMES_NOTE = "PDL variables in scope are usable by name"
+
+# How much of `str(exc)` fits on the header line before it moves to a paragraph
+# of its own. A fixed budget rather than a measured fit: the header is completed
+# by `located_message` at print time, so its final length is not known here.
+_RAISED_DETAIL_CLIP = 60
+
+_RAISED_MAX_DETAIL_LINES = 5
+
+# Stands in for an exception message that could not be rendered at all.
+_UNPRINTABLE = "<unprintable message>"
+
+# How much of one source line the gutter shows. The excerpt needs a wall of its
+# own: `_RAISED_DETAIL_CLIP` bounds the exception's text, but nothing bounded the
+# line the user wrote, so a 440-character line printed a 450-character row with a
+# 449-character caret under it -- the same wall the prose has, missed at a
+# different position.
+#
+# Derived from `WIDTH` rather than hardcoded, so the relationship survives a
+# change to the wrap column: the row is `<gutter> | <source>` and the source may
+# carry a clip mark at each end. `_RAISED_SOURCE_GUTTER` is the widest gutter
+# these diagnostics render (`regex:NN`, `output:NN`, `code:NN` plus `" | "`).
+_RAISED_SOURCE_GUTTER = 12
+_RAISED_SOURCE_WIDTH = WIDTH - _RAISED_SOURCE_GUTTER
+
+# How much of the line before the caret survives when the excerpt is windowed.
+# Enough to see what the failing expression is attached to.
+_RAISED_SOURCE_LEAD = 16
+
+# A `RecursionError` must print five lines, not a thousand.
+_RAISED_MAX_FRAMES = 3
+
+_NEAR_MISS_CUTOFF = 0.7
+
+# Seeded by the interpreter rather than by the user: `process_prog` adds
+# `stdlib` and `call_python` adds `PDL_SESSION`. Everything else the interpreter
+# injects -- `empty_scope`'s entries, `pdl_usage`, and the CLI's
+# `pdl_model_default_parameters` -- lives under the reserved `pdl_` prefix.
+_PDL_INTERNAL_NAMES = ("stdlib", "PDL_SESSION")
+
+_PDL_RESERVED_PREFIX = "pdl_"
+
+
+def _user_scope_names(scope: ScopeType) -> list[str]:
+    """The PDL variables a `code:` block can refer to by name.
+
+    The namespace is seeded from the block's scope, so every name here really is
+    visible in the code. The interpreter's own entries are excluded rather than
+    listed back at the user as if they had written them. Ordered iteration,
+    never a `set`, so the list does not move with `PYTHONHASHSEED`.
+
+    The `pdl_` filter is knowingly over-broad. Nothing in `docs/` reserves the
+    prefix from users, so a PDL variable genuinely named `pdl_foo` is usable in
+    the code and is nonetheless dropped from this list and from the near-miss
+    candidates. The trade is deliberate: everything else the interpreter injects
+    (`pdl_usage`, the CLI's `pdl_model_default_parameters`) lives under the
+    prefix and has no fixed name to exclude, and listing PDL's plumbing back at a
+    user as if they had declared it is the worse failure of the two. Revisit if
+    the prefix is ever reserved, or if the injected set becomes enumerable.
+    """
+    hidden = set(empty_scope) | set(_PDL_INTERNAL_NAMES)
+    return [
+        name
+        for name in scope
+        if name not in hidden
+        and not name.startswith("_")
+        and not name.startswith(_PDL_RESERVED_PREFIX)
+    ]
+
+
+def _char_column(line: str, offset: int | None) -> int | None:
+    """A `FrameSummary` column as a character offset into `line`.
+
+    `colno`/`end_colno` are UTF-8 *byte* offsets, so a caret placed at one of
+    them lands to the right of its token on any line containing non-ASCII text.
+    CPython's own `traceback` module converts the same way.
+    """
+    if offset is None:
+        return None
+    return len(line.encode("utf-8")[:offset].decode("utf-8", "replace"))
+
+
+def _code_line(code: str, lineno: int | None) -> str:
+    """One line of the block's own source.
+
+    `linecache` cannot resolve `<code-block>`, which is why a traceback prints
+    those frames bare. The interpreter is holding the string, so it can.
+
+    Only ever called with a line number from a frame of *this* block: a line
+    number is meaningful only against the source it was compiled from, and
+    indexing one block's number into another's is exactly the defect the
+    code-object test in `_traced_frames` exists to prevent.
+    """
+    lines = code.splitlines()
+    if lineno is None or not 1 <= lineno <= len(lines):
+        return ""
+    return lines[lineno - 1]
+
+
+def _traced_frames(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> list[tuple[traceback.FrameSummary, bool]]:
+    """Every traceback frame, outermost first, paired with "is it this block's?".
+
+    The test is code-object identity, not filename. Every `code:` block compiles
+    under the same `<code-block>` name -- it has to, because that name is
+    observable from the user's own code -- so a filename comparison cannot tell
+    this block's frames from another block's. It could not even in principle:
+    the `PDL_SESSION` idiom (`examples/rag/tfidf_rag.pdl`,
+    `examples/ppdl/mbpp.pdl`) has one block call a function another block
+    defined, and the resulting frames carry the *defining* block's line numbers.
+    Indexed into this block's source they printed an innocent line of the wrong
+    block under a caret, or, when the other block was the longer one, an empty
+    line under a bare `^`. A location stated confidently and wrongly is the one
+    outcome the rubric ranks below saying nothing.
+
+    `traceback.extract_tb` cannot answer the question -- a `FrameSummary` keeps
+    the filename and the line number but drops the code object -- so the `tb`
+    chain is walked alongside it. The two are in the same order, one entry each,
+    and `zip` stops at the shorter of them.
+    """
+    tbs: list[types.TracebackType] = []
+    tb = exc.__traceback__
+    while tb is not None:
+        tbs.append(tb)
+        tb = tb.tb_next
+    return [
+        (summary, id(entry.tb_frame.f_code) in unit)
+        for entry, summary in zip(tbs, traceback.extract_tb(exc.__traceback__))
+    ]
+
+
+def _block_frames(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> list[traceback.FrameSummary]:
+    """The traceback frames running *this* block's own code, outermost first.
+
+    Keep the frames whose code object came out of this block's `compile`,
+    including frames inside functions the block itself defined; drop everything
+    else. That drops PDL's own `exec` frame and any library the code called into
+    -- neither is text the user can edit -- and it drops frames from *other*
+    `code:` blocks, whose line numbers index a source string this diagnostic does
+    not have. `_raised_inside_note` names those in prose instead of rendering
+    them as if they were this block's lines.
+    """
+    return [summary for summary, mine in _traced_frames(exc, unit) if mine]
+
+
+def _excerpt(
+    source: str, start: int | None, end: int | None
+) -> tuple[str, int | None, int | None]:
+    """One source line as it is printed, with the caret columns rebased onto it.
+
+    Two adjustments, both of which CPython's own `traceback` makes:
+
+    *Leading whitespace is stripped and the columns shifted by as much.* Without
+    it a tab-indented line is printed as a tab -- one character, but eight
+    columns wide in a terminal -- while the caret line below is padded with
+    spaces, so the caret lands about seven columns left of its token. Stripping
+    removes the disagreement rather than trying to model the terminal's tab
+    stops, and it costs nothing: the gutter already says which line this is.
+
+    *An over-long line is windowed around the caret* rather than printed whole.
+    The window keeps the caret visible, which a plain head-clip would not.
+    """
+    stripped = source.lstrip()
+    shift = len(source) - len(stripped)
+    source = stripped
+    if start is not None:
+        start = max(start - shift, 0)
+        if end is not None:
+            end = max(end - shift, start + 1)
+    elif end is not None:
+        end = max(end - shift, 0)
+
+    if len(source) <= _RAISED_SOURCE_WIDTH:
+        return source, start, end
+    if start is None:
+        return source[:_RAISED_SOURCE_WIDTH] + CLIP_MARK, None, None
+
+    window_start = min(max(start - _RAISED_SOURCE_LEAD, 0), len(source))
+    text = source[window_start : window_start + _RAISED_SOURCE_WIDTH]
+    prefix = CLIP_MARK if window_start else ""
+    suffix = CLIP_MARK if window_start + len(text) < len(source) else ""
+    start = min(start - window_start, len(text)) + len(prefix)
+    if end is not None:
+        end = min(end - window_start + len(prefix), len(prefix) + len(text))
+        end = max(end, start + 1)
+    return prefix + text + suffix, start, end
+
+
+def _caret_line(source: str, start: int | None, end: int | None, label: str) -> str:
+    """The `^^^` under `source`, or the empty string when there is no column.
+
+    Columns are absent under `-X no_debug_ranges` / `PYTHONNODEBUGRANGES=1`; the
+    diagnostic stays valid without them, so the caret is optional and the frame's
+    function name falls back to a line of its own.
+    """
+    if start is None or start > len(source):
+        return f"|{label}" if label else ""
+    stop = len(source) if end is None or end <= start else min(end, len(source))
+    return "| " + " " * start + "^" * max(stop - start, 1) + label
+
+
+def _gutter(rows: list[tuple[str, str, int | None, int | None, str]]) -> list[str]:
+    """Render `code:N | <source>` rows with their caret lines.
+
+    The `code:` prefix is load-bearing: a bare `1 |` would read as line 1 of the
+    PDL file, which is a confidently-stated wrong location.
+    """
+    width = max((len(label) for label, _, _, _, _ in rows), default=0)
+    lines: list[str] = []
+    for label, source, start, end, note in rows:
+        if not label:
+            lines.append(f"{'':<{width}} {source}")
+            continue
+        lines.append(f"{label:<{width}} | {source}".rstrip())
+        caret = _caret_line(source, start, end, note)
+        if caret:
+            lines.append(f"{'':<{width}} {caret}".rstrip())
+    return lines
+
+
+def _frame_rows(
+    frames: list[traceback.FrameSummary], code: str
+) -> list[tuple[str, str, int | None, int | None, str]]:
+    """Gutter rows for the block's frames, Python's order: outermost first.
+
+    Beyond `_RAISED_MAX_FRAMES` it is the outermost frame, a count, and the
+    innermost one.
+    """
+    shown = frames
+    elided = 0
+    if len(frames) > _RAISED_MAX_FRAMES:
+        shown = [frames[0], frames[-1]]
+        elided = len(frames) - 2
+    rows: list[tuple[str, str, int | None, int | None, str]] = []
+    for index, frame in enumerate(shown):
+        if elided and index == 1:
+            rows.append(("", f"... {elided} more frames", None, None, ""))
+        source = _code_line(code, frame.lineno)
+        end_lineno = getattr(frame, "end_lineno", frame.lineno)
+        start = _char_column(source, getattr(frame, "colno", None))
+        end = (
+            _char_column(source, getattr(frame, "end_colno", None))
+            if end_lineno == frame.lineno
+            else None
+        )
+        source, start, end = _excerpt(source, start, end)
+        label = "" if frame.name == "<module>" else f" in {frame.name}"
+        rows.append((f"code:{frame.lineno}", source, start, end, label))
+    return rows
+
+
+def _syntax_error_rows(
+    exc: SyntaxError, code: str
+) -> list[tuple[str, str, int | None, int | None, str]]:
+    """Gutter rows for a `compile` failure, which has no frame of its own.
+
+    Unlike a `FrameSummary` column, `SyntaxError.offset` is a 1-based *character*
+    offset into `exc.text`.
+    """
+    if exc.lineno is None:
+        return []
+    source = (exc.text or _code_line(code, exc.lineno)).rstrip("\n")
+    start = None if exc.offset is None else max(exc.offset - 1, 0)
+    end_offset = getattr(exc, "end_offset", None)
+    end = None if end_offset is None else max(end_offset - 1, 0)
+    source, start, end = _excerpt(source, start, end)
+    return [(f"code:{exc.lineno}", source, start, end, "")]
+
+
+def _safe_type_name(value: Any) -> str:
+    """`type(value).__name__`, for a value whose metaclass may disagree."""
+    try:
+        return str(type(value).__name__)
+    except Exception:  # pylint: disable=broad-except
+        return "object"
+
+
+def _safe_text(value: Any) -> str:
+    """`str(value)` for a value that may not have a working `__str__`.
+
+    Not hypothetical: an exception class with a `__str__` that raises is one
+    `def` away in any `code:` block, and this builder runs *because* the user's
+    code already failed. It must not become the second failure. The placeholder
+    does not repeat the type, which the header prints beside it anyway.
+    """
+    try:
+        return str(value)
+    except Exception:  # pylint: disable=broad-except
+        return _UNPRINTABLE
+
+
+def _exception_summary(exc: BaseException) -> tuple[str, str | None]:
+    """The `<Type>: <detail>` for the header, and the full text when it did not fit.
+
+    The header carries the string a user greps for. A multi-line or overlong
+    message moves to a paragraph of its own instead, so that a 2000-character
+    exception from inside user code cannot become a wall in either position.
+    """
+    name = _safe_type_name(exc)
+    text = _safe_text(exc)
+    first = text.split("\n", 1)[0]
+    if not text:
+        return name, None
+    if first != text or len(first) > _RAISED_DETAIL_CLIP:
+        return name, f"{name}: {text}"
+    return f"{name}: {first}", None
+
+
+def _detail_paragraph(text: str) -> list[str]:
+    """The exception's own text, when it did not fit on the header line.
+
+    Bounded in both directions: `_wrap` clips each line to the width, and the
+    paragraph as a whole is capped at five lines. A message from inside user code
+    must not become a wall in either direction.
+    """
+    lines: list[str] = []
+    for paragraph in text.split("\n"):
+        lines += _wrap(paragraph) or [""]
+    if len(lines) > _RAISED_MAX_DETAIL_LINES:
+        hidden = len(lines) - _RAISED_MAX_DETAIL_LINES
+        lines = lines[:_RAISED_MAX_DETAIL_LINES] + [f"  ... ({hidden} more lines)"]
+    return lines
+
+
+def _clip(text: str) -> str:
+    first = text.split("\n", 1)[0]
+    if len(first) > _RAISED_DETAIL_CLIP:
+        return first[:_RAISED_DETAIL_CLIP].rstrip() + CLIP_MARK
+    return first
+
+
+def _raised_inside_note(
+    exc: BaseException, unit: dict[int, types.CodeType]
+) -> str | None:
+    """Where the exception came from, when it was not the block's own code.
+
+    Frames in libraries the user imported are dropped from the gutter -- they
+    are not text the user can edit and the chain is unbounded -- but dropping
+    them silently would leave `result = json.loads("{")` looking like the
+    raising line when it is not. Basename only: no absolute paths, and the
+    message stays machine-independent.
+    """
+    traced = _traced_frames(exc, unit)
+    if not traced or traced[-1][1]:
+        return None
+    if not any(mine for _, mine in traced):
+        return None
+    innermost = traced[-1][0]
+    name = innermost.filename
+    if name == _CODE_BLOCK_FILENAME:
+        # Not this block's code object, but compiled under this block's name: a
+        # function another `code:` block defined, reached through `PDL_SESSION`
+        # or a shared object. Its line number is a coordinate in that block's
+        # source, which this diagnostic does not hold, so it is named in prose.
+        # There is no name to give the other block -- the compile-time filename
+        # is shared -- and "another `code:` block" is what the user can act on
+        # anyway; the function name is the part they recognise.
+        return (
+            f"raised inside `{innermost.name}`, line {innermost.lineno} of "
+            "another `code:` block, which this block called."
+        )
+    if name.startswith("<") and name.endswith(">"):
+        # `<frozen importlib._bootstrap>` and friends: plumbing, not a file.
+        return None
+    if Path(name).parent == Path(__file__).parent:
+        # PDL's own package, reached by calling a PDL function from the code.
+        return None
+    return (
+        f"raised inside `{Path(name).name}`, line {innermost.lineno}, "
+        f"in `{innermost.name}`, which this block called."
+    )
+
+
+def _caused_by_note(exc: BaseException) -> str | None:
+    cause = exc.__cause__
+    if cause is None and not exc.__suppress_context__:
+        cause = exc.__context__
+    if cause is None:
+        return None
+    text = _safe_text(cause).split("\n", 1)[0]
+    if text and text in _safe_text(exc):
+        # A wrapper that re-raised its cause's own message verbatim. Saying it a
+        # second time adds nothing.
+        return None
+    cause_name = _safe_type_name(cause)
+    label = f"{cause_name}: {_clip(text)}" if text else cause_name
+    return f"caused by `{label}`"
+
+
+def _exception_name_attr(exc: BaseException) -> str | None:
+    """`exc.name` when it is a name, and `None` otherwise.
+
+    `NameError.name` and `ModuleNotFoundError.name` are documented as strings,
+    but they are plain writable attributes: `raise NameError(name=42)` or a
+    subclass with a `name` property is enough to put a non-string here, and it
+    would reach `difflib.get_close_matches`, which compares by slicing and fails
+    on anything that is not a sequence of characters.
+    """
+    try:
+        name = getattr(exc, "name", None)
+    except Exception:  # pylint: disable=broad-except
+        return None
+    return name if isinstance(name, str) else None
+
+
+def _raised_advice(
+    exc: BaseException, scope_names: list[str], assigned: list[str]
+) -> tuple[list[str], str | None]:
+    """The `note:`/`help:` lines for the branches where a suggestion is checkable.
+
+    Everything else stays silent. There is nothing true and useful to say to
+    someone who divided by zero, and a vacuous suggestion scores below none.
+    """
+    name = _exception_name_attr(exc)
+    if isinstance(exc, ModuleNotFoundError) and name:
+        return [_MODULE_ENV_NOTE], f"install `{name}` in that environment."
+    if isinstance(exc, NameError) and not isinstance(exc, UnboundLocalError) and name:
+        # Computed here rather than taken from CPython's own `Did you mean:`
+        # suffix, whose heuristics move between versions; the golden must not.
+        candidates = list(assigned)
+        candidates += [n for n in scope_names if n not in candidates]
+        candidates += [
+            n for n in dir(builtins) if not n.startswith("_") and n not in candidates
+        ]
+        near = difflib.get_close_matches(
+            name, candidates, n=1, cutoff=_NEAR_MISS_CUTOFF
+        )
+        if near:
+            return [], f"did you mean `{near[0]}`?"
+        notes = []
+        if scope_names:
+            notes.append(f"{_SCOPE_NAMES_NOTE}: {_name_list(scope_names)}.")
+        # `def:`/`defs:` adds to the scope. Never `scope:`, which *replaces* the
+        # block's execution scope and would silently drop everything else the
+        # code relies on.
+        return notes, f"define `{name}` in the code, or define it earlier with `def:`."
+    return [], None
+
+
+def _raised_diagnostic(  # pylint: disable=too-many-arguments
+    exc: Exception,
+    code: str,
+    namespace: dict[str, Any],
+    bound_before: set[str],
+    scope: ScopeType,
+    *,
+    unit: dict[int, types.CodeType],
+) -> str:
+    """The message body for a `code:` block that raised. Total by construction.
+
+    The whole builder runs under a catch. Its inputs are an arbitrary exception
+    object from user code and an arbitrary namespace, so "this cannot raise" is
+    not a claim that survives review: an exception whose `__str__` raises and a
+    `NameError` whose `.name` is not a string were both found to take the
+    builder down. Those two are fixed at the source (`_safe_text`,
+    `_exception_name_attr`); this catch is the guarantee, so that the next one
+    costs the user a thinner message rather than a diagnostic about PDL's own
+    error reported at the wrong place.
+    """
+    try:
+        return _raised_body(exc, code, namespace, bound_before, scope, unit=unit)
+    except Exception:  # pylint: disable=broad-except
+        return _raised_fallback(exc)
+
+
+def _raised_fallback(exc: BaseException) -> str:
+    """What is left of the diagnostic when building the rest of it failed.
+
+    Still true, still located, still free of a traceback -- the exception's type
+    and the rule it broke. The floor, not the target.
+    """
+    return "\n".join(
+        [f"code block raised {_safe_type_name(exc)}", ""] + _wrap(_RAISED_RULE)
+    )
+
+
+def _raised_body(  # pylint: disable=too-many-arguments
+    exc: Exception,
+    code: str,
+    namespace: dict[str, Any],
+    bound_before: set[str],
+    scope: ScopeType,
+    *,
+    unit: dict[int, types.CodeType],
+) -> str:
+    """The message body for a `code:` block that raised.
+
+    One diagnostic, several renderings: the header verb, the evidence and the
+    `help:` are computed; the rule paragraph is constant.
+    """
+    frames = _block_frames(exc, unit)
+    detail: str | None = None
+    if isinstance(exc, SyntaxError) and not frames:
+        headline = f"code block has a syntax error: {_safe_text(exc.msg)}"
+        rows = _syntax_error_rows(exc, code)
+        notes: list[str] = []
+        suggestion: str | None = None
+    else:
+        summary, detail = _exception_summary(exc)
+        headline = f"code block raised {summary}"
+        rows = _frame_rows(frames, code)
+        notes, suggestion = _raised_advice(
+            exc,
+            _user_scope_names(scope),
+            _assigned_names(namespace, bound_before),
+        )
+
+    gutter = _gutter(rows)
+    lines = [headline, ""]
+    if gutter:
+        lines += gutter + [""]
+    if detail is not None:
+        lines += _detail_paragraph(detail) + [""]
+    lines += _wrap(_RAISED_RULE)
+
+    inside = _raised_inside_note(exc, unit)
+    if inside is not None:
+        notes.append(inside)
+    caused = _caused_by_note(exc)
+    if caused is not None:
+        notes.append(caused)
+    # Last among the notes, and only when there is a gutter to explain: every
+    # other note says something about the failure, this one says how to read the
+    # output. Same condition as before -- a program with no renderable frame must
+    # not grow a note about a gutter it never saw.
+    if gutter:
+        notes.append(_RAISED_GUTTER_CAVEAT)
+    if notes or suggestion is not None:
+        lines.append("")
+    for note in notes:
+        lines += _wrap(f"note: {note}", subsequent=" " * 8)
+    if suggestion is not None:
+        lines += _wrap(f"help: {suggestion}", subsequent=" " * 8)
+    return "\n".join(lines)
+
+
 def call_python(code: str, scope: ScopeType, state: InterpreterState) -> PdlLazy[Any]:
     my_namespace = types.SimpleNamespace(PDL_SESSION=__PDL_SESSION, **scope)
+    bound_before = set(my_namespace.__dict__)
+    # Bound before the `try` because `compile` itself can raise: a `SyntaxError`
+    # leaves no compiled unit and no frame of this block at all, and the
+    # diagnostic needs an answer either way. The unit is walked in the handler,
+    # not here, so a block that succeeds pays nothing for it.
+    c: types.CodeType | None = None
     sys.path.append(str(state.cwd))
     try:
-        c = compile(code, "<code-block>", "exec")
+        c = compile(code, _CODE_BLOCK_FILENAME, "exec")
         exec(c, my_namespace.__dict__)  # nosec B102
         # [B102:exec_used] Use of exec detected.
         # This is the code that the user asked to execute. It can be executed in a docker container with the option `--sandbox`
     except KeyboardInterrupt as exc:
         raise exc from exc
     except Exception as exc:
-        message = traceback.format_exc()
-        raise PDLRuntimeExpressionError(message, source_exception=exc) from exc
-    result = my_namespace.result
-    sys.path.pop()
+        raise _CodeBlockRaised(
+            _raised_diagnostic(
+                exc,
+                code,
+                my_namespace.__dict__,
+                bound_before,
+                scope,
+                unit={} if c is None else _unit_code_objects(c),
+            ),
+            source_exception=exc,
+        ) from exc
+    else:
+        # `hasattr`, not attribute access: a PDL variable named `result` that is
+        # already in scope was copied into the namespace above, and a block that
+        # inherits it that way keeps working.
+        if not hasattr(my_namespace, "result"):
+            raise _MissingResultError(
+                _missing_result_diagnostic(
+                    code, _assigned_names(my_namespace.__dict__, bound_before)
+                )
+            )
+        result = getattr(my_namespace, "result")
+    finally:
+        sys.path.pop()
     return PdlConst(result)
 
 
@@ -2695,8 +3648,20 @@ def call_jinja(code: str, scope: ScopeType, parameters: dict) -> PdlLazy[Any]:
     return PdlConst(result)
 
 
-def call_pdl(code: str, scope: ScopeType) -> PdlLazy[Any]:
-    program, loc = parse_str(code)
+def call_pdl(
+    code: str, scope: ScopeType, code_loc: PdlLocationType | None = None
+) -> PdlLazy[Any]:
+    """Run a PDL program that another PDL program produced.
+
+    `code_loc` is where the text came from -- the `code:` key of the `lang: pdl`
+    block -- and it names the source. Without it the program is parsed as
+    `<program>`, and the *containing* program, if it was a string too, loses its
+    own entry in the registry: every location built in it after this point then
+    resolves against this code's marks. `code_loc=None` is kept only for a
+    caller outside the interpreter, and gets the old, shared name.
+    """
+    file_name = None if code_loc is None else nested_source_name(code_loc)
+    program, loc = parse_str(code, file_name=file_name)
     state = InterpreterState()
     result, _, _, _ = process_prog(state, scope, program, loc)
     return result
@@ -2750,11 +3715,14 @@ def execute_call(state, current_context, closure, args, loc):
         | (args or {})
     )
     if closure.pdl__location is not None:
-        fun_loc = PdlLocationType(
-            file=closure.pdl__location.file,
-            path=closure.pdl__location.path + ["return"],
-            table=loc.table,
-        )
+        # The body of the function is at `<callee>.return`, in the callee's own
+        # file. This used to be spelled out field by field with `table=loc.table`
+        # -- the *caller's* line map -- so a function called across files was
+        # resolved against a table its path does not occur in, and the lookup
+        # missed into the ancestor walk and produced a confident wrong line
+        # (DROP #6). `append` can only ever consult the file named in the
+        # location it is given, so the mistake no longer has a spelling.
+        fun_loc = append(closure.pdl__location, "return")
     else:
         fun_loc = empty_block_location
     result, background, _, f_trace = process_block(state, f_scope, f_body, fun_loc)
@@ -2837,7 +3805,7 @@ def process_include(
         include_trace = block.model_copy(update={"pdl__trace": trace})
         return result, background, scope, include_trace
     except PDLParseError as exc:
-        message = f"Attempting to include invalid yaml: {str(file)}\n{exc.message}"
+        message = f"Attempting to include invalid yaml: {str(file)}\n{exc.text}"
         raise PDLRuntimeError(
             message,
             loc=loc,
@@ -2851,6 +3819,31 @@ def process_include(
         ) from exc
 
 
+def import_read_error(
+    block: ImportBlock, loc: PdlLocationType, diagnostic: Diagnostic
+) -> PDLRuntimeError:
+    """Wrap a rendered diagnostic about an unreadable imported file.
+
+    The text is carried twice on purpose. `message` is what every re-wrap site
+    propagates and what lands in the trace; the `PDLImportError` is what tells
+    `generate` that the message is already a rendered diagnostic and must not be
+    given a second location header.
+
+    The caller chains the read failure with `raise ... from exc`, which is what
+    keeps `retry`'s `exception_matches` matching a configured `FileNotFoundError`
+    -- it walks `__cause__`. By the time the error reaches an SDK caller the
+    retry path's own `raise exc from exc` has overwritten `__cause__`, and the
+    `OSError` is on `__context__`.
+    """
+    message = diagnostic.text
+    return PDLRuntimeError(
+        message,
+        loc=loc,
+        trace=ErrorBlock(msg=message, program=block.model_copy()),
+        source_exception=PDLImportError(diagnostic),
+    )
+
+
 def process_import(
     state: InterpreterState,
     scope: ScopeType,
@@ -2861,9 +3854,38 @@ def process_import(
     if not path.endswith(".pdl"):
         path += ".pdl"
     file = state.cwd / path
+    # Only the read is guarded, so `prog_str` -- and therefore the cache key
+    # below -- stays exactly where it is. `parse_file` would have brought the
+    # parser's diagnostics for free, but it discards the source text that
+    # `state.imported` is keyed on, and re-keying that cache on the path would
+    # execute an imported program twice where today it runs once.
     try:
         with open(file, "r", encoding="utf-8") as pdl_fp:
             prog_str = pdl_fp.read()
+    except OSError as exc:
+        import_loc = append(loc, "import")
+        raise import_read_error(
+            block,
+            import_loc,
+            import_read_diagnostic(
+                written=block.import_,
+                resolved=file,
+                cwd=state.cwd,
+                exc=exc,
+                file=loc.file,
+                line=import_loc.line,
+                block_path=import_loc.path,
+            ),
+        ) from exc
+    except UnicodeDecodeError as exc:
+        # Not an `OSError`, so the clause above does not cover it and a non-UTF-8
+        # imported file leaked a traceback. The parser already knows how to say
+        # this; only the carrier differs, because here the failure surfaces on
+        # the runtime path rather than the parse one.
+        raise import_read_error(
+            block, append(loc, "import"), undecodable_source_error(file, exc).diagnostic
+        ) from exc
+    try:
         prog, new_loc = parse_str(prog_str, file_name=str(file))
         cache = state.imported.get(prog_str)
         if cache is None:
@@ -2885,7 +3907,7 @@ def process_import(
         import_trace = block.model_copy(update={"pdl__trace": trace})
         return new_scope, DependentContext([]), scope, import_trace
     except PDLParseError as exc:
-        message = f"Attempting to import invalid yaml: {str(file)}\n{exc.message}"
+        message = f"Attempting to import invalid yaml: {str(file)}\n{exc.text}"
         raise PDLRuntimeError(
             message,
             loc=loc,
@@ -3066,10 +4088,192 @@ def get_contribute_aggregator(
 JSONReturnType = dict[str, Any] | list[Any] | str | float | int | bool | None
 
 
-def parse_result(parser: ParserType, text: str) -> JSONReturnType:
+def _marked_path(loc: PdlLocationType | None, *segments: str) -> PdlLocationType | None:
+    """Descend into `loc`, but only as far as the source really has marks.
+
+    `append` carries the parent's line down on a mark miss and *still* extends
+    `loc.path`, so a program whose parser is written `spec: {object: {...}}`
+    would be told `  in parser.spec.second` -- a path that is nowhere in its
+    file. That is the E-TYPE-003 defect recorded in INVENTORY 7.9. Here the walk
+    stops at the last segment that has a mark of its own, so the path printed is
+    always one the reader can find by looking.
+
+    It also handles the two cases with no marks at all: a program built as a
+    dict through the SDK, and a caller that passed no location.
+    """
+    if loc is None:
+        return None
+    for segment in segments:
+        if SOURCES.mark(loc.file, list(loc.path) + [segment]) is None:
+            break
+        loc = append(loc, segment)
+    return loc
+
+
+def _require_parser_text(
+    text: Any,
+    loc: PdlLocationType | None,
+    *,
+    label: str,
+    remove: str,
+    accept_bytes: bool = False,
+) -> None:
+    """E-PARSER-001's pre-check: a `parser:` needs text to read.
+
+    The accepted set is exactly what each parser accepts *today*, measured
+    rather than assumed: `json_repair.loads` and `yaml.safe_load` take `bytes`,
+    while `str.split`, `io.StringIO` and a `str` regex pattern all reject it
+    with a `TypeError`. So no program that works today starts failing here --
+    the only thing that changes is the message a program that already failed
+    gets, from a Python `TypeError` about subscripting to a sentence about the
+    `parser:` the user wrote.
+    """
+    accepted: tuple[type, ...] = (str, bytes) if accept_bytes else (str,)
+    if isinstance(text, accepted):
+        return
+    raise PDLRuntimeParserError(
+        parser_not_text_diagnostic(label=label, remove=remove, value=text).text,
+        loc=loc,
+    )
+
+
+def _parser_source(text: Any) -> str | None:
+    """The block's output as excerpt-able text, or `None` if it is not text.
+
+    `None` and `""` are different answers and both are used: `""` is an output
+    that really was empty, which earns a `note:` of its own, and `None` is an
+    output no excerpt can be drawn from.
+    """
+    return text if isinstance(text, str) else None
+
+
+def _parser_detail(exc: BaseException) -> str:
+    """One line of an exception's own text, bounded.
+
+    Used only where the library's message is *about the format the user asked
+    for* -- `json`'s `Expecting value`, `csv`'s field limit -- never as a
+    substitute for a diagnosis.
+    """
+    text = str(exc).split("\n", 1)[0].strip()
+    return text if len(text) <= 120 else text[:120].rstrip() + "..."
+
+
+def _csv_rows_lenient(text: str, loc: PdlLocationType | None) -> list[list[str]]:
+    """Read `text` with a default `csv.reader`, diagnosing what still fails.
+
+    The fallback for everything a strict reader rejects other than an unclosed
+    quote; the `csv` branch of `parse_result` explains why that narrowing
+    exists and what it tolerates. A second, complete parse rather than a
+    patch-up of the rows the strict reader had already produced, because the
+    strict reader stops in the middle of a record and its rows are not the rows
+    a lenient reader would have returned for the same text.
+
+    Not everything survives it. `field larger than field limit` is a resource
+    limit and not a strictness rule, so the lenient reader raises it here and
+    E-PARSER-004 keeps its diagnostic.
+    """
+    rows: list[list[str]] = []
+    reader = csv.reader(StringIO(text))
+    try:
+        for row in reader:
+            rows.append(row)
+    except KeyboardInterrupt as exc:
+        raise exc from exc
+    except Exception as exc:
+        raise PDLRuntimeParserError(
+            parser_csv_diagnostic(
+                text=text,
+                detail=_parser_detail(exc),
+                limit=csv.field_size_limit(),
+                row=reader.line_num,
+            ).text,
+            loc=loc,
+            source_exception=exc,
+        ) from exc
+    return rows
+
+
+def _compiled_regex(regex: str, loc: PdlLocationType | None) -> re.Pattern[str]:
+    """Compile a parser's `regex:` as an explicit step. E-PARSER-005.
+
+    Explicit so that a bad pattern is diagnosed as a bad *pattern*, before the
+    block's output is looked at, and so that every mode gets the same
+    diagnostic: `split` and `findall` compiled inside `re.split`/`re.findall`
+    with no handler at all and reached the user as a raw traceback.
+
+    `re` caches compiled patterns, so doing it here costs nothing.
+    """
+    try:
+        return re.compile(regex, flags=re.M)
+    except KeyboardInterrupt as exc:
+        raise exc from exc
+    except re.error as exc:
+        raise PDLRuntimeParserError(
+            parser_regex_diagnostic(
+                pattern=regex,
+                detail=exc.msg or _parser_detail(exc),
+                pos=exc.pos,
+                line=exc.lineno,
+                col=exc.colno,
+            ).text,
+            loc=_marked_path(loc, "regex"),
+            source_exception=exc,
+        ) from exc
+
+
+def _regex_group_error(
+    name: str, m: re.Match[str], loc: PdlLocationType | None, exc: BaseException
+) -> PDLRuntimeParserError:
+    """E-PARSER-006, built where `m` -- and so the pattern's groups -- is in scope.
+
+    `m.re.groupindex` maps every named group to its group number; ordering by
+    that number is what keeps the list out of `PYTHONHASHSEED`'s reach.
+
+    The file excerpt is drawn only when the mark for `parser.spec.<name>` really
+    exists. Where it does not -- a `spec:` written as `spec: {object: {...}}` --
+    the location degrades to the enclosing key and the caret is dropped rather
+    than pointed at whatever happens to be there.
+    """
+    groups = [g for g, _ in sorted(m.re.groupindex.items(), key=lambda kv: kv[1])]
+    target = _marked_path(loc, "spec", name)
+    exact = target is not None and list(target.path[-2:]) == ["spec", name]
+    return PDLRuntimeParserError(
+        parser_group_diagnostic(
+            name=name,
+            pattern=m.re.pattern,
+            groups=groups,
+            source=(source_text(target.file) if exact and target is not None else None),
+            line=target.line if exact and target is not None else None,
+            col=target.col if exact and target is not None else None,
+        ).text,
+        loc=target,
+        source_exception=exc,
+    )
+
+
+def parse_result(
+    parser: ParserType, text: str, *, loc: PdlLocationType | None = None
+) -> JSONReturnType:
+    """Read a block's output with the block's `parser:`.
+
+    ``loc`` is keyword-only and defaults to `None` so that every existing caller
+    and any SDK import keeps working; the interpreter passes
+    `append(loc, "parser")`, which is the key the diagnostics are about and the
+    one the user edits to make them stop. It has to travel *into* this function
+    rather than be caught around the call: `process_advance_block_retry` applies
+    the parser through `lazy_apply`, so the exception surfaces in `generate`,
+    not at the call site.
+    """
     result: JSONReturnType
     match parser:
         case "json":
+            _require_parser_text(
+                text,
+                loc,
+                label="`parser: json`",
+                remove="remove `parser: json`",
+                accept_bytes=True,
+            )
             try:
                 if text == "False":
                     return json.loads("false")
@@ -3079,95 +4283,210 @@ def parse_result(parser: ParserType, text: str) -> JSONReturnType:
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
+                decode = exc if isinstance(exc, json.JSONDecodeError) else None
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed JSON: {repr(exc)}",
+                    parser_json_diagnostic(
+                        text=_parser_source(text),
+                        detail=decode.msg if decode else _parser_detail(exc),
+                        line=decode.lineno if decode else None,
+                        col=decode.colno if decode else None,
+                    ).text,
+                    loc=loc,
                     source_exception=exc,
                 ) from exc
         case "jsonl":
+            _require_parser_text(
+                text, loc, label="`parser: jsonl`", remove="remove `parser: jsonl`"
+            )
             result = []
-            try:
-                for line in text.split("\n"):
-                    if line == "":
-                        continue
+            # `enumerate` over the split the loop already performed: the failing
+            # line number is the one thing this branch has always known and
+            # always discarded, and it is why every message from here reads
+            # `line 1` whichever line actually failed.
+            for index, line in enumerate(text.split("\n"), start=1):
+                if line == "":
+                    continue
+                try:
                     result.append(json.loads(line))
-            except KeyboardInterrupt as exc:
-                raise exc from exc
-            except Exception as exc:
-                raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed JSON: {repr(exc)}",
-                    source_exception=exc,
-                ) from exc
+                except KeyboardInterrupt as exc:
+                    raise exc from exc
+                except Exception as exc:
+                    decode = exc if isinstance(exc, json.JSONDecodeError) else None
+                    raise PDLRuntimeParserError(
+                        parser_jsonl_diagnostic(
+                            text=text,
+                            line=index,
+                            col=decode.colno if decode else None,
+                            detail=decode.msg if decode else _parser_detail(exc),
+                            whole_is_json=_is_one_json_document(text),
+                        ).text,
+                        loc=loc,
+                        source_exception=exc,
+                    ) from exc
         case "yaml":
+            _require_parser_text(
+                text,
+                loc,
+                label="`parser: yaml`",
+                remove="remove `parser: yaml`",
+                accept_bytes=True,
+            )
             try:
                 result = yaml.safe_load(text)
             except KeyboardInterrupt as exc:
                 raise exc from exc
-            except Exception as exc:
+            except yaml.YAMLError as exc:
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed YAML: {repr(exc)}",
+                    parser_yaml_diagnostic(exc, _parser_source(text) or "").text,
+                    loc=loc,
                     source_exception=exc,
                 ) from exc
         case "csv":
+            _require_parser_text(
+                text, loc, label="`parser: csv`", remove="remove `parser: csv`"
+            )
+            result = []
+            # The strict reader is a *detector*, not the parser of record.
+            #
+            # Built without `strict`, `csv.reader` accepts a quoted field that
+            # is never closed and swallows every remaining line into it, so the
+            # program prints a wrong parse and exits 0 (INVENTORY 7.10, finding
+            # 1). Making that an error is a decision-5.5 semantic change and it
+            # has the owner's sign-off -- for that one class and no other.
+            #
+            # `strict=True` cannot be narrowed at the reader: it is one flag,
+            # and it also rejects any text after a closing `"`, down to a lone
+            # trailing space (`1,"Ada" ` parses to `['1', 'Ada ']` without it,
+            # `1,"Ada" Lovelace` to `['1', 'Ada Lovelace']`). Both are shapes
+            # model-generated CSV really emits, and turning a working program
+            # into a hard failure over a trailing space is well past fixing a
+            # wrong parse. So the narrowing happens here instead, in the
+            # handler.
+            reader = csv.reader(StringIO(text), strict=True)
+            # `reader.line_num` is the last line the reader *consumed*, which
+            # for an unterminated quote is the end of the output rather than
+            # the line the quote is on. The line each completed row ended at is
+            # therefore recorded as it goes: the failing record starts on the
+            # line after the last one, which is a fact rather than a guess.
+            consumed = 0
+            tolerate = False
             try:
-                result = []
-                reader = csv.reader(StringIO(text))
                 for row in reader:
                     result.append(row)
+                    consumed = reader.line_num
+            except KeyboardInterrupt as exc:
+                raise exc from exc
+            except Exception as exc:
+                if csv_error_is_unclosed_quote(_parser_detail(exc)):
+                    raise PDLRuntimeParserError(
+                        parser_csv_diagnostic(
+                            text=text,
+                            detail=_parser_detail(exc),
+                            limit=csv.field_size_limit(),
+                            row=reader.line_num,
+                            record_line=consumed + 1,
+                        ).text,
+                        loc=loc,
+                        source_exception=exc,
+                    ) from exc
+                # Everything else the strict reader rejects is parsed again
+                # leniently and returned. The cost is stated rather than
+                # glossed: PDL hands back a parse the standard library flagged,
+                # and says nothing about it. That inconsistency is the price of
+                # not breaking programs that work today, and it is recorded in
+                # INVENTORY 7.10, in the release note, and by the corpus entry
+                # `E-PARSER-004-after-quote`, which pins the tolerated value.
+                #
+                # It is also what makes matching a `csv.Error` by its message
+                # safe (`csv_error_is_unclosed_quote`): an unrecognised message
+                # from a future Python lands here, in the lenient parse, and
+                # not in a spurious error.
+                #
+                # The field-size limit is *not* tolerated by this and must not
+                # be: it is not a strictness rule, so the lenient reader hits it
+                # too and raises there instead, which is where E-PARSER-004 gets
+                # its diagnostic.
+                tolerate = True
+            if tolerate:
+                # Outside the handler on purpose, so that a diagnostic raised by
+                # the lenient parse is not chained onto the strict reader's
+                # exception as its `__context__`.
+                result = _csv_rows_lenient(text, loc)
+        case PdlParser():
+            # E-PARSER-007. `PdlParser` is a declared branch of `ParserType`, so
+            # this is reachable from user YAML; it used to be `assert False,
+            # "TODO"`, which escaped `generate`'s handlers as a raw traceback and
+            # under `python -O` vanished entirely, leaving `result` unbound.
+            raise PDLRuntimeParserError(
+                parser_not_implemented_diagnostic().text, loc=loc
+            )
+        case RegexParser(mode="search" | "match" | "fullmatch"):
+            compiled = _compiled_regex(parser.regex, loc)
+            _require_parser_text(
+                text, loc, label="the `regex:` parser", remove="remove the `parser:`"
+            )
+            match parser.mode:
+                case "search":
+                    matcher = compiled.search
+                case "match":
+                    matcher = compiled.match
+                case "fullmatch":
+                    matcher = compiled.fullmatch
+                case _:
+                    assert False
+            try:
+                m = matcher(text)
             except KeyboardInterrupt as exc:
                 raise exc from exc
             except Exception as exc:
                 raise PDLRuntimeParserError(
-                    f"Attempted to parse ill-formed CSV: {repr(exc)}",
+                    parser_regex_match_diagnostic(detail=_parser_detail(exc)).text,
+                    loc=_marked_path(loc, "regex"),
                     source_exception=exc,
                 ) from exc
-        case PdlParser():
-            assert False, "TODO"
-        case RegexParser(mode="search" | "match" | "fullmatch"):
-            regex = parser.regex
-            match parser.mode:
-                case "search":
-                    matcher = re.search
-                case "match":
-                    matcher = re.match
-                case "fullmatch":
-                    matcher = re.fullmatch
-                case _:
-                    assert False
-            try:
-                m = matcher(regex, text, flags=re.M)
-            except KeyboardInterrupt as exc:
-                raise exc from exc
-            except Exception as exc:
-                msg = f"Fail to parse with regex {regex}: {repr(exc)}"
-                raise PDLRuntimeParserError(msg, source_exception=exc) from exc
             if m is None:
                 return None
             match parser.spec:
                 case ObjectPdlType(object=dict() as spec) | (dict() as spec):
-                    current_group_name = ""
-                    try:
-                        result = {}
-                        for x in spec.keys():
-                            current_group_name = x
+                    result = {}
+                    for x in spec.keys():
+                        try:
                             result[x] = m.group(x)
-                        return result
-                    except IndexError as exc:
-                        msg = f"No group named {current_group_name} found by {regex} in {text}"
-                        raise PDLRuntimeParserError(msg, source_exception=exc) from exc
+                        except IndexError as exc:
+                            raise _regex_group_error(x, m, loc, exc) from exc
+                    return result
                 case _:
                     result = list(m.groups())
         case RegexParser(mode="split" | "findall"):
-            regex = parser.regex
+            compiled = _compiled_regex(parser.regex, loc)
+            _require_parser_text(
+                text, loc, label="the `regex:` parser", remove="remove the `parser:`"
+            )
             match parser.mode:
                 case "split":
-                    result = re.split(regex, text, flags=re.M)
+                    result = compiled.split(text)
                 case "findall":
-                    result = re.findall(regex, text, flags=re.M)
+                    result = compiled.findall(text)
                 case _:
                     assert False
         case _:
             assert False
     return result
+
+
+def _is_one_json_document(text: str) -> bool:
+    """Whether the whole output is a single JSON value spanning several lines.
+
+    The one extra `json.loads` on the failure path that turns E-PARSER-002's
+    suggestion from a rule into an instruction: someone who wrote `jsonl` for a
+    pretty-printed document wants `json`, and nothing else this diagnostic can
+    say would help them.
+    """
+    try:
+        json.loads(text)
+    except (ValueError, TypeError, RecursionError):
+        return False
+    return True
 
 
 def get_var(var: str, scope: ScopeType, loc: PdlLocationType) -> Any:

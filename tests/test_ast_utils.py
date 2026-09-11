@@ -11,6 +11,7 @@ from pdl.pdl_ast import (
 )
 from pdl.pdl_ast_utils import MappedFunctions, iter_block_children, map_block_children
 from pdl.pdl_parser import PDLParseError, parse_file
+from tests.pdl_files import all_pdl_files
 
 
 def test_leaf_and_structured_block_types() -> None:
@@ -76,5 +77,5 @@ def _check_ast_iterators(yaml_file_name: pathlib.Path) -> None:
 def test_ast_iterators() -> None:
     with ThreadPoolExecutor() as executor:
         # Consume the iterator so any exception raised in a worker propagates.
-        for _ in executor.map(_check_ast_iterators, pathlib.Path(".").glob("**/*.pdl")):
+        for _ in executor.map(_check_ast_iterators, all_pdl_files()):
             pass

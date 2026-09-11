@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-007",
+  "title": "contribute entry is a dict of the wrong size",
+  "severity": "S1",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Was: '...but got {elem}' -- the literal six characters, because `process_contribution` (pdl_interpreter.py) built the string without an f-prefix at two sites, so the one piece of evidence the message promised was never substituted. Adding the prefix alone was not enough: by that point the mapping's values are ContributeValue models, so the substitution produced a pydantic repr. The message now reports the keys the user actually wrote. Reproducer is the realistic mistake -- two list items written at one indent level collapse into a single mapping. Location 1 -> 2 with phase-3 item 7: the previous note recorded that the line was right and only the column and the block path were missing, and `  in contribute[0]` supplies the second -- it also disambiguates the reproducer's whole point, that what looks like two entries is one."
+}

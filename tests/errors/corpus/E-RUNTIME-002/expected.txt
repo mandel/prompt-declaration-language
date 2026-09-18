@@ -11,4 +11,5 @@ prog.pdl:1 - cannot import `nosuch`: no such file `nosuch.pdl`
   import path that does not already end in it. Nothing exists at that path,
   and the current directory contains no other `.pdl` files.
 
-  help: check the path; it is resolved relative to the current directory.
+  help: check the path; it is resolved relative to the current directory (the
+        directory of the program `pdl` was started with).

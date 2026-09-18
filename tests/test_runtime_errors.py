@@ -28,7 +28,7 @@ ${ {}['x'] }
         exec_str(prog_str)
     assert (
         str(exc.value.message)
-        == "Error during the evaluation of ${ {}['x'] }: 'dict object' has no attribute 'x'"
+        == "Error during the evaluation of ${ {}['x'] }: the mapping has no key `x`"
     )
 
 
@@ -130,9 +130,12 @@ spec: integer
     # complaint's block path under its own header. The header line of the
     # enclosing `PDLRuntimeError` carries no path here because the raise site
     # builds it as a bare string; only `generate` adds one, at print time.
+    # One header, not two: the type error keeps its own location (which
+    # `generate` renders) and the "Type errors during spec checking:" wrapper
+    # that used to sit above it is gone.
     assert (
-        str(exc.value.message) == "Type errors during spec checking:\n"
-        "<program>:3:1 - Hello should be of type <class 'int'>\n"
+        str(exc.value.message)
+        == "the block's result should be an integer, but `Hello` is a string\n"
         "  in spec"
     )
 
@@ -145,9 +148,11 @@ text:
 """
     with pytest.raises(PDLRuntimeError) as exc:
         exec_str(prog_str)
+    # The name is reported as written: `get:` used to evaluate it as `${ x }`
+    # and report an expression the user never typed.
     assert (
-        str(exc.value.message)
-        == "Error during the evaluation of ${ x }: 'x' is undefined"
+        str(exc.value.message) == "`get: x` names a variable that is not defined\n\n"
+        "  `get:` reads a variable from the scope, by name and without `${ }`."
     )
 
 

@@ -33,6 +33,7 @@ which is issue #203's complaint rather than a fix for it.
 
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass
 from typing import Any, Iterator, Mapping, Sequence
@@ -40,7 +41,7 @@ from typing import Any, Iterator, Mapping, Sequence
 import yaml
 
 from .pdl_ast import PdlLocationType
-from .pdl_diagnostics import join_path
+from .pdl_diagnostics import clip_line, join_path
 
 UNNAMED_SOURCE = "<program>"
 """What a source parsed from a string with no file name is called.
@@ -609,6 +610,30 @@ def get_loc_string(loc: PdlLocationType) -> str:
     return loc.file + ":" + str(loc.line) + col + " - "
 
 
+_HEADER_RE = re.compile(
+    r"^(?P<file>.*?)(?::(?P<line>\d+))?(?::(?P<col>\d+))? - (?P<rest>.*)$"
+)
+
+
+def split_located(text: str, file: str) -> tuple[PdlLocationType, str] | None:
+    """Undo `located_message` on its first line: the location and the message.
+
+    Used to fold a type error that already carries its own header into a
+    `PDLRuntimeError`, so that `generate` prints one header rather than two.
+    The `  in <path>` line stays in the message body and the returned location
+    has an empty path, so nothing is printed twice. Returns None when the text
+    was not headed for `file`.
+    """
+    head, newline, rest = text.partition("\n")
+    match = _HEADER_RE.match(head)
+    if match is None or match.group("file") != file:
+        return None
+    line = int(match.group("line")) if match.group("line") else 0
+    col = int(match.group("col")) if match.group("col") else 0
+    loc = PdlLocationType(path=[], file=file, line=line, col=col)
+    return loc, match.group("rest") + newline + rest
+
+
 def located_message(loc: PdlLocationType, message: str) -> str:
     """One legacy diagnostic: its `file:line:col - ` header, its `  in <path>` line.
 
@@ -639,8 +664,8 @@ def located_message(loc: PdlLocationType, message: str) -> str:
     next to the prefix it replaces.
     """
     head, newline, rest = message.partition("\n")
-    out = get_loc_string(loc) + head
+    out = clip_line(get_loc_string(loc) + head)
     path = join_path(loc.path)
     if path:
-        out += "\n  in " + path
+        out += "\n" + clip_line("  in " + path)
     return out + newline + rest

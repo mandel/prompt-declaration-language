@@ -10,7 +10,9 @@ from .pdl_ast import PDLException, PdlLocationType, Program, empty_block_locatio
 from .pdl_diagnostics import (
     ORIGIN_PROGRAM,
     Diagnostic,
+    Span,
     duplicate_key_diagnostic,
+    schema_rejected_diagnostic,
     source_read_diagnostic,
     undecodable_diagnostic,
     unlocated_schema_diagnostic,
@@ -20,10 +22,13 @@ from .pdl_location_utils import (
     UNNAMED_SOURCE,
     DuplicateKeyError,
     SourceMark,
+    append,
     is_unnamed,
     load_with_marks,
+    located_message,
     program_location,
     register_source,
+    source_text,
 )
 from .pdl_schema_error_analyzer import analyze_errors
 
@@ -387,6 +392,8 @@ def parse_dict(pdl_dict: dict[str, Any], loc: PdlLocationType | None = None) -> 
             loc = empty_block_location
         errors = analyze_errors(defs, defs["Program"], pdl_dict, loc)
         if errors == []:
+            errors = _located_by_validator(exc, pdl_dict, loc)
+        if errors == []:
             # `<program>` is a display name, not a file name: a fallback naming
             # it as a file would invite the user to go and look for it. Since
             # decision 5.3 the analyzer answers block unions from PDL's own
@@ -398,6 +405,82 @@ def parse_dict(pdl_dict: dict[str, Any], loc: PdlLocationType | None = None) -> 
             errors = [unlocated_schema_diagnostic(file).text]
         raise PDLParseError(errors) from exc
     return prog
+
+
+def _deepest_data_path(node: Any, segments: tuple[Any, ...]) -> tuple[list[str], Any]:
+    """The longest path into `node` that `segments` spells, skipping the rest.
+
+    A pydantic location mixes data keys with the names of the union branches it
+    tried, and for a block the branch name *is* a key of the data: the root's
+    `text` branch is spelled `text`, exactly like the `text:` field. Reading
+    greedily took the branch name for the field and stopped there, at
+    `text: a`, for a fault in `retry.exceptions`. So every segment may be
+    consumed or skipped, the longest match wins, and a tie goes to the reading
+    that skipped the earlier segment, since the branch name comes first.
+    """
+    if not segments:
+        return [], node
+    head, rest = segments[0], segments[1:]
+    skipped = _deepest_data_path(node, rest)
+    consumed: tuple[list[str], Any] | None = None
+    if isinstance(node, dict) and head in node:
+        inner, leaf = _deepest_data_path(node[head], rest)
+        consumed = ([str(head)] + inner, leaf)
+    elif isinstance(node, list) and isinstance(head, int) and 0 <= head < len(node):
+        inner, leaf = _deepest_data_path(node[head], rest)
+        consumed = ([f"[{head}]"] + inner, leaf)
+    if consumed is not None and len(consumed[0]) > len(skipped[0]):
+        return consumed
+    return skipped
+
+
+def _located_by_validator(
+    exc: ValidationError, pdl_dict: Any, loc: PdlLocationType
+) -> list[str]:
+    """Locate a rejection the schema analyzer could not, from pydantic's own errors.
+
+    The JSON Schema is looser than the model at a few `TypeVar` fields --
+    `retry: {exceptions: 5}` passes every schema check and fails validation --
+    so `analyze_errors` finds nothing to say. pydantic's errors carry a path
+    into the data, interleaved with the names of the union branches it tried;
+    the path is walked against the data, keeping only the segments that exist
+    in it, and the deepest paths reached are reported, one diagnostic each,
+    with the validator's reasons quoted.
+    """
+    reached: dict[tuple[str, ...], tuple[Any, list[str]]] = {}
+    for error in exc.errors():
+        path, node = _deepest_data_path(pdl_dict, tuple(error.get("loc", ())))
+        if not path:
+            continue
+        value, reasons = reached.setdefault(tuple(path), (node, []))
+        message = str(error.get("msg", "")).strip()
+        # The `LocalizedExpression` alternative is the parsed form of an
+        # expression; "should be a valid string" beside it already covers it.
+        if message and "LocalizedExpression" not in message and message not in reasons:
+            reasons.append(message)
+    deepest = [
+        p
+        for p in reached
+        if not any(len(q) > len(p) and q[: len(p)] == p for q in reached)
+    ]
+    messages = []
+    for key in sorted(deepest):
+        value, reasons = reached[key]
+        nloc = loc
+        for segment in key:
+            nloc = append(nloc, segment)
+        spans = []
+        if nloc.line:
+            spans = [Span(line=nloc.line, col=nloc.col or None, primary=True)]
+        diag = schema_rejected_diagnostic(
+            field_name=None if key[-1].startswith("[") else key[-1],
+            value=value,
+            reasons=reasons[:3],
+            spans=spans,
+            source=source_text(loc.file),
+        )
+        messages.append(located_message(nloc, diag.text))
+    return messages
 
 
 # def set_program_location(prog: Program, pdl_str: str, file_name: str = ""):

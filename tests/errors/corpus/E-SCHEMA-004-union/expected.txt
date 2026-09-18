@@ -1,0 +1,14 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `retry:` should be an integer, null or a mapping, but `three` is a string
+  in retry
+
+2 | retry: "three"
+  | ^
+
+  As a mapping, `retry:` takes the keys `tries`, `exceptions`, `delay`,
+  `max_delay`, `backoff` or `jitter`.

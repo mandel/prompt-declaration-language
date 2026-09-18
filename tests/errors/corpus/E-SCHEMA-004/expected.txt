@@ -4,5 +4,8 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2:1 - 42 should be of type <class 'str'>
+prog.pdl:2:1 - `role:` should be a string, but `42` is an integer
   in role
+
+2 | role: 42
+  | ^

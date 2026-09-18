@@ -39,10 +39,11 @@ import csv
 import difflib
 import json
 import textwrap
+import unicodedata
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import yaml
 
@@ -57,6 +58,13 @@ long one."""
 
 CLIP_MARK = "..."
 """Appended to a line the wrap could not break. See `_wrap`."""
+
+HEADER_MAX = 2 * WIDTH
+"""Bound on one header or `  in <path>` line. Prose is wrapped by `_wrap`, but a
+header is one line by construction, and the text interpolated into it -- a
+field name, a variable name, an expression -- comes from the user. A
+400-character key produced a 434-character header; past this the line is
+clipped and marked, like a prose line `_wrap` could not break."""
 
 EXCERPT_MAX = 75
 """Characters of source shown around a caret, matching PyYAML's own
@@ -181,9 +189,9 @@ def _primary(diag: Diagnostic) -> Span | None:
 
 def render(diag: Diagnostic) -> str:
     """Render a diagnostic as the text the user sees. No trailing newline."""
-    lines: list[str] = [_header(diag)]
+    lines: list[str] = [clip_line(_header(diag))]
     if diag.block_path:
-        lines.append("  in " + join_path(diag.block_path))
+        lines.append(clip_line("  in " + join_path(diag.block_path)))
 
     excerpt = _excerpt(diag)
     if excerpt:
@@ -255,6 +263,42 @@ def _wrap(text: str, initial: str = "  ", subsequent: str = "  ") -> list[str]:
             break_on_hyphens=False,
         )
     ]
+
+
+def clip_line(text: str, limit: int = HEADER_MAX) -> str:
+    """Clip one line to `limit` characters, marking the cut. See `HEADER_MAX`."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + CLIP_MARK
+
+
+def clip_token(text: str, limit: int = 60) -> str:
+    """Clip a name or expression quoted inside a message, keeping it one line.
+
+    A `code:` string or a multi-line expression carries newlines; quoted raw it
+    would split the header across lines, and `located_message` would then put
+    its `  in <path>` line in the middle of the message.
+    """
+    flat = " ".join(text.split())
+    if len(flat) <= limit:
+        return flat
+    return flat[:limit] + CLIP_MARK
+
+
+def display_width(text: str) -> int:
+    """Terminal columns `text` occupies, counting East Asian wide characters as two.
+
+    A caret line is built from spaces, so it has to be padded by what the
+    terminal draws, not by how many code points precede the column: a caret
+    computed by code points sits one cell left for every CJK character before
+    it, which is a confidently wrong location in the reader's own terminal.
+    """
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+    return width
 
 
 def _suggestion_lines(suggestion: Suggestion) -> list[str]:
@@ -399,7 +443,7 @@ def _excerpt(diag: Diagnostic) -> list[str]:
             text, col = _clip(raw.replace("\t", " "), span.col)
         out.append(f"{_label(span.line).rjust(width)} | {text}".rstrip())
         if col is not None and col >= 1:
-            caret = " " * width + " | " + " " * (col - 1) + "^"
+            caret = " " * width + " | " + " " * display_width(text[: col - 1]) + "^"
             if label:
                 caret += " " + label
             out.append(caret.rstrip())
@@ -574,7 +618,7 @@ def source_read_diagnostic(
 # --------------------------------------------------------------------------
 
 
-def _import_form(written: str, candidate: Path) -> str:
+def _import_form(written: str, candidate: Path, keep_suffix: bool = False) -> str:
     """Name ``candidate`` the way the user writes an ``import:`` path.
 
     Two things are preserved from what they wrote: the directory part, because
@@ -586,7 +630,7 @@ def _import_form(written: str, candidate: Path) -> str:
     ``Path(written).parent``, so that it comes back in the user's own spelling
     -- a written `lib/` keeps its separator instead of being normalised away.
     """
-    name = candidate.name if written.endswith(".pdl") else candidate.stem
+    name = candidate.name if keep_suffix or written.endswith(".pdl") else candidate.stem
     return written[: written.rfind("/") + 1] + name
 
 
@@ -608,7 +652,21 @@ def _import_candidates(search_dir: Path, importing_file: Path | None) -> list[Pa
         return candidates
 
 
-def _import_rule(written: str, display: str, cwd: Path) -> str:
+def _resolution_phrase(cwd: Path) -> str:
+    """Name the directory `import:`/`include:` paths resolve from, unambiguously.
+
+    That directory is the one the top-level program lives in, which is the
+    current directory only when `pdl` was started on a program there. Saying
+    "the current directory" alone was read by a user running `pdl sub/prog.pdl`
+    as their shell's directory, and a file put there is still not found.
+    """
+    lower, _ = _directory_phrase(cwd)
+    if cwd in (Path("."), Path("")):
+        return f"{lower} (the directory of the program `pdl` was started with)"
+    return f"{lower}, the directory of the program `pdl` was started with"
+
+
+def _import_rule(written: str, display: str, cwd: Path, keyword: str = "import") -> str:
     """Why the file PDL opened is not the string the user typed.
 
     Two independent reasons, either, both or neither: the appended ``.pdl``
@@ -617,7 +675,7 @@ def _import_rule(written: str, display: str, cwd: Path) -> str:
     not happen.
     """
     from_cwd = cwd not in (Path("."), Path(""))
-    if not written.endswith(".pdl"):
+    if keyword == "import" and not written.endswith(".pdl"):
         rule = (
             f"`import: {written}` looks for the file `{display}`: PDL appends "
             "`.pdl` to an import path that does not already end in it."
@@ -626,12 +684,16 @@ def _import_rule(written: str, display: str, cwd: Path) -> str:
             rule += f" It is resolved from `{cwd}/`."
         return rule
     if from_cwd:
-        return f"`import: {written}` is resolved from `{cwd}/`."
-    return "`import:` reads a PDL program from the file it names."
+        return f"`{keyword}: {written}` is resolved from `{cwd}/`."
+    return f"`{keyword}:` reads a PDL program from the file it names."
 
 
-def _import_missing(
-    written: str, resolved: Path, cwd: Path, importing: Path | None
+def _import_missing(  # pylint: disable=too-many-locals
+    written: str,
+    resolved: Path,
+    cwd: Path,
+    importing: Path | None,
+    keyword: str = "import",
 ) -> tuple[str, str, Suggestion]:
     """Headline, evidence and next action for an `import:` that found nothing.
 
@@ -642,20 +704,21 @@ def _import_missing(
     PDL did not.
     """
     display = str(resolved)
-    headline = f"cannot import `{written}`: no such file"
+    headline = f"cannot {keyword} `{written}`: no such file"
     if display != written:
         headline += f" `{display}`"
 
     search_dir = resolved.parent
     lower, capital = _directory_phrase(search_dir)
-    cwd_lower, _ = _directory_phrase(cwd)
+    cwd_lower = _resolution_phrase(cwd)
+    keep_suffix = keyword != "import"
     base_help = Suggestion(f"check the path; it is resolved relative to {cwd_lower}.")
 
     # 1. The suffix trap: the file the user named is right there, and `import:`
     #    cannot read it. Phrased conditionally, because a rename followed
     #    blindly turns this error into a schema error when the file is data.
     unsuffixed = cwd / written
-    if not written.endswith(".pdl") and unsuffixed.is_file():
+    if keyword == "import" and not written.endswith(".pdl") and unsuffixed.is_file():
         evidence = (
             f"`{unsuffixed}` exists, but `import:` reads only files whose names "
             "end in `.pdl`."
@@ -695,7 +758,9 @@ def _import_missing(
         return (
             headline,
             "Nothing exists at that path.",
-            Suggestion(f"did you mean `import: {_import_form(written, best)}`?"),
+            Suggestion(
+                f"did you mean `{keyword}: {_import_form(written, best, keep_suffix)}`?"
+            ),
         )
 
     if not search_dir.exists():
@@ -712,7 +777,8 @@ def _import_missing(
             headline,
             listing,
             Suggestion(
-                f"name one of them, e.g. `import: {_import_form(written, candidates[0])}`."
+                f"name one of them, e.g. `{keyword}: "
+                f"{_import_form(written, candidates[0], keep_suffix)}`."
             ),
         )
 
@@ -732,8 +798,16 @@ def import_read_diagnostic(  # pylint: disable=too-many-arguments,too-many-local
     file: str = "",
     line: int | None = None,
     block_path: Sequence[str] | None = None,
+    keyword: str = "import",
 ) -> Diagnostic:
     """E-RUNTIME-002. An `import:` inside a program named a file that cannot be read.
+
+    `keyword` is `include` for E-RUNTIME-001, the same failure on an `include:`,
+    which used to be answered with the command line's own text ("`pdl` takes
+    the path of a PDL program file ... run `pdl --help`"). The two blocks
+    resolve their paths identically, so one diagnostic serves both; the one
+    difference, that `import:` appends `.pdl` and `include:` does not, is
+    switched on the keyword.
 
     Unlike E-CLI-001 this diagnostic is *inside* a program, at a line, so
     ``file`` and the span are the location of the `import:` and the path that
@@ -750,35 +824,39 @@ def import_read_diagnostic(  # pylint: disable=too-many-arguments,too-many-local
     """
     display = str(resolved)
     importing = Path(file) if file else None
-    rule = _import_rule(written, display, cwd)
+    rule = _import_rule(written, display, cwd, keyword)
     cwd_lower, _ = _directory_phrase(cwd)
 
     if resolved.is_dir():
-        headline = f"cannot import `{written}`: `{display}` is a directory, not a file"
+        headline = (
+            f"cannot {keyword} `{written}`: `{display}` is a directory, not a file"
+        )
         if display == written:
-            headline = f"cannot import `{written}`: it is a directory, not a file"
-        evidence = "A directory cannot be imported."
+            headline = f"cannot {keyword} `{written}`: it is a directory, not a file"
+        evidence = f"A directory cannot be {keyword}d."
         inside = _pdl_files(resolved)
         if inside:
             suggestion = Suggestion(
                 "name a program inside it, e.g. "
-                f"`import: {Path(written) / inside[0].stem}`."
+                f"`{keyword}: {Path(written) / (inside[0].name if keyword != 'import' else inside[0].stem)}`."
             )
         else:
             suggestion = Suggestion("give the path of a PDL program file.")
     elif isinstance(exc, FileNotFoundError):
         headline, evidence, suggestion = _import_missing(
-            written, resolved, cwd, importing
+            written, resolved, cwd, importing, keyword
         )
     elif isinstance(exc, PermissionError):
-        headline = f"cannot import `{written}`: permission denied reading `{display}`"
+        headline = (
+            f"cannot {keyword} `{written}`: permission denied reading `{display}`"
+        )
         evidence = "The file exists, but this user cannot read it."
         suggestion = Suggestion(
             f"check the file's permissions, e.g. `ls -l {display}`."
         )
     else:
         detail = exc.strerror or str(exc)
-        headline = f"cannot import `{written}`: cannot read `{display}` ({detail})"
+        headline = f"cannot {keyword} `{written}`: cannot read `{display}` ({detail})"
         evidence = "The file could not be opened."
         suggestion = Suggestion(
             f"check the path; it is resolved relative to {cwd_lower}."
@@ -795,9 +873,9 @@ def import_read_diagnostic(  # pylint: disable=too-many-arguments,too-many-local
         notes.append(
             Note(
                 "note",
-                f"import paths are resolved from {cwd_lower}, the directory of "
-                "the program `pdl` was started with, not from the file that "
-                "contains this `import:`.",
+                f"{keyword} paths are resolved from {cwd_lower}, the directory "
+                "of the program `pdl` was started with, not from the file that "
+                f"contains this `{keyword}:`.",
             )
         )
 
@@ -2147,7 +2225,11 @@ _BLOCK_KIND_RULE = (
 
 _NOT_A_BLOCK = "this is not a PDL block: nothing here says what it does"
 
-_NOT_A_FIELD = "{names} are not fields any block accepts."
+_NOT_A_FIELD = "{names} {verb} not {noun} any block accepts."
+
+_FIELD_OF_KINDS = (
+    "`{name}` is a field of {kinds} blocks, so the block kind is what is missing."
+)
 
 _DID_YOU_MEAN = "did you mean `{meant}:` instead of `{written}:`?"
 """The one spelling of a near-miss correction, shared by the two diagnostics
@@ -2155,6 +2237,15 @@ that offer one. E-SCHEMA-007 says it about a mapping that names no block at all;
 `field_not_allowed_diagnostic` says it about a key on a block that is otherwise
 fine. A reader who has seen one has read the other, and a second phrasing would
 be a second thing to learn for no gain."""
+
+
+def _plain_oxford(items: Sequence[str], conjunction: str = "or") -> str:
+    """`_oxford` without the backticks, for phrases rather than names."""
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + f" {conjunction} " + items[-1]
 
 
 def _oxford(names: Sequence[Any], conjunction: str = "or") -> str:
@@ -2224,8 +2315,17 @@ def no_block_kind_diagnostic(  # pylint: disable=too-many-arguments
     near_miss_pool: Sequence[str],
     in_list: bool,
     source: str | None,
+    known_fields: Mapping[str, Sequence[str]] | None = None,
 ) -> Diagnostic:
     """E-SCHEMA-007. A mapping that names no kind of block.
+
+    `known_fields` maps every field some block accepts to the kinds that accept
+    it. The note below used to say of `- modle: x` / `input: y` that "`modle`
+    and `input` are not fields any block accepts", which is false for `input`:
+    it is the model block's main field, and the reader was being told the
+    opposite of what the `help:` line under it implies. Now a key that some
+    block does accept is reported as that, and only the keys no block takes are
+    said to be unknown.
 
     Today this is a 700-character single line of 24 raw `$ref`s -- the union
     printed at the reader instead of read for them. The replacement says the
@@ -2257,8 +2357,27 @@ def no_block_kind_diagnostic(  # pylint: disable=too-many-arguments
         spans = [s for s in spans if 1 <= s.line <= height]
 
     notes = [Note("rule", _BLOCK_KIND_RULE.format(names=_oxford(kind_fields)))]
-    if len(keys) > 1:
-        notes.append(Note("note", _NOT_A_FIELD.format(names=_oxford(keys, "and"))))
+    known = known_fields or {}
+    unknown = [key for key in keys if key not in known]
+    if len(keys) > 1 and unknown:
+        plural = len(unknown) > 1
+        notes.append(
+            Note(
+                "note",
+                _NOT_A_FIELD.format(
+                    names=_oxford(unknown, "and"),
+                    verb="are" if plural else "is",
+                    noun="fields" if plural else "a field",
+                ),
+            )
+        )
+    for key in keys:
+        if key in known and known[key]:
+            if len(known[key]) > 3:
+                kinds = "several kinds of"
+            else:
+                kinds = _oxford(known[key])
+            notes.append(Note("note", _FIELD_OF_KINDS.format(name=key, kinds=kinds)))
 
     near = _first_near_miss(keys, near_miss_pool)
     if near is not None:
@@ -2826,6 +2945,93 @@ def list_length_diagnostic(  # pylint: disable=too-many-arguments
         suggestion=suggestion,
         spans=spans,
         source=source,
+    )
+
+
+def wrong_type_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    field_name: str | None,
+    subject: str = "",
+    value: Any,
+    expected: Sequence[str],
+    key_names: Sequence[str] = (),
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """A value of the wrong shape, for the shapes the other builders do not cover.
+
+    `list_expected_diagnostic` and `mapping_expected_diagnostic` say what a list
+    or a mapping is when one is wanted; this is their counterpart for every other
+    expectation -- a string, an integer, a boolean, or a union of several -- and
+    replaces two messages that named the expectation in Python: `42 should be
+    of type <class 'str'>`, and the JSON-Schema dump `three should be of type
+    {'anyOf': [...]}` for a union with nothing enumerable to list.
+
+    `expected` is the shapes, in PDL's own words (`string`, `integer`,
+    `mapping`, `list`), that the field would have accepted. `key_names` names
+    the keys of the mapping alternative when it has fixed keys, which is the one
+    piece of the dropped schema a reader could have used.
+    """
+    subj = _subject(field_name, subject)
+    phrased = [word if word == "null" else _with_article(word) for word in expected]
+    words = _plain_oxford(phrased)
+    if words:
+        headline = f"{subj} should be {words}, but {_found(value)}"
+    else:
+        headline = f"{subj} has a value PDL does not accept: {_found(value)}"
+    rule = ""
+    if key_names and "mapping" in expected:
+        rule = f"As a mapping, {subj} takes the keys {_oxford(key_names)}."
+    return _shape_diagnostic(
+        headline=headline,
+        rule=rule,
+        suggestion=None,
+        spans=spans,
+        source=source,
+    )
+
+
+_REJECTED_RULE = (
+    "PDL's validator rejected the value written here, although the analyzer "
+    "that explains a rejection had no more precise rule to name."
+)
+
+
+def schema_rejected_diagnostic(  # pylint: disable=too-many-arguments
+    *,
+    field_name: str | None,
+    value: Any,
+    reasons: Sequence[str],
+    spans: Sequence[Span] = (),
+    source: str | None = None,
+) -> Diagnostic:
+    """E-SCHEMA-006's fallback, located.
+
+    Reached when pydantic rejected the program but `analyze_errors`, walking the
+    JSON Schema, found nothing to say -- the schema is looser than the model at
+    a few `TypeVar` fields, `retry: {exceptions: 5}` among them. Before this the
+    reader was told PDL "cannot say where" and to remove blocks until the
+    message changed; a one-block program has nothing to remove. pydantic's own
+    error carries the path and a reason, and both are used: the path gives the
+    line and column, and the reason is quoted as the validator's, so a reader
+    knows which voice they are hearing.
+    """
+    subj = _subject(field_name, "")
+    shown = yaml_value(value)
+    headline = f"{subj} has a value PDL does not accept"
+    if shown:
+        headline += f": `{shown}`"
+    notes = [Note("rule", _REJECTED_RULE)]
+    for reason in reasons:
+        notes.append(Note("note", f"the validator said: {reason}"))
+    return Diagnostic(
+        code="E-SCHEMA-006",
+        message=headline,
+        spans=[
+            s for s in spans if source is None or 1 <= s.line <= len(source.split("\n"))
+        ],
+        source=source,
+        notes=notes,
     )
 
 

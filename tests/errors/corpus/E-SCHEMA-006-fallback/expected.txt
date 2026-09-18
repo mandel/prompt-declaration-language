@@ -4,13 +4,15 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl - the program does not match the PDL schema, and PDL cannot say where
+prog.pdl:3:3 - `exceptions:` has a value PDL does not accept: `5`
+  in retry.exceptions
 
-  PDL's validator rejected this program, but the analyzer that turns a
-  rejection into a located message did not recognise the failure, so nothing
-  more precise can be said about it.
+3 |   exceptions: 5
+  |   ^
 
-  note: reaching this message is a gap in PDL's error reporting rather than
-        extra information about your program. Reporting the program that
-        produced it is the only way that gap gets closed.
-  help: remove blocks until the message changes, to find the one at fault.
+  PDL's validator rejected the value written here, although the analyzer that
+  explains a rejection had no more precise rule to name.
+
+  note: the validator said: Input should be a valid string
+  note: the validator said: Input should be a subclass of Exception
+  note: the validator said: Input should be a valid list

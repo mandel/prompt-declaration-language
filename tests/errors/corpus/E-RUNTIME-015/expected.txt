@@ -1,0 +1,10 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl - the program recursed too deeply and was stopped
+
+  A function that calls itself needs a case that does not, or the calls never
+  end. Python's recursion limit was reached before the program finished.

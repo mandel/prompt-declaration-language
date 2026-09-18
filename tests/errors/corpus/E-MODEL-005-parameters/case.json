@@ -1,0 +1,16 @@
+{
+  "id": "E-MODEL-005-parameters",
+  "title": "model parameters: that is not a mapping",
+  "severity": "S3",
+  "env": {
+    "PDL_TEST_MODEL": "connect_error"
+  },
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Was `Error during 'ollama/granite' model call: AssertionError()` -- an `assert isinstance(parameters, dict)` in `generate_client_response_single`, whose repr says nothing. Checked before the call, at `parameters`, with the edit to make. The stub is selected so the entry stays offline, though the error fires before any call."
+}

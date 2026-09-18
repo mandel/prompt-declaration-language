@@ -10,5 +10,3 @@ prog.pdl:6:5 - Field not allowed: content
   in text[1].content
 prog.pdl:13:7 - Field not allowed: wth
   in text[2].join.wth
-prog.pdl:12:7 - array should be: text
-  in text[2].join.as

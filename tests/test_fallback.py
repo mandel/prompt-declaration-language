@@ -86,8 +86,8 @@ fallback: "Error"
     # has no `spec:` under the fallback to point at, so `append` carried the
     # parent's mark down, and the header says exactly what the path says.
     assert (
-        str(exc.value.message) == "Type errors during spec checking:\n"
-        "<program>:4:1 - Error should be of type <class 'int'>\n"
+        str(exc.value.message)
+        == "the block's result should be an integer, but `Error` is a string\n"
         "  in fallback.spec"
     )
 

@@ -102,12 +102,35 @@ def color_of_role(role: str):
     return color
 
 
+_AT_LINE_START = True
+"""Whether the last text streamed to stdout ended with a newline.
+
+Streamed output is written without one, so a diagnostic printed after it
+would begin in the middle of the program's own last line. `ensure_line_start`
+is called before any diagnostic is printed."""
+
+
+def _note_written(text: str) -> None:
+    global _AT_LINE_START  # pylint: disable=global-statement
+    if text:
+        _AT_LINE_START = text.endswith("\n")
+
+
+def ensure_line_start() -> None:
+    """Terminate a partial stdout line before something else is printed."""
+    global _AT_LINE_START  # pylint: disable=global-statement
+    if not _AT_LINE_START:
+        print(flush=True)
+        _AT_LINE_START = True
+
+
 def yield_result(result: Any, kind: BlockKind) -> None:
     if color_of(kind) is None:
         text = stringify(result)
     else:
         text = colored(stringify(result), color_of(kind))
     print(text, end="", flush=True)
+    _note_written(stringify(result))
 
 
 _LAST_ROLE = None
@@ -129,6 +152,7 @@ def yield_background(background) -> None:
         ]
     )
     print(s, end="", flush=True)
+    _note_written(s)
 
 
 # --------------------------------------------------------------------------

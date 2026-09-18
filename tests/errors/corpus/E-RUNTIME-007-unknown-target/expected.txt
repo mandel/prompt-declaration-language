@@ -1,0 +1,13 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:14 - `contribute:` names `stdoutt`, which is not a place PDL can contribute to
+  in contribute[0]
+
+  A `contribute:` entry is `result`, `context`, `stdout` or `stderr`, or the
+  name of a variable holding an aggregator.
+
+  help: did you mean `stdout`?

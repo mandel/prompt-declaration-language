@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:5 - `result` in `contribute:` takes no value: it is written as the bare list item `- result`, not as a mapping
+  in contribute[0]

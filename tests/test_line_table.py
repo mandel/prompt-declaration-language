@@ -77,9 +77,8 @@ line3 = {
     "file": "tests/data/line/hello3.pdl",
     "errors": [
         "",
-        "tests/data/line/hello3.pdl:7:3 - Type errors during spec checking:",
+        "tests/data/line/hello3.pdl:7:3 - the block's result should be an integer, but ` World!` is a string",
         "  in text[1].spec",
-        "tests/data/line/hello3.pdl:7:3 -  World! should be of type <class 'int'>",
     ],
 }
 
@@ -94,10 +93,8 @@ line4 = {
     "file": "tests/data/line/hello4.pdl",
     "errors": [
         "",
-        "tests/data/line/hello4.pdl:5:7 - this is not a PDL block: nothing here "
-        "says what it does",
+        "tests/data/line/hello4.pdl:5:7 - this is not a PDL block: nothing here says what it does",
         "  in text[2]",
-        "",
         "5 |     - repeats:",
         "  |       ^ `repeats` does not name a block kind",
         "...",
@@ -108,7 +105,9 @@ line4 = {
         "  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,",
         "  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,",
         "  `platform` or `processor`.",
-        "  note: `repeats` and `maxIterations` are not fields any block accepts.",
+        "  note: `repeats` is not a field any block accepts.",
+        "  note: `maxIterations` is a field of `repeat` or `map` blocks, so the block",
+        "        kind is what is missing.",
         "  help: did you mean `repeat:` instead of `repeats:`?",
     ],
 }
@@ -139,10 +138,8 @@ line8 = {
     "file": "tests/data/line/hello8.pdl",
     "errors": [
         "",
-        "tests/data/line/hello8.pdl:4:3 - this is not a PDL block: nothing here "
-        "says what it does",
+        "tests/data/line/hello8.pdl:4:3 - this is not a PDL block: nothing here says what it does",
         "  in text[1]",
-        "",
         "4 | - lang: python",
         "  |   ^ `lang` does not name a block kind",
         "5 |   codea: |",
@@ -152,7 +149,9 @@ line8 = {
         "  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,",
         "  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,",
         "  `platform` or `processor`.",
-        "  note: `lang` and `codea` are not fields any block accepts.",
+        "  note: `codea` is not a field any block accepts.",
+        "  note: `lang` is a field of `code` blocks, so the block kind is what is",
+        "        missing.",
         "  help: did you mean `code:` instead of `codea:`?",
     ],
 }
@@ -166,9 +165,8 @@ line9 = {
     "file": "tests/data/line/hello9.pdl",
     "errors": [
         "",
-        "tests/data/line/hello9.pdl:4:3 - Type errors during spec checking:",
+        "tests/data/line/hello9.pdl:4:3 - the block's result should be an integer, but `hello` is a string",
         "  in text[0].spec",
-        "tests/data/line/hello9.pdl:4:3 - hello should be of type <class 'int'>",
     ],
 }
 
@@ -220,9 +218,8 @@ line12 = {
     "file": "tests/data/line/hello12.pdl",
     "errors": [
         "",
-        "tests/data/line/hello12.pdl:11:3 - Type errors during spec checking:",
+        "tests/data/line/hello12.pdl:11:3 - the block's result should be a boolean, but `How are you?` is a string",
         "  in text[2].spec",
-        "tests/data/line/hello12.pdl:11:3 - How are you? should be of type <class 'bool'>",
     ],
 }
 
@@ -235,9 +232,8 @@ line13 = {
     "file": "tests/data/line/hello13.pdl",
     "errors": [
         "",
-        "tests/data/line/hello13.pdl:12:7 - Type errors during spec checking:",
+        "tests/data/line/hello13.pdl:12:7 - the block's result should be a string, but `1` is an integer",
         "  in text[2].repeat.text[0].spec",
-        "tests/data/line/hello13.pdl:12:7 - 1 should be of type <class 'str'>",
     ],
 }
 
@@ -250,9 +246,8 @@ line14 = {
     "file": "tests/data/line/hello14.pdl",
     "errors": [
         "",
-        "tests/data/line/hello14.pdl:16:3 - Type errors in result of the function translate:",
+        "tests/data/line/hello14.pdl:16:3 - the block's result should be an integer, but `Bonjour le monde!` is a string",
         "  in text[2].return",
-        "tests/data/line/hello14.pdl:16:3 - Bonjour le monde! should be of type <class 'int'>",
     ],
 }
 
@@ -265,8 +260,11 @@ line15 = {
     "file": "tests/data/line/hello15.pdl",
     "errors": [
         "",
-        "tests/data/line/hello15.pdl:7:7 - Error during the evaluation of ${ boolean }: 'boolean' is undefined",
+        "tests/data/line/hello15.pdl:7:7 - `get: boolean` names a variable that is not defined",
         "  in text[0].return.lastOf[0].get",
+        "  `get:` reads a variable from the scope, by name and without `${ }`.",
+        "  note: the variables in scope are `stutter`.",
+        "  note: called from tests/data/line/hello15.pdl:10:3 (in text[2].call)",
     ],
 }
 
@@ -279,10 +277,10 @@ line16 = {
     "file": "tests/data/line/hello16.pdl",
     "errors": [
         "",
-        "tests/data/line/hello16.pdl:10:3 - Type errors during spec checking:",
-        "  in text[1].spec",
-        "tests/data/line/hello16.pdl:10:24 - 30 should be of type <class 'str'>",
+        "tests/data/line/hello16.pdl:10:24 - `carol:` should be a string, but `30` is an integer",
         "  in text[1].spec.carol",
+        '10 |   spec: {bob: integer, "carol": string}',
+        "   |                        ^",
     ],
 }
 
@@ -295,9 +293,8 @@ line17 = {
     "file": "tests/data/line/hello17.pdl",
     "errors": [
         "",
-        "tests/data/line/hello17.pdl:4:3 - Type errors during spec checking:",
+        "tests/data/line/hello17.pdl:4:3 - the block's result should be an integer, but `hello` is a string",
         "  in text[0].spec",
-        "tests/data/line/hello17.pdl:4:3 - hello should be of type <class 'int'>",
     ],
 }
 
@@ -326,8 +323,7 @@ line19 = {
         "",
         "tests/data/line/hello19.pdl:6:3 - Error during the evaluation of ${ models }: 'models' is undefined",
         "  in text[1].model",
-        # "tests/data/line/hello19.pdl:6:3 - Type errors during spec checking:",
-        # "tests/data/line/hello19.pdl:6:3 -  should be of type <class 'int'>",
+        "  help: did you mean `model`?",
     ],
 }
 
@@ -398,6 +394,7 @@ line24 = {
         "",
         "tests/data/line/hello24.pdl:25:5 - Error during the evaluation of Hello,${ GEN1 }: 'GEN1' is undefined",
         "  in text[3].args.sentence",
+        "  help: did you mean `GEN`?",
     ],
 }
 
@@ -425,8 +422,10 @@ line26 = {
     "file": "tests/data/line/hello26.pdl",
     "errors": [
         "",
-        "tests/data/line/hello26.pdl:12:7 - Lists inside the For block must be of the same length.",
+        "tests/data/line/hello26.pdl:12:7 - the lists in `for:` must all have the same length, but `question` has 5 items, `answer` has 2 items",
         "  in text[1].input.text[0].for",
+        "  A `for:` with several bindings walks them in step, taking one element from",
+        "  each per iteration, so it cannot pair a list with one that is longer.",
     ],
 }
 
@@ -439,8 +438,10 @@ line27 = {
     "file": "tests/data/line/hello27.pdl",
     "errors": [
         "",
-        "tests/data/line/hello27.pdl:12:7 - Lists inside the For block must be of the same length.",
+        "tests/data/line/hello27.pdl:12:7 - the lists in `for:` must all have the same length, but `question` has 0 items, `answer` has 2 items",
         "  in text[1].input.text[0].for",
+        "  A `for:` with several bindings walks them in step, taking one element from",
+        "  each per iteration, so it cannot pair a list with one that is longer.",
     ],
 }
 
@@ -455,6 +456,7 @@ line28 = {
         "",
         "tests/data/line/hello28.pdl:9:3 - Error during the evaluation of ${ QUESTION1 }: 'QUESTION1' is undefined",
         "  in text[2]",
+        "  help: did you mean `QUESTION`?",
     ],
 }
 
@@ -469,6 +471,7 @@ line29 = {
         "",
         "tests/data/line/hello29.pdl:10:5 - Error during the evaluation of ${ QUESTION1 }: 'QUESTION1' is undefined",
         "  in text[2].data.x",
+        "  help: did you mean `QUESTION`?",
     ],
 }
 
@@ -523,9 +526,8 @@ line32 = {
     "file": "tests/data/line/hello32.pdl",
     "errors": [
         "",
-        "tests/data/line/hello32.pdl:4:5 - Type errors during spec checking:",
+        "tests/data/line/hello32.pdl:4:5 - the block's result should be a string, but `1` is an integer",
         "  in defs.x.spec",
-        "tests/data/line/hello32.pdl:4:5 - 1 should be of type <class 'str'>",
     ],
 }
 

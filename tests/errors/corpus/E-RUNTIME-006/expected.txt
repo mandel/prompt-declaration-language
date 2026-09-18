@@ -4,5 +4,8 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:1:1 - Lists inside the For block must be of the same length.
+prog.pdl:1:1 - the lists in `for:` must all have the same length, but `i` has 3 items, `j` has 2 items
   in for
+
+  A `for:` with several bindings walks them in step, taking one element from
+  each per iteration, so it cannot pair a list with one that is longer.

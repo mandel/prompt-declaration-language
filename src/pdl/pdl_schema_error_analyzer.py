@@ -15,7 +15,10 @@ from .pdl_ast import (  # noqa: PLC2701
     _model_block_tag,
 )
 from .pdl_diagnostics import (
+    Diagnostic,
+    Note,
     Span,
+    Suggestion,
     field_not_allowed_diagnostic,
     list_expected_diagnostic,
     list_length_diagnostic,
@@ -25,6 +28,7 @@ from .pdl_diagnostics import (
     scalar_value_diagnostic,
     single_value_diagnostic,
     unknown_tag_diagnostic,
+    wrong_type_diagnostic,
     yaml_value,
 )
 from .pdl_location_utils import append, get_source, located_message, source_text
@@ -157,6 +161,140 @@ def match(ref_type, data):
     all_fields = ref_type.get("properties", {}).keys()
     intersection = list(set(data.keys()) & set(all_fields))
     return len(intersection)
+
+
+def admits_anything(schema) -> bool:
+    """Whether a union has the empty schema -- `Any` -- among its members.
+
+    `ExpressionType[Any]` renders as `anyOf[LocalizedExpression, {}, string]`,
+    and `{}` accepts every value. The analyzer's list and mapping arms scanned
+    the members for an array or an object shape and, finding none, reported the
+    value as wrong: `data: [1, 2]` "should be a single value" and `args:
+    {a: x}` "should be of type {...}", both beside the one real fault in the
+    program. A member that accepts anything means nothing here can be wrong.
+    """
+    return any(item == {} for item in alternatives(schema) or [])
+
+
+def admitted_shapes(  # pylint: disable=too-many-return-statements
+    defs, schema, seen=None
+) -> tuple[list[str], list[str]]:
+    """The shapes a schema admits, in PDL's words, and the keys of its mapping.
+
+    Read for `wrong_type_diagnostic`: a reader told that `retry:` should be "an
+    integer or a mapping" can act, where one shown `{'anyOf': [{'$ref':
+    '#/$defs/OptionalInt'}, ...]}` cannot. `LocalizedExpression` is skipped:
+    it is the shape an expression takes *after* parsing, and the string
+    alternative beside it is how the user writes one. Keys are named only when
+    exactly one mapping alternative has fixed keys, and then only a few.
+    """
+    seen = set() if seen is None else seen
+    words: list[str] = []
+    keys: list[str] = []
+    mappings = 0
+
+    def add(word: str) -> None:
+        if word and word not in words:
+            words.append(word)
+
+    if not isinstance(schema, dict):
+        return words, keys
+    if "$ref" in schema:
+        name = schema["$ref"].split("/")[2]
+        if name.startswith("LocalizedExpression") or name in seen:
+            return words, keys
+        seen.add(name)
+        return admitted_shapes(defs, defs.get(name, {}), seen)
+    if is_any_of(schema):
+        for item in alternatives(schema) or []:
+            inner_words, inner_keys = admitted_shapes(defs, item, seen)
+            for word in inner_words:
+                add(word)
+            if "mapping" in inner_words:
+                mappings += 1
+                keys = inner_keys
+        if mappings != 1:
+            keys = []
+        return words, keys
+    declared = schema.get("type")
+    if declared == "object":
+        add("mapping")
+        properties = [
+            name
+            for name in (schema.get("properties") or {})
+            if not name.startswith("pdl__") and name != "kind"
+        ]
+        if schema.get("additionalProperties") is False and len(properties) <= 6:
+            keys = properties
+    elif declared == "array":
+        add("list")
+    elif isinstance(declared, str):
+        add(_SHAPE_WORDS.get(declared, ""))
+    return words, keys
+
+
+def const_tagged_branch(defs, schema, data: dict):
+    """Pick a union member by the one `const` field every member declares.
+
+    `JoinType` is `JoinText | JoinArray | JoinObject | ...`, each telling itself
+    apart by `as:` -- a `Literal`, rendered as a `const`. Scoring members by
+    shared field names cannot see that: `join: {as: array, with: ","}` shares
+    one name with `JoinArray` and two with `JoinText`, so `JoinText` won and
+    the report was `array should be: text` -- a claim against the field the
+    user had right, and one that, followed, silently changes what the loop
+    returns. The tag decides here, as `kind` does for blocks.
+
+    Returns `(tag_key, branch, accepted)`, with `branch` None when the tag's
+    value is none of the accepted ones; or None when the union is not of this
+    shape or the data does not write the tag.
+    """
+    items = list(object_alternatives(defs, schema))
+    if not items or not all(is_object(item) for item in items):
+        return None
+    tag_key = None
+    table: dict[Any, Any] = {}
+    for item in items:
+        consts = {
+            key: value["const"]
+            for key, value in (item.get("properties") or {}).items()
+            if isinstance(value, dict) and "const" in value
+        }
+        if len(consts) != 1:
+            return None
+        ((key, value),) = consts.items()
+        if tag_key is None:
+            tag_key = key
+        elif key != tag_key:
+            return None
+        table[value] = item
+    if tag_key is None or tag_key not in data:
+        return None
+    return tag_key, table.get(data[tag_key]), list(table)
+
+
+def block_fields_by_kind(defs) -> dict[str, list[str]]:
+    """Every field some block accepts, mapped to the kinds that accept it.
+
+    Feeds the note under E-SCHEMA-007, so that `input:` beside a misspelt
+    `model:` is reported as the model block's field rather than as a name no
+    block takes. Fields every block shares and the fields that select a kind are
+    left out: the first are never the missing piece and the second are what the
+    near-miss suggestion is for.
+    """
+    common = set(empty_block_fields(defs)) | set(BLOCK_KIND_FIELDS)
+    out: dict[str, list[str]] = {}
+    for item in object_alternatives(defs, defs.get("BlockType", {})):
+        properties = item.get("properties") or {}
+        kind = properties.get("kind", {}).get("const")
+        if not isinstance(kind, str):
+            continue
+        for name in properties:
+            if name in common or name.startswith("pdl__") or name == "kind":
+                continue
+            kinds = out.setdefault(name, [])
+            if kind not in kinds:
+                kinds.append(kind)
+    return out
 
 
 LOWERCASED_FIELDS = frozenset({"parser", "mode", "lang"})
@@ -528,16 +666,18 @@ def union_accepts(defs, schema) -> tuple[list[Any], list[str]]:
     return accepted, mapping_keys
 
 
-def scalar_union_message(defs, schema, data, loc: PdlLocationType) -> str:
+def scalar_union_message(
+    defs, schema, data, loc: PdlLocationType, subject: str = ""
+) -> str:
     """The message for a scalar that matched no member of its union.
 
-    Falls back to the old `should be of type <schema>` dump when the union has
-    no enumerated values, because then there is no list of accepted spellings to
-    offer and naming the field alone would be less, not more, than the schema.
+    When the union enumerates values, they are listed. When it does not --
+    `model: 42`, `retry: "three"` -- the shapes it admits are named instead;
+    this used to be the `should be of type {'anyOf': ...}` dump.
     """
     accepted, mapping_keys = union_accepts(defs, schema)
     if not accepted:
-        return located_message(loc, str(data) + " should be of type " + str(schema))
+        return wrong_type_message(defs, schema, data, loc, subject)
 
     effect = ""
     for name, phrase in _REMOVAL_EFFECT.items():
@@ -773,6 +913,86 @@ def not_a_mapping_message(
     return located_message(where, diag.text)
 
 
+def missing_field_message(missing: str, subject: str) -> str:
+    """`Missing required field: return`, or, for a value the program produced
+    rather than wrote, a sentence about that value: a function call is missing
+    an *argument*, not a field."""
+    if not subject:
+        return f"Missing required field: {missing}"
+    verb = "lack" if subject.endswith("s") else "lacks"
+    return f"{subject} {verb} the required `{missing}`"
+
+
+def wrong_type_message(defs, schema, data, loc: PdlLocationType, subject: str) -> str:
+    """A value of a shape the schema does not admit, said in PDL's words.
+
+    The counterpart of `not_a_list_message` and `not_a_mapping_message` for
+    every other expectation. Replaces `42 should be of type <class 'str'>` and
+    the JSON-Schema dump for unions with nothing enumerable.
+    """
+    words, keys = admitted_shapes(defs, schema)
+    where = value_location(loc, data)
+    diag = wrong_type_diagnostic(
+        field_name=_writable_field(loc, subject),
+        subject=subject,
+        value=data,
+        expected=words,
+        key_names=keys,
+        spans=_shape_spans(where),
+        source=_shape_source(loc, subject),
+    )
+    return located_message(where, diag.text)
+
+
+def enumerated_value_message(defs, schema, data, loc: PdlLocationType) -> str:
+    """A value that is none of the ones an `enum` or `const` lists.
+
+    Replaces `findal should be one of: ['search', 'match', ...]`, a Python list
+    repr, with the same diagnostic a union of literals gets, near miss included.
+    """
+    accepted = list(schema.get("enum") or [])
+    if "const" in schema and schema["const"] not in accepted:
+        accepted.append(schema["const"])
+    diag = scalar_value_diagnostic(
+        value=data,
+        field_name=_field_name(loc),
+        accepted=accepted,
+        mapping_keys=[],
+        removal_effect="",
+        line=loc.line,
+        col=loc.col,
+        source=source_text(loc.file),
+    )
+    return located_message(loc, diag.text)
+
+
+def bare_value_message(keys: Sequence[str]) -> str:
+    """Keys that are the union's own bare values, written with values under them."""
+    named = " and ".join(f"`{k}`" for k in keys)
+    items = " then ".join(f"`- {k}`" for k in keys)
+    plural = len(keys) > 1
+    diag = Diagnostic(
+        code="E-SCHEMA-008",
+        message=f"{named} {'are' if plural else 'is'} written as "
+        f"{'mapping keys' if plural else 'a mapping key'}, but "
+        f"{'they take' if plural else 'it takes'} no value",
+        notes=[
+            Note(
+                "rule",
+                "A `contribute` entry is either `result` or `context`, written as a "
+                "bare list item, or a mapping with a single key naming where to "
+                "contribute.",
+            )
+        ],
+        suggestions=[
+            Suggestion(
+                f"write {items} as {'items' if plural else 'an item'} of the list."
+            )
+        ],
+    )
+    return diag.text
+
+
 def no_array_member_message(
     defs, schema, data, loc: PdlLocationType, subject: str
 ) -> str:
@@ -957,6 +1177,7 @@ def _no_block_message(defs, data, unrecognised, loc: PdlLocationType) -> str:
         near_miss_pool=near_miss_pool(defs),
         in_list=bool(loc.path) and loc.path[-1].startswith("["),
         source=source_text(loc.file),
+        known_fields=block_fields_by_kind(defs),
     )
     # Both coordinates or neither: a `keys` entry is `(key, None, None)` on a
     # registry miss and `(key, mark.line, mark.col)` otherwise. Testing both is
@@ -997,7 +1218,29 @@ def _unknown_tag_message(
     return located_message(key_loc, diag.text)
 
 
-def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
+def open_mapping_errors(  # pylint: disable=too-many-arguments
+    defs, schema, data: dict, loc: PdlLocationType, subject: str, *, guessed: bool
+) -> list[str]:
+    """What is wrong with the *values* of a mapping no union member names.
+
+    A member that takes keys of the user's choosing -- `contribute:
+    [{context: ...}]`, a `spec:` written as `{a: string}` -- can still say what
+    is wrong with each value, and that is more precise than reporting the
+    mapping as a whole.
+    """
+    for item in object_alternatives(defs, schema):
+        if (
+            is_object(item)
+            and not item.get("properties")
+            and isinstance(item.get("additionalProperties"), dict)
+        ):
+            found = analyze_errors(defs, item, data, loc, subject, guessed=guessed)
+            if found:
+                return found
+    return []
+
+
+def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments,too-many-return-statements
     defs,
     schema,
     data,
@@ -1041,28 +1284,15 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
         return []  # anything matches type Any
 
     if is_base_type(schema):
-        if "type" in schema:
-            the_type = json_types_convert[schema["type"]]
-            if the_type is None and data is not None or not is_of_type(the_type, data):
-                ret.append(
-                    located_message(
-                        loc, str(data) + " should be of type " + str(the_type)
-                    )
-                )
-        if "enum" in schema:
-            if as_validated(data, loc) not in schema["enum"]:
-                ret.append(
-                    located_message(
-                        loc, str(data) + " should be one of: " + str(schema["enum"])
-                    )
-                )
-        if "const" in schema:
-            if as_validated(data, loc) != schema["const"]:
-                ret.append(
-                    located_message(
-                        loc, str(data) + " should be: " + str(schema["const"])
-                    )
-                )
+        the_type = json_types_convert.get(schema.get("type"))
+        if "type" in schema and (
+            the_type is None and data is not None or not is_of_type(the_type, data)
+        ):
+            ret.append(wrong_type_message(defs, schema, data, loc, subject))
+        elif "enum" in schema and as_validated(data, loc) not in schema["enum"]:
+            ret.append(enumerated_value_message(defs, schema, data, loc))
+        elif "const" in schema and as_validated(data, loc) != schema["const"]:
+            ret.append(enumerated_value_message(defs, schema, data, loc))
 
     elif "$ref" in schema:
         ref_string = schema["$ref"].split("/")[2]
@@ -1079,15 +1309,19 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
         if not isinstance(data, dict):
             ret.append(not_a_mapping_message(defs, schema, data, loc, subject))
         else:
+            # Document order throughout, never a set difference: E-SCHEMA-010
+            # reported three unknown keys in an order that changed with
+            # `PYTHONHASHSEED`, and a reader fixing them top to bottom was
+            # sent bouncing around the file.
             if "required" in schema.keys():
                 required_fields = schema["required"]
-                for missing in list(set(required_fields) - set(data.keys())):
+                for missing in [f for f in required_fields if f not in data]:
                     ret.append(
-                        located_message(loc, "Missing required field: " + missing)
+                        located_message(loc, missing_field_message(missing, subject))
                     )
             if "properties" in schema.keys():
                 all_fields = schema["properties"].keys()
-                extras = list(set(data.keys()) - set(all_fields))
+                extras = [key for key in data if key not in all_fields]
                 if (
                     "additionalProperties" in schema
                     and schema["additionalProperties"] is False
@@ -1102,7 +1336,7 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
                         )
                         ret.append(located_message(nloc, diag.text))
 
-                valid_fields = list(set(all_fields) & set(data.keys()))
+                valid_fields = [key for key in data if key in all_fields]
                 for field in valid_fields:
                     newloc = append(loc, field)
                     ret += analyze_errors(
@@ -1127,7 +1361,10 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
 
     elif is_any_of(schema):
         schema_alternatives = alternatives(schema)
-        if len(schema_alternatives) == 2 and nullable(schema):
+        if admits_anything(schema):
+            pass  # a member accepts every value, so nothing here can be wrong
+
+        elif len(schema_alternatives) == 2 and nullable(schema):
             ret += analyze_errors(
                 defs, get_non_null_type(schema), data, loc, subject, guessed=guessed
             )
@@ -1136,7 +1373,7 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
             if not any(
                 scalar_matches(defs, item, data, loc) for item in schema_alternatives
             ):
-                ret.append(scalar_union_message(defs, schema, data, loc))
+                ret.append(scalar_union_message(defs, schema, data, loc, subject))
 
         elif isinstance(data, list):
             found = None
@@ -1155,6 +1392,34 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
                     defs, union, data, loc, guessed=guessed
                 )
 
+            tagged = const_tagged_branch(defs, schema, data)
+            if tagged is not None:
+                tag_key, branch, accepted = tagged
+                if branch is None:
+                    key_loc = append(loc, tag_key)
+                    diag = scalar_value_diagnostic(
+                        value=data[tag_key],
+                        field_name=tag_key,
+                        accepted=accepted,
+                        mapping_keys=[],
+                        removal_effect="",
+                        line=key_loc.line,
+                        col=key_loc.col,
+                        source=source_text(loc.file),
+                    )
+                    return ret + [located_message(key_loc, diag.text)]
+                # The tag selected the branch, so this is not a guess.
+                return ret + analyze_errors(defs, branch, data, loc, subject)
+
+            accepted_values, _ = enumerated(defs, schema)
+            bare = [key for key in data if key in accepted_values]
+            if bare:
+                # `contribute: [{result: 1}]`: the key is one of the union's
+                # bare values, written as a mapping. Reporting the mapping's
+                # value ("`result:` should be a mapping") sends the reader
+                # the wrong way; the key is the thing to say.
+                return ret + [located_message(loc, bare_value_message(bare))]
+
             match_ref = {}
             highest_match = 0
             for item in object_alternatives(defs, schema):
@@ -1164,11 +1429,12 @@ def analyze_errors(  # noqa: C901  # pylint: disable=too-many-arguments
                     match_ref = item
 
             if match_ref == {}:
-                ret.append(
-                    located_message(
-                        loc, str(data) + " should be of type: " + str(schema)
-                    )
+                found = open_mapping_errors(
+                    defs, schema, data, loc, subject, guessed=guessed
                 )
+                if found:
+                    return ret + found
+                ret.append(wrong_type_message(defs, schema, data, loc, subject))
 
             else:
                 # `guessed=True`, and it is not an accident of this call: nothing

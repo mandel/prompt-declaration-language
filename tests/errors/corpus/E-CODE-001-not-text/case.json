@@ -1,0 +1,13 @@
+{
+  "id": "E-CODE-001-not-text",
+  "title": "code: that is not text",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Was `code block raised TypeError: compile() arg 1 must be a string, bytes or AST object`, Python's complaint about PDL's own call. `code:` accepts any expression, so `42` is schema-valid; the check is at the point the value is about to be run."
+}

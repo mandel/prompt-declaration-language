@@ -31,7 +31,14 @@ from .pdl_diagnostics import (
 )
 from .pdl_interpreter import InterpreterState, process_prog
 from .pdl_interpreter_state import ScopeType
-from .pdl_parser import parse_dict, parse_file, parse_str, source_read_error, yaml_error
+from .pdl_parser import (
+    PDLParseError,
+    parse_dict,
+    parse_file,
+    parse_str,
+    source_read_error,
+    yaml_error,
+)
 from .pdl_runner import exec_docker
 from .pdl_utils import (  # pylint: disable=unused-import # noqa: F401
     Ref,
@@ -260,7 +267,8 @@ def _load_initial_scope(
                 program=program,
                 code="E-CLI-003",
             ) from exc
-        if isinstance(loaded, dict) and MODEL_DEFAULTS_KEY in loaded:
+        loaded = _require_scope_mapping(loaded, f"`-f {data_file}`", "the file")
+        if MODEL_DEFAULTS_KEY in loaded:
             origin, origin_file = ORIGIN_DATA_FILE, str(path)
         initial_scope = initial_scope | loaded
 
@@ -276,11 +284,48 @@ def _load_initial_scope(
                 program=program,
                 code="E-CLI-003",
             ) from exc
-        if isinstance(loaded, dict) and MODEL_DEFAULTS_KEY in loaded:
+        loaded = _require_scope_mapping(loaded, "`--data` (`-d`)", "the argument")
+        if MODEL_DEFAULTS_KEY in loaded:
             origin, origin_file = ORIGIN_ARGUMENT, "--data"
         initial_scope = initial_scope | loaded
 
     return initial_scope, origin, origin_file
+
+
+def _require_scope_mapping(loaded: Any, option: str, what: str) -> dict:
+    """The parsed `-d`/`-f` value as a mapping, or a diagnostic about its shape.
+
+    `-d foo` and a data file holding a YAML list both parsed, then crashed on
+    `initial_scope | loaded` with a `TypeError` traceback. Nothing that is not
+    a mapping can name variables, so the shape is checked here.
+    """
+    if loaded is None:
+        return {}
+    if isinstance(loaded, dict):
+        return loaded
+    shape = _PDL_SHAPES.get(type(loaded), type(loaded).__name__)
+    shown = json.dumps(loaded)
+    if len(shown) > 40:
+        shown = shown[:40] + "..."
+    raise PDLParseError(
+        [
+            f"{option} must be a YAML mapping of variable names to values, but "
+            f"{what} is {shape}\n\n"
+            f"  It parsed as `{shown}`. Each top-level key becomes a variable the "
+            "program\n  can read, so a bare value or a list has nothing to bind "
+            "it to.\n\n"
+            "  help: write it as a mapping, e.g. -d '{name: value}'"
+        ]
+    )
+
+
+_PDL_SHAPES: dict[type, str] = {
+    bool: "a boolean",
+    int: "an integer",
+    float: "a number",
+    str: "a string",
+    list: "a list",
+}
 
 
 def _scope_error_text(
@@ -439,4 +484,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

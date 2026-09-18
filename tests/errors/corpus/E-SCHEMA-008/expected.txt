@@ -4,5 +4,10 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:3:15 - {'result': 1, 'context': 2} should be of type: {'anyOf': [{'$ref': '#/$defs/ContributeTarget'}, {'type': 'string'}, {'additionalProperties': {'$ref': '#/$defs/ContributeValue'}, 'type': 'object'}]}
+prog.pdl:3:15 - `result` and `context` are written as mapping keys, but they take no value
   in contribute[0]
+
+  A `contribute` entry is either `result` or `context`, written as a bare list
+  item, or a mapping with a single key naming where to contribute.
+
+  help: write `- result` then `- context` as items of the list.

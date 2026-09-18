@@ -1,13 +1,13 @@
 {
   "id": "E-SCHEMA-008",
   "title": "contribute value fails its union",
-  "severity": "S1",
+  "severity": "S3",
   "rubric": {
     "location": 2,
-    "what": 0,
-    "why": 2,
-    "fix": 0,
-    "hygiene": 1
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
   },
-  "notes": "Same union-wall shape on a much smaller union, so the fix must generalise. Location 1 -> 2 (phase-3 item 7): `  in contribute[0]` names the flow-sequence item, whose own mark is on line 3."
+  "notes": "`result` and `context` written as mapping keys are recognised as the union's own bare values, and the message says so with the edit to make. The union wall is gone from this path: a mapping that matches no member by field name is checked against the member with free keys, and a value that is not a bare value of the union is reported per key."
 }

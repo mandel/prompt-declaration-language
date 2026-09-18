@@ -4,10 +4,10 @@
   "severity": "S2",
   "rubric": {
     "location": 2,
-    "what": 1,
-    "why": 1,
+    "what": 3,
+    "why": 2,
     "fix": 0,
     "hygiene": 3
   },
-  "notes": "'dict object' has no attribute 'x' -- Jinja vocabulary, and 'attribute' for a subscript the user wrote as ['x']. Location 1 -> 2 (phase-3 item 7): `  in text` is rendered and `prog.pdl:1` is the `text:` entry's own mark. Same recorded dissent as E-EXPR-002 about block scalars."
+  "notes": "Jinja's `'dict object' has no attribute 'x'` is reworded as `the mapping has no key `x``; the same translation covers `'None' has no attribute`, `'str object' has no attribute` and `list object has no element N`. Anything else Jinja says is quoted as is."
 }

@@ -19,7 +19,7 @@ from .pdl_interpreter_state import InterpreterState
 from .pdl_lazy import PdlConst, PdlLazy, lazy_apply
 from .pdl_scheduler import make_model_call_done_callback
 from .pdl_schema_utils import pdltype_to_jsonschema
-from .pdl_utils import message_post_processing
+from .pdl_utils import exception_text, message_post_processing, model_call_message
 
 # Load environment variables
 load_dotenv()
@@ -54,7 +54,10 @@ class LitellmModel:
                 response.json(),  # pyright: ignore
             )
         except httpx.RequestError as exc:
-            message = f"model '{model_id}' encountered {repr(exc)} trying to {exc.request.method} against {exc.request.url}"
+            message = model_call_message(
+                model_id,
+                f"{exception_text(exc)} trying to {exc.request.method} against {exc.request.url}",
+            )
             loc = block.pdl__location
             raise PDLRuntimeError(
                 message,
@@ -62,7 +65,7 @@ class LitellmModel:
                 trace=ErrorBlock(msg=message, pdl__location=loc, program=block),
             ) from exc
         except Exception as exc:
-            message = f"Error during '{model_id}' model call: {repr(exc)}"
+            message = model_call_message(model_id, exception_text(exc))
             loc = block.pdl__location
             raise PDLRuntimeError(
                 message,

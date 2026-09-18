@@ -4,7 +4,7 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:2:5 - Attempting to include invalid yaml: sub/included.pdl
+prog.pdl:2:5 - cannot include `sub/included.pdl`: it is not a valid PDL program
   in text[0]
 sub/included.pdl:2:1 - Field not allowed: descrption
   in descrption

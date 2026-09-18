@@ -23,15 +23,7 @@ from io import StringIO
 from itertools import count
 from os import getenv
 from pathlib import Path
-from typing import (
-    IO,
-    Any,
-    Generator,
-    Iterable,
-    Sequence,
-    Tuple,
-    TypeVar,
-)
+from typing import IO, Any, Generator, Iterable, Sequence, Tuple, TypeVar
 
 import httpx
 import json_repair
@@ -150,9 +142,11 @@ from .pdl_diagnostics import (
     WIDTH,
     Diagnostic,
     _wrap,
+    clip_token,
     csv_error_is_unclosed_quote,
     for_not_a_list_diagnostic,
     import_read_diagnostic,
+    join_path,
     parser_csv_diagnostic,
     parser_group_diagnostic,
     parser_json_diagnostic,
@@ -169,28 +163,24 @@ from .pdl_llms import LitellmModel
 from .pdl_location_utils import (
     SOURCES,
     append,
+    get_loc_string,
     located_message,
     nested_source_name,
     source_text,
+    split_located,
 )
-from .pdl_parser import (
-    PDLParseError,
-    parse_file,
-    parse_str,
-    undecodable_source_error,
-)
+from .pdl_parser import PDLParseError, parse_file, parse_str, undecodable_source_error
 from .pdl_python_repl import PythonREPL
-from .pdl_scheduler import (
-    yield_background,
-    yield_result,
-)
+from .pdl_scheduler import ensure_line_start, yield_background, yield_result
 from .pdl_schema_utils import get_json_schema
 from .pdl_schema_validator import type_check_args, type_check_spec
 from .pdl_utils import (
     GeneratorWrapper,
     Resample,
     apply_defaults,
+    exception_text,
     get_contribute_context_value,
+    model_call_message,
     replace_contribute_value,
     stringify,
     value_of_expr,
@@ -244,6 +234,32 @@ class ClosureBlock(FunctionBlock):
 ClosureBlock.model_rebuild()
 
 
+def _chain_note(kind: str, loc: PdlLocationType | None) -> str:
+    """One `note:` line naming the block an error was reached through.
+
+    An error inside an included file, or inside a function body, is reported at
+    its own file and line; without this the reader has no way back to the
+    `include:` or `call:` that ran it, and for a function called from several
+    places no way to tell which call it was.
+    """
+    if loc is None or not loc.line:
+        return ""
+    where = get_loc_string(loc).rstrip(" -")
+    path = join_path(loc.path)
+    if path:
+        where += f" (in {path})"
+    return f"\n  note: {kind} {where}"
+
+
+def _with_chain_note(message: str, kind: str, loc: PdlLocationType | None) -> str:
+    note = _chain_note(kind, loc)
+    if not note:
+        return message
+    if "\n\n" in message and not message.rstrip().endswith(note.strip()):
+        return message.rstrip("\n") + "\n" + note
+    return message + note
+
+
 def generate(
     pdl_file: str | Path,
     state: InterpreterState | None,
@@ -274,6 +290,7 @@ def generate(
         if trace_file:
             write_trace(trace_file, trace)
     except PDLParseError as exc:
+        ensure_line_start()
         print(exc.text, file=sys.stderr)
         return 1
     except PDLRuntimeError as exc:
@@ -283,14 +300,31 @@ def generate(
         # one too, and they reach here wrapped in prose that a bare attribute
         # test would silently drop.
         if isinstance(exc.source_exception, PDLImportError):
-            message = exc.source_exception.diagnostic.text
+            rendered = exc.source_exception.diagnostic.text
+            # Re-wrap sites append `note: included by ...` to the message; keep
+            # those when the message is the rendered text plus notes.
+            message = exc.message if exc.message.startswith(rendered) else rendered
         elif exc.loc is None:
             message = exc.message
         else:
             message = located_message(exc.loc, exc.message)
+        # Under `--stream result` the program's own output has been written to
+        # stdout without a final newline, so a diagnostic printed now would
+        # start in the middle of that line: `partial output hereprog.pdl:3:5`.
+        ensure_line_start()
         print(message, file=sys.stderr)
         if trace_file and exc.pdl__trace is not None:
             write_trace(trace_file, exc.pdl__trace)
+        return 1
+    except RecursionError:
+        ensure_line_start()
+        print(
+            f"{pdl_file} - the program recursed too deeply and was stopped\n\n"
+            "  A function that calls itself needs a case that does not, or the "
+            "calls never\n  end. Python's recursion limit was reached before "
+            "the program finished.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 
@@ -749,7 +783,7 @@ def process_advance_block_retry(  # noqa: C901
                 checker = partial(
                     result_with_type_checking,
                     spec=block.spec,
-                    msg="Type errors during spec checking:",
+                    msg="the block's result does not match its `spec:`",
                     loc=append(loc, "spec"),
                     trace=trace,
                 )
@@ -896,7 +930,7 @@ def process_advance_block_retry(  # noqa: C901
                 checker = partial(
                     result_with_type_checking,
                     spec=block.spec,
-                    msg="Type errors during spec checking:",
+                    msg="the block's result does not match its `spec:`",
                     loc=append(fallback_loc, "spec"),
                     trace=trace,
                 )
@@ -928,14 +962,32 @@ def result_with_type_checking(
 ) -> ResultWithTypeCheckingT:
     errors = type_check_spec(result, spec, loc)
     if len(errors) > 0:
-        message = msg + "\n" + "\n".join(errors)
+        err_loc, message = _one_located(errors, loc, msg)
         raise PDLRuntimeError(
             message,
-            loc=loc,
+            loc=err_loc,
             trace=ErrorBlock(msg=message, program=trace),
             fallback=result,
         )
     return result
+
+
+def _one_located(
+    errors: list[str], default_loc: PdlLocationType, headline: str
+) -> tuple[PdlLocationType | None, str]:
+    """Fold a list of located type errors into one diagnostic.
+
+    `type_check` returns messages that each carry their own `file:line:col`
+    header. Raising them under a second header -- "Type errors during spec
+    checking:" -- printed two headers for one fault. A single error keeps its
+    own, more precise, location and loses the wrapper; several are listed under
+    the wrapper, which then names what they are about.
+    """
+    if len(errors) == 1:
+        split = split_located(errors[0], default_loc.file)
+        if split is not None:
+            return split
+    return default_loc, headline + ":\n" + "\n".join(errors)
 
 
 def process_block_body_with_replay(
@@ -1029,6 +1081,18 @@ def process_leaf_block(
                 yield_background(background)
         case GetBlock(get=var):
             block.pdl__location = append(loc, "get")
+            root = (
+                re.split(r"[.\[]", var, maxsplit=1)[0] if isinstance(var, str) else ""
+            )
+            if root and root.isidentifier() and root not in scope:
+                # `get:` takes a name, or a path into one: `PERSON.name`. Only
+                # the root is checked here; the rest is evaluated below.
+                msg = _unknown_name_message("get", root, scope)
+                raise PDLRuntimeError(
+                    msg,
+                    loc=block.pdl__location,
+                    trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+                )
             try:
                 result = PdlConst(get_var(var, scope, block.pdl__location))
             except PDLRuntimeExpressionError as exc:
@@ -1589,7 +1653,16 @@ def _evaluate_for_field(
             items_res[idx] = lst
             lengths.append(len(lst))
         if len(set(lengths)) != 1:  # Not all the lists are of the same length
-            msg = "Lists inside the For block must be of the same length."
+            counts = ", ".join(
+                f"`{name}` has {len(lst)} item{'s' if len(lst) != 1 else ''}"
+                for name, lst in items_res.items()
+            )
+            msg = (
+                "the lists in `for:` must all have the same length, but "
+                f"{counts}\n\n  A `for:` with several bindings walks them in "
+                "step, taking one element from\n  each per iteration, so it "
+                "cannot pair a list with one that is longer."
+            )
             for_loc = append(block.pdl__location or empty_block_location, "for")
             raise PDLRuntimeError(
                 msg,
@@ -1611,6 +1684,21 @@ def _evaluate_max_iterations_field(
         max_iterations = None
     else:
         max_iterations, block = process_expr_of(block, "maxIterations", scope, loc)
+        if not isinstance(max_iterations, int) or isinstance(max_iterations, bool):
+            # Schema-valid, because the field takes an expression and any
+            # string is one; unchecked, `iidx >= "x"` was a TypeError traceback.
+            written = block.maxIterations
+            if isinstance(written, LocalizedExpression):
+                written = written.pdl__expr
+            msg = (
+                f"`maxIterations:` must be an integer, but "
+                f"`{clip_token(str(written))}` gave {_pdl_type_name(max_iterations)}"
+            )
+            raise PDLRuntimeError(
+                msg,
+                loc=append(loc, "maxIterations"),
+                trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+            )
     return block, max_iterations
 
 
@@ -1849,13 +1937,59 @@ def process_blocks(  # pylint: disable=too-many-arguments,too-many-positional-ar
             iteration_state, scope, blocks, loc
         )
         results.append(block_result)
-    result = combine_results(join_type, results)
+    result = combine_results(join_type, results, loc)
     if state.yield_result and not iteration_state.yield_result:
         yield_result(result, block_kind)
     return result, background, scope, trace
 
 
-def combine_results(join_type: JoinType, results: list[PdlLazy[Any]]):
+def _require_parameters_mapping(
+    parameters: Any, block: AdvancedBlockType, loc: PdlLocationType
+) -> None:
+    """`parameters:` after evaluation must be a mapping; it used to be asserted."""
+    if parameters is None or isinstance(parameters, dict):
+        return
+    msg = (
+        "`parameters:` must be a mapping of parameter names to values, but "
+        f"this one is {_pdl_type_name(parameters)}"
+    )
+    if isinstance(parameters, str) and len(parameters) <= 40:
+        msg += f": `{parameters}`"
+    msg += "\n\n  help: write the parameters as a mapping, e.g. parameters: {temperature: 0}"
+    raise PDLRuntimeError(
+        msg,
+        loc=append(loc, "parameters"),
+        trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+    )
+
+
+def _require_mapping(value: Any, loc: PdlLocationType | None = None) -> dict:
+    """The value one item of an `object:` list produced, or a located complaint.
+
+    Merging the items with `|` raised `TypeError: unsupported operand type(s)
+    for |: 'dict' and 'str'` as a traceback when an item produced text.
+    """
+    if isinstance(value, dict):
+        return value
+    msg = (
+        "each item of an `object:` list must produce a mapping, but one produced "
+        f"{_pdl_type_name(value)}"
+    )
+    if isinstance(value, str) and len(value) <= 40 and "\n" not in value:
+        msg += f": `{value}`"
+    raise PDLRuntimeError(
+        msg
+        + "\n\n  help: wrap the item's value in a `data:` block that produces a mapping,"
+        "\n        or use `array:` or `text:` to collect values that are not mappings.",
+        loc=loc,
+    )
+
+
+def combine_results(
+    join_type: JoinType,
+    results: list[PdlLazy[Any]],
+    loc: PdlLocationType | None = None,
+):
     result: Any
     match join_type:
         case JoinArray():
@@ -1863,7 +1997,7 @@ def combine_results(join_type: JoinType, results: list[PdlLazy[Any]]):
         case JoinObject():
             result = PdlDict({})
             for d in results:
-                result = result | d
+                result = result | lazy_apply(partial(_require_mapping, loc=loc), d)
         case JoinLastOf():
             if len(results) > 0:
                 result = results[-1]
@@ -1993,7 +2127,13 @@ def _bad_contribution_message(elem: Any) -> str:
         # mapping, which is the usual way to arrive here. Name the user's own
         # keys: a generic example would point at the wrong shape, since
         # `result` and `context` are spelled as bare strings, not mappings.
-        items = " then ".join(f"`- {k}:`" for k in keys)
+        # `result` and `context` are bare list items, never mappings, so the
+        # suggested entries have to differ by key: `- result:` with a value
+        # under it is a mapping entry naming a variable `result` that does not
+        # exist, and following it earlier produced exactly that error.
+        items = " then ".join(
+            f"`- {k}`" if k in ("result", "context") else f"`- {k}:`" for k in keys
+        )
         suggestion = f"\n\n  help: give each key its own entry in the list: {items}"
     body = textwrap.fill(
         f"{_CONTRIBUTE_RULE} {evidence}",
@@ -2027,6 +2167,17 @@ def process_contribution(
                     fallback=[],
                 )
             target, contribute_value = list(elem.items()).pop()
+            if target in ("result", "context"):
+                msg = (
+                    f"`{target}` in `contribute:` takes no value: it is written as "
+                    f"the bare list item `- {target}`, not as a mapping"
+                )
+                raise PDLRuntimeError(
+                    msg,
+                    loc=loc,
+                    trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+                    fallback=[],
+                )
             try:
                 result, value_trace = process_expr(scope, contribute_value.value, loc)
             except PDLRuntimeExpressionError as exc:
@@ -2109,6 +2260,53 @@ EXPR_END_STRING = "}"
 ProcessExprT = TypeVar("ProcessExprT")
 
 
+_UNDEFINED_NAME = re.compile(r"^'(?P<name>[^']+)' is undefined$")
+_NO_ATTRIBUTE = re.compile(
+    r"^'?(?P<kind>\w+)(?: object)?'? has no attribute '(?P<attr>[^']+)'$"
+)
+_NO_ELEMENT = re.compile(r"^(?P<kind>\w+) object has no element (?P<index>.+)$")
+
+
+def _expression_failure(  # pylint: disable=too-many-return-statements
+    exc: BaseException, scope: ScopeType
+) -> str:
+    """Say what went wrong in a `${ }` in PDL's words, with a next step.
+
+    Jinja's own wording is in its vocabulary: `'dict object' has no attribute
+    'x'` for a missing key, `'None' has no attribute 'y'` for a null. The
+    common shapes are reworded here; anything else is quoted as Jinja said it.
+    An undefined name gets a near miss from the scope, which is the one thing
+    the reader of `'nmae' is undefined` needs.
+    """
+    text = str(exc)
+    if not isinstance(exc, UndefinedError):
+        return text
+    undefined = _UNDEFINED_NAME.match(text)
+    if undefined:
+        name = undefined.group("name")
+        names = [
+            k
+            for k in scope.keys()
+            if isinstance(k, str) and not k.startswith("pdl_") and k != "stdlib"
+        ]
+        close = difflib.get_close_matches(name, names, n=1, cutoff=0.7)
+        if close:
+            return f"{text}\n\n  help: did you mean `{close[0]}`?"
+        return text
+    missing = _NO_ATTRIBUTE.match(text)
+    if missing:
+        kind, attr = missing.group("kind"), missing.group("attr")
+        if kind == "None":
+            return f"the value is null, so `.{attr}` cannot be read from it"
+        if kind == "dict":
+            return f"the mapping has no key `{attr}`"
+        return f"a {kind} has no attribute or method `{attr}`"
+    element = _NO_ELEMENT.match(text)
+    if element:
+        return f"the {element.group('kind')} has no element {element.group('index')}"
+    return text
+
+
 def process_expr(  # pylint: disable=too-many-return-statements
     scope: ScopeType, expr: ExpressionType[ProcessExprT], loc: PdlLocationType
 ) -> tuple[ProcessExprT, LocalizedExpression[ProcessExprT]]:
@@ -2188,12 +2386,17 @@ def _process_expr(  # pylint: disable=too-many-return-statements
         except PDLRuntimeError as exc:
             raise exc from exc
         except TemplateSyntaxError as exc:
+            # `exc.message`, not `str(exc)`: the latter appends a `File
+            # "<introspection>", line 1` frame when Jinja knows a source name.
             raise PDLRuntimeExpressionError(
-                f"Syntax error in {expr}: {exc}", loc, source_exception=exc
+                f"Syntax error in {clip_token(expr)}: {exc.message}",
+                loc,
+                source_exception=exc,
             ) from exc
         except Exception as exc:
             raise PDLRuntimeExpressionError(
-                f"Error during the evaluation of {expr}: {exc}",
+                f"Error during the evaluation of {clip_token(expr)}: "
+                + _expression_failure(exc, scope),
                 loc,
                 source_exception=exc,
             ) from exc
@@ -2300,7 +2503,19 @@ def process_call_model(
         model_input_result = model_input_future.result()
         if isinstance(model_input_result, str):
             model_input_result = [{"role": state.role, "content": model_input_result}]
-        model_input_context = ensure_context(model_input_result)
+        try:
+            model_input_context = ensure_context(model_input_result)
+        except TypeError as exc:
+            message = (
+                "`input:` of a model block must be text or a list of messages, "
+                f"but this one produced {_pdl_type_name(model_input_result)}"
+            )
+            raise PDLRuntimeError(
+                message,
+                loc=append(loc, "input"),
+                trace=ErrorBlock(msg=message, pdl__location=loc, program=block),
+                source_exception=exc,
+            ) from exc
         match block:
             case LitellmModelBlock():
                 model_input = model_input_context.serialize(SerializeMode.LITELLM)
@@ -2329,6 +2544,11 @@ def process_call_model(
 
         import litellm
 
+        # LiteLLM prints a red "Give Feedback / Get Help" banner on every
+        # failed call, ANSI codes included and `NO_COLOR` ignored, above the
+        # diagnostic PDL is about to print. Nothing in it is actionable here.
+        litellm.suppress_debug_info = True
+
         litellm.input_callback = [get_transformed_inputs]
         # If the environment has a configured OpenTelemetry exporter, tell LiteLLM
         # to do OpenTelemetry callbacks for that exporter.  Note that this may
@@ -2356,8 +2576,15 @@ def process_call_model(
         return result, background, scope, trace
     except KeyboardInterrupt as exc:
         raise exc from exc
+    except PDLRuntimeError as exc:
+        # Already a PDL diagnostic (a bad `input:` or `parameters:`); wrapping
+        # it as "Error during model call: ..." would clip and bury it.
+        raise exc from exc
     except httpx.RequestError as exc:
-        message = f"model '{model_id}' encountered {repr(exc)} trying to {exc.request.method} against {exc.request.url}"
+        message = model_call_message(
+            str(model_id),
+            f"{exception_text(exc)} trying to {exc.request.method} against {exc.request.url}",
+        )
         raise PDLRuntimeError(
             message,
             loc=loc,
@@ -2365,7 +2592,7 @@ def process_call_model(
             source_exception=exc,
         ) from exc
     except Exception as exc:
-        message = f"Error during '{model_id}' model call: {repr(exc)}"
+        message = model_call_message(str(model_id), exception_text(exc))
         raise PDLRuntimeError(
             message,
             loc=loc,
@@ -2409,9 +2636,9 @@ def generate_client_response_streaming(
                 parameters = None
             else:
                 parameters = value_of_expr(block.parameters)  # pyright: ignore
-            assert parameters is None or isinstance(
-                parameters, dict
-            )  # block is a "concrete block"
+            _require_parameters_mapping(
+                parameters, block, block.pdl__location or empty_block_location
+            )
             # Apply PDL defaults to model invocation
 
             parameters = apply_defaults(
@@ -2435,9 +2662,9 @@ def generate_client_response_streaming(
                 parameters = None
             else:
                 parameters = value_of_expr(block.parameters)  # pyright: ignore
-            assert parameters is None or isinstance(
-                parameters, dict
-            )  # block is a "concrete block"
+            _require_parameters_mapping(
+                parameters, block, block.pdl__location or empty_block_location
+            )
             # Apply PDL defaults to model invocation
 
             parameters = apply_defaults(
@@ -2531,9 +2758,9 @@ def generate_client_response_single(
         parameters = None
     else:
         parameters = value_of_expr(block.parameters)  # pyright:ignore
-    assert parameters is None or isinstance(
-        parameters, dict
-    )  # block is a "concrete block"
+    _require_parameters_mapping(
+        parameters, block, block.pdl__location or empty_block_location
+    )
     parameters = apply_defaults(
         model_id,
         parameters or {},
@@ -2625,6 +2852,16 @@ def process_call_code(
                 loc,
             )
             code_s = code_.result()
+            if not isinstance(code_s, str):
+                msg = (
+                    f"`code:` must be text, but this block's `code:` is "
+                    f"{_pdl_type_name(code_s)}"
+                )
+                raise PDLRuntimeError(
+                    msg,
+                    loc=append(loc, "code"),
+                    trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+                )
             if block.scope is not None:
                 execution_scope, block = process_expr_of(block, "scope", scope, loc)
 
@@ -2645,7 +2882,7 @@ def process_call_code(
                 raise exc from exc
             except Exception as exc:
                 raise PDLRuntimeError(
-                    f"Shell Code error: {repr(exc)}",
+                    _command_error_text(exc, code_a),
                     loc=loc,
                     trace=block.model_copy(update={"args": code_a}),
                     source_exception=exc,
@@ -2739,7 +2976,7 @@ def process_call_code(
                 raise exc from exc
             except Exception as exc:
                 raise PDLRuntimeError(
-                    f"Code error: {exc!r}",
+                    f"code block raised {exception_text(exc)}",
                     loc=loc,
                     trace=block.model_copy(update={"code": code_s}),
                     source_exception=exc,
@@ -2760,7 +2997,7 @@ def process_call_code(
                 raise exc from exc
             except Exception as exc:
                 raise PDLRuntimeError(
-                    f"Shell Code error: {repr(exc)}",
+                    _command_error_text(exc, shlex.split(code_s) if code_s else []),
                     loc=loc,
                     trace=block.model_copy(update={"code": code_s}),
                     source_exception=exc,
@@ -2783,9 +3020,16 @@ def process_call_code(
                 )
             except KeyboardInterrupt as exc:
                 raise exc from exc
+            except TemplateSyntaxError as exc:
+                raise PDLRuntimeError(
+                    f"`lang: jinja` template is not valid: {exc.message}",
+                    loc=loc,
+                    trace=block.model_copy(update={"code": code_s}),
+                    source_exception=exc,
+                ) from exc
             except Exception as exc:
                 raise PDLRuntimeError(
-                    f"Jinja Code error: {repr(exc)}",
+                    f"`lang: jinja` template raised {exception_text(exc)}",
                     loc=loc,
                     trace=block.model_copy(update={"code": code_s}),
                     source_exception=exc,
@@ -2804,9 +3048,37 @@ def process_call_code(
                 )
             except KeyboardInterrupt as exc:
                 raise exc from exc
+            except PDLParseError as exc:
+                # The nested program's own diagnostic, headed by a line that
+                # says where it came from; it used to arrive as the repr of a
+                # list of rendered messages, newlines escaped.
+                raise PDLRuntimeError(
+                    "the PDL program in this `code:` block is not valid\n\n"
+                    + exc.text
+                    + "\n  note: line numbers after `#code>` count lines of the "
+                    "block's code, not of\n        the PDL file.",
+                    loc=loc,
+                    trace=block.model_copy(update={"code": code_s}),
+                    source_exception=exc,
+                ) from exc
+            except PDLRuntimeError as exc:
+                raise PDLRuntimeError(
+                    _with_chain_note(
+                        (
+                            located_message(exc.loc, exc.message)
+                            if exc.loc
+                            else exc.message
+                        ),
+                        "in the PDL program run by `lang: pdl` at",
+                        loc,
+                    ),
+                    loc=None,
+                    trace=block.model_copy(update={"code": code_s}),
+                    source_exception=exc,
+                ) from exc
             except Exception as exc:
                 raise PDLRuntimeError(
-                    f"PDL Code error: {repr(exc)}",
+                    f"the PDL program in this `code:` block raised {exception_text(exc)}",
                     loc=loc,
                     trace=block.model_copy(update={"code": code_s}),
                     source_exception=exc,
@@ -3621,6 +3893,31 @@ def call_ipython(code: str, scope: ScopeType) -> Any:
     return PdlConst(shell(code))
 
 
+def _command_error_text(exc: BaseException, args: list[str] | None) -> str:
+    """What went wrong running a `lang: command` block, naming the command."""
+    command = args[0] if args else ""
+    if isinstance(exc, FileNotFoundError):
+        name = exc.filename or command
+        return (
+            f"command not found: `{name}`\n\n  `lang: command` runs the program "
+            "named by the first word of `code:`, and no\n  such program is on the "
+            "`PATH`."
+        )
+    if isinstance(exc, _CommandFailed):
+        head = f"command `{command}` exited with status {exc.returncode}"
+        if exc.stderr.strip():
+            return f"{head}\n\n  Its standard error is printed above."
+        return head
+    return f"command `{command}` raised {exception_text(exc)}"
+
+
+class _CommandFailed(Exception):
+    def __init__(self, returncode: int, stderr: str):
+        super().__init__(f"command exited with non zero code: {returncode}")
+        self.returncode = returncode
+        self.stderr = stderr
+
+
 def call_command(code: str, code_a: list[str] | None) -> PdlLazy[str]:
     if code_a is not None:
         args = code_a
@@ -3634,7 +3931,7 @@ def call_command(code: str, code_a: list[str] | None) -> PdlLazy[str]:
     if p.stderr != "":
         print(p.stderr, file=sys.stderr)
     if p.returncode != 0:
-        raise ValueError(f"command exited with non zero code: {p.returncode}")
+        raise _CommandFailed(p.returncode, p.stderr)
     output = p.stdout
     return PdlConst(output)
 
@@ -3676,19 +3973,27 @@ def process_call(
     closure, _ = process_expr_of(block, "call", scope, loc)
 
     if not isinstance(closure, ClosureBlock):
-        msg = f"Type error: {block.call} is of type {type(closure)} but should be a function."
+        msg = (
+            f"`call:` expects a function, but `{clip_token(str(block.call))}` is "
+            f"{_pdl_type_name(closure)}"
+        )
         if isinstance(closure, str) and isinstance(scope.get(closure), FunctionBlock):
-            msg += " You might want to call `${ " + str(block.call) + " }`."
+            msg += (
+                f"\n\n  `{closure}` is the name of a function in scope, and "
+                "`call:` takes an expression\n  rather than a name."
+                "\n\n  help: write `call: ${ " + str(block.call) + " }`."
+            )
         raise PDLRuntimeError(msg, loc=append(loc, "call"), trace=block.model_copy())
     args_loc = append(loc, "args")
     type_errors = type_check_args(args, closure.function, args_loc)
     if len(type_errors) > 0:
-        raise PDLRuntimeError(
-            f"Type errors during function call to {block.call}:\n"
-            + "\n".join(type_errors),
-            loc=args_loc,
-            trace=block.model_copy(),
+        err_loc, message = _one_located(
+            type_errors,
+            args_loc,
+            f"the arguments of `call: {clip_token(str(block.call))}` do not match "
+            "its `function:` signature",
         )
+        raise PDLRuntimeError(message, loc=err_loc, trace=block.model_copy())
     current_context = scope.data["pdl_context"]
     try:
         result, background, call_trace = execute_call(
@@ -3696,7 +4001,7 @@ def process_call(
         )
     except PDLRuntimeError as exc:
         raise PDLRuntimeError(
-            exc.message,
+            _with_chain_note(exc.message, "called from", append(loc, "call")),
             loc=exc.loc or closure.pdl__location,
             trace=block.model_copy(update={"pdl__trace": exc.pdl__trace}),
             source_exception=exc,
@@ -3753,9 +4058,20 @@ def process_input(
             raise exc from exc
         except Exception as exc:
             if isinstance(exc, FileNotFoundError):
-                msg = f"file {str(file)} not found"
+                msg = f"cannot read `{file}`: no such file"
+            elif isinstance(exc, IsADirectoryError) or file.is_dir():
+                msg = f"cannot read `{file}`: it is a directory, not a file"
+            elif isinstance(exc, UnicodeDecodeError):
+                msg = f"cannot read `{file}`: it is not UTF-8 text"
+            elif isinstance(exc, PermissionError):
+                msg = f"cannot read `{file}`: permission denied"
             else:
-                msg = f"Fail to open file {str(file)}"
+                msg = f"cannot read `{file}`: {exception_text(exc)}"
+            msg += (
+                "\n\n  `read:` opens the file as UTF-8 text. The path is resolved "
+                f"from `{state.cwd}/`,\n  the directory of the program `pdl` was "
+                "started with."
+            )
             raise PDLRuntimeError(
                 message=msg,
                 loc=loc,
@@ -3797,30 +4113,59 @@ def process_include(
     loc: PdlLocationType,
 ) -> tuple[Any, LazyMessages, ScopeType, IncludeBlock]:
     file = state.cwd / block.include
+    include_loc = append(loc, "include")
     try:
         prog, new_loc = parse_file(file)
-        result, background, scope, trace = process_block(
-            state, scope, prog.root, new_loc
+    except (FileNotFoundError, IsADirectoryError, PermissionError) as exc:
+        # The same failure as an `import:` of a missing file, and the same
+        # diagnostic: it used to be answered with the command line's text.
+        diagnostic = import_read_diagnostic(
+            written=str(block.include),
+            resolved=file,
+            cwd=state.cwd,
+            exc=exc,
+            file=loc.file,
+            line=include_loc.line or None,
+            block_path=loc.path,
+            keyword="include",
         )
-        include_trace = block.model_copy(update={"pdl__trace": trace})
-        return result, background, scope, include_trace
+        raise import_read_error(block, loc, diagnostic) from exc
     except PDLParseError as exc:
-        message = f"Attempting to include invalid yaml: {str(file)}\n{exc.text}"
+        message = (
+            f"cannot include `{block.include}`: it is not a valid PDL program\n"
+            f"{exc.text}"
+        )
         raise PDLRuntimeError(
             message,
             loc=loc,
             trace=ErrorBlock(msg=message, program=block.model_copy()),
             source_exception=exc,
         ) from exc
+    try:
+        result, background, scope, trace = process_block(
+            state, scope, prog.root, new_loc
+        )
+        include_trace = block.model_copy(update={"pdl__trace": trace})
+        return result, background, scope, include_trace
     except PDLRuntimeProcessBlocksError as exc:
         trace = block.model_copy(update={"pdl__trace": exc.blocks})
         raise PDLRuntimeError(
-            exc.message, loc=exc.loc or loc, trace=trace, source_exception=exc
+            _with_chain_note(exc.message, "included by", include_loc),
+            loc=exc.loc or loc,
+            trace=trace,
+            source_exception=exc,
+        ) from exc
+    except PDLRuntimeError as exc:
+        raise PDLRuntimeError(
+            _with_chain_note(exc.message, "included by", include_loc),
+            loc=exc.loc,
+            trace=block.model_copy(update={"pdl__trace": exc.pdl__trace}),
+            source_exception=exc,
         ) from exc
 
 
 def import_read_error(
-    block: ImportBlock, loc: PdlLocationType, diagnostic: Diagnostic
+    block: ImportBlock | IncludeBlock, loc: PdlLocationType, diagnostic: Diagnostic
 ) -> PDLRuntimeError:
     """Wrap a rendered diagnostic about an unreadable imported file.
 
@@ -4056,6 +4401,45 @@ def process_aggregator(
     return PdlConst(aggregator), background, scope, trace
 
 
+_CONTRIBUTE_TARGETS = ("result", "context", "stdout", "stderr")
+
+
+def _unknown_name_message(field: str, name: str, scope: ScopeType) -> str:
+    """`contribute:` or `get:` named a variable that is not in scope.
+
+    Both used to evaluate the name as `${ name }` and report the expression
+    error -- "Error during the evaluation of ${ stdoutt }" -- about text the
+    user never wrote. The name is reported as written, with the built-in
+    targets or a near miss from the scope as the next step.
+    """
+    if field == "contribute":
+        headline = (
+            f"`contribute:` names `{name}`, which is not a place PDL can contribute to"
+        )
+        rule = (
+            "A `contribute:` entry is `result`, `context`, `stdout` or `stderr`, or "
+            "the name of a variable holding an aggregator."
+        )
+        pool = list(_CONTRIBUTE_TARGETS)
+    else:
+        headline = f"`get: {name}` names a variable that is not defined"
+        rule = "`get:` reads a variable from the scope, by name and without `${ }`."
+        pool = []
+    names = [
+        k
+        for k in scope.keys()
+        if isinstance(k, str) and not k.startswith("pdl_") and k != "stdlib"
+    ]
+    close = difflib.get_close_matches(name, pool + names, n=1, cutoff=0.7)
+    body = "\n\n" + "\n".join(_wrap(rule))
+    if close:
+        body += f"\n\n  help: did you mean `{close[0]}`?"
+    elif field != "contribute" and names:
+        shown = ", ".join(f"`{n}`" for n in sorted(names)[:8])
+        body += f"\n\n  note: the variables in scope are {shown}."
+    return headline + body
+
+
 def get_contribute_aggregator(
     block: AdvancedBlockType,
     target: ContributeTarget | str,
@@ -4068,11 +4452,22 @@ def get_contribute_aggregator(
         case ContributeTarget.STDERR | "stderr":
             aggregator = FileAggregator(sys.stderr, flush=True)
         case str():
+            if target not in scope:
+                msg = _unknown_name_message("contribute", target, scope)
+                raise PDLRuntimeError(
+                    msg,
+                    loc=loc,
+                    trace=ErrorBlock(msg=msg, pdl__location=loc, program=block),
+                    fallback=[],
+                )
             aggregator = get_var(target, scope, loc)
             if isinstance(aggregator, PdlLazy):
                 aggregator = aggregator.result()
             if not isinstance(aggregator, Aggregator):
-                msg = f"An aggregator was expected but got a value of type {type(aggregator)}."
+                msg = (
+                    f"`contribute:` names `{target}`, which is {_pdl_type_name(aggregator)} "
+                    "rather than an aggregator defined with `aggregator:`"
+                )
                 raise PDLRuntimeError(
                     msg,
                     loc=loc,

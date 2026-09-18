@@ -114,10 +114,10 @@ def _entry_point(entry: str) -> list[str]:
     """Resolve a console-script name to an argv prefix.
 
     The installed console script is used rather than ``python -m``, because that
-    is what a user runs and the two do not agree: ``src/pdl/pdl.py`` ends in a
-    bare ``main()`` with no ``sys.exit``, so ``python -m pdl.pdl`` reports
-    success even when the program failed. Corpus entry ``E-CLI-005`` pins that
-    discrepancy; everything else must not inherit it.
+    is what a user runs. The two used to disagree: ``src/pdl/pdl.py`` ended in a
+    bare ``main()`` with no ``sys.exit``, so ``python -m pdl.pdl`` reported
+    success even when the program failed. Corpus entry ``E-CLI-005`` pins the
+    module entry point's exit code.
     """
     match entry:
         case "pdl" | "pdl-lint":

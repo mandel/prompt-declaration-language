@@ -4,7 +4,5 @@ $ exit: 1
 (empty)
 
 --- stderr ---
-prog.pdl:7:5 - Type errors during function call to ${ greet }:
-  in text[0].args
-prog.pdl:7:5 - Missing required field: name
+prog.pdl:7:5 - the arguments lack the required `name`
   in text[0].args

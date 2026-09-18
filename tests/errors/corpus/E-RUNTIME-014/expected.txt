@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1:1 - each item of an `object:` list must produce a mapping, but one produced a string: `notanobject`
+  in object
+
+  help: wrap the item's value in a `data:` block that produces a mapping,
+        or use `array:` or `text:` to collect values that are not mappings.

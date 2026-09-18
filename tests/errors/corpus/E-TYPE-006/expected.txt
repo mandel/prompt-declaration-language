@@ -4,7 +4,5 @@ $ exit: 0
 x1
 
 --- stderr ---
-Deprecated type syntax: use string instead of str.
-Deprecated type syntax: use integer instead of int.
-Deprecated type syntax: use string instead of str.
-Deprecated type syntax: use integer instead of int.
+warning: `str` is a deprecated type name; write `string` instead.
+warning: `int` is a deprecated type name; write `integer` instead.

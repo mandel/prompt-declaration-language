@@ -1,0 +1,18 @@
+{
+  "id": "E-EXPR-001-streaming",
+  "title": "runtime error after streamed output",
+  "severity": "S3",
+  "argv": [
+    "--stream",
+    "result",
+    "prog.pdl"
+  ],
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Under the default `--stream result` the program's output is written without a trailing newline, so the diagnostic used to start in the middle of it: `partial output hereprog.pdl:3:5 - ...`. `ensure_line_start` terminates the line before any diagnostic is printed; the harness captures the two streams separately, so what this pins is the newline at the end of stdout."
+}

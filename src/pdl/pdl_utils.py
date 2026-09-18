@@ -12,9 +12,11 @@ from .pdl_ast import (
     ExpressionType,
     FunctionBlock,
     LocalizedExpression,
+    PDLException,
     PDLScopeError,
     get_sampling_defaults,
 )
+from .pdl_diagnostics import _wrap
 from .pdl_dumper import as_json, block_to_dict
 from .pdl_lazy import PdlLazy
 
@@ -299,8 +301,57 @@ def write_trace(
 
         with open(trace_file, "w", encoding="utf-8") as fp:
             json.dump(d, fp)
-    except Exception as e:
-        print(f"Failure generating the trace: {str(e)}", file=sys.stderr)
+    except OSError as e:
+        reason = e.strerror.lower() if e.strerror else str(e)
+        print(
+            f"could not write the trace to `{trace_file}`: {reason}\n\n"
+            "  The program ran; only the `--trace` file was not written.",
+            file=sys.stderr,
+        )
+    except Exception as e:  # pylint: disable=broad-except
+        print(
+            f"could not write the trace to `{trace_file}`: " f"{type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
+
+
+def exception_text(exc: BaseException) -> str:
+    """`ZeroDivisionError: division by zero` -- the type and its message.
+
+    Never the repr. `ValueError('command exited with non zero code: 7')`,
+    `AssertionError()` and `FileNotFoundError(2, 'No such file or directory')`
+    all reached users as headers; each is Python quoting itself, and the second
+    says nothing at all. A PDL exception carries a rendered message and is
+    quoted as that.
+    """
+    if isinstance(exc, PDLException):
+        text = getattr(exc, "text", None) or getattr(exc, "message", None)
+        if isinstance(text, str) and text:
+            return text
+    if isinstance(exc, FileNotFoundError) and exc.filename:
+        return f"no such file: `{exc.filename}`"
+    # The first line only: a provider SDK's message can carry a whole
+    # traceback in `str(exc)`, and none of it is the user's to act on.
+    detail = str(exc).strip().split("\n", 1)[0].strip()
+    name = type(exc).__name__
+    if not detail:
+        return name
+    if name in detail[: len(name) + 40]:
+        # `litellm.BadRequestError: ...` already names itself.
+        return detail
+    return f"{name}: {detail}"
+
+
+def model_call_message(model_id: str, detail: str) -> str:
+    """The provider's text, in the header when short and wrapped below it when not.
+
+    LiteLLM's messages run to several lines; put in the header they were
+    clipped at the header bound and the part naming the model was lost.
+    """
+    head = f"Error during '{model_id}' model call"
+    if len(detail) <= 100 and "\n" not in detail:
+        return f"{head}: {detail}"
+    return head + "\n\n" + "\n".join(_wrap(detail))
 
 
 class Resample(Exception):

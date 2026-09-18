@@ -265,6 +265,7 @@ def generate(
     state: InterpreterState | None,
     initial_scope: ScopeType,
     trace_file: str | Path | None,
+    debug: bool = False,
 ) -> int:
     """Execute the PDL program defined in `pdl_file`.
 
@@ -273,6 +274,7 @@ def generate(
         initial_scope: Environment defining the variables in scope to execute the program.
         state: Initial state of the interpreter.
         trace_file: Indicate if the execution trace must be produced and the file to save it.
+        debug: Print the Python traceback behind a diagnostic, after it (`pdl --debug`).
 
     Returns:
         Returns the exit code: `0` for success, `1` for failure
@@ -292,6 +294,8 @@ def generate(
     except PDLParseError as exc:
         ensure_line_start()
         print(exc.text, file=sys.stderr)
+        if debug:
+            _print_debug_traceback(exc)
         return 1
     except PDLRuntimeError as exc:
         # A carried diagnostic is already rendered, location line included, so
@@ -313,10 +317,12 @@ def generate(
         # start in the middle of that line: `partial output hereprog.pdl:3:5`.
         ensure_line_start()
         print(message, file=sys.stderr)
+        if debug:
+            _print_debug_traceback(exc)
         if trace_file and exc.pdl__trace is not None:
             write_trace(trace_file, exc.pdl__trace)
         return 1
-    except RecursionError:
+    except RecursionError as exc:
         ensure_line_start()
         print(
             f"{pdl_file} - the program recursed too deeply and was stopped\n\n"
@@ -325,8 +331,32 @@ def generate(
             "the program finished.",
             file=sys.stderr,
         )
+        if debug:
+            _print_debug_traceback(exc)
         return 1
     return 0
+
+
+_DEBUG_HEADER = "--- debug: the Python exception behind this diagnostic ---"
+
+
+def _print_debug_traceback(exc: BaseException) -> None:
+    """Print the original Python exception and its traceback, for `--debug`.
+
+    The diagnostic above it is what the user reads; this is for whoever is
+    debugging PDL itself, or a `code:` block, and wants the frames. A
+    `PDLRuntimeError` carries the exception it wrapped as `source_exception`,
+    already collapsed to the innermost one by its constructor, and that is
+    the one printed -- with its own `__cause__` chain, which `traceback`
+    renders. When nothing was wrapped, the PDL exception's own frames are
+    what there is.
+    """
+    source = getattr(exc, "source_exception", None)
+    if not isinstance(source, BaseException):
+        source = exc
+    print(file=sys.stderr)
+    print(_DEBUG_HEADER, file=sys.stderr)
+    traceback.print_exception(type(source), source, source.__traceback__)
 
 
 def process_prog(

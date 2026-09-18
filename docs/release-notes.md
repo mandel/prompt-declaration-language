@@ -6,6 +6,26 @@ and the [GitHub releases](https://github.com/IBM/prompt-declaration-language/rel
 
 ## Unreleased
 
+### `pdl --debug` shows the Python exception behind a diagnostic
+
+A runtime error prints a diagnostic and nothing else. When the diagnostic is
+not enough -- a `code:` block raising from deep inside a library, or a bug in
+PDL itself that you want to report -- `--debug` prints the original Python
+exception and its stack trace after the diagnostic, under a
+`--- debug: ...` line, so the two cannot be confused. Without the flag the
+output is unchanged.
+
+```console
+$ pdl --debug prog.pdl
+prog.pdl:2:1 - code block raised ZeroDivisionError: division by zero
+  in code
+  ...
+--- debug: the Python exception behind this diagnostic ---
+Traceback (most recent call last):
+  ...
+ZeroDivisionError: division by zero
+```
+
 ### A mistyped field name says what you probably meant
 
 A key a block does not accept was reported accurately and unhelpfully: it named

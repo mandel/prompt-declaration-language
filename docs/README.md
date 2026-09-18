@@ -128,6 +128,12 @@ The interpreter can be made to output the background context:
 pdl --stream context <my-example>
 ```
 
+When a program fails, PDL prints a diagnostic and hides the Python exception behind it. To see that exception and its stack trace as well, for example when a `code:` block raises or when reporting a bug in PDL itself, add `--debug`:
+
+```
+pdl --debug <my-example>
+```
+
 For more information:
 ```
 pdl --help

@@ -4,7 +4,7 @@ import pytest
 
 from pdl.pdl import exec_file, exec_str
 from pdl.pdl_ast import PDLImportError
-from pdl.pdl_interpreter import PDLRuntimeError
+from pdl.pdl_interpreter import _DEBUG_HEADER, PDLRuntimeError, empty_scope, generate
 from pdl.pdl_location_utils import located_message
 
 
@@ -339,3 +339,23 @@ def test_non_utf8_import_is_a_diagnostic_not_a_traceback(tmp_path, monkeypatch):
     text = flat(caught.value.message)
     assert "bad.pdl:1:8 - not valid UTF-8" in text
     assert "byte 0xff cannot start a UTF-8 character" in text
+
+
+def test_debug_prints_original_traceback(capsys: pytest.CaptureFixture[str]):
+    """`pdl --debug` prints the Python exception behind a diagnostic, after it."""
+    exit_code = generate(
+        "tests/errors/corpus/E-CODE-001/prog.pdl", None, empty_scope, None, debug=True
+    )
+    err = capsys.readouterr().err
+    assert exit_code == 1
+    diagnostic, _, trace = err.partition(_DEBUG_HEADER)
+    assert "code block raised ZeroDivisionError: division by zero" in diagnostic
+    assert "Traceback (most recent call last)" in trace
+    assert "ZeroDivisionError: division by zero" in trace
+
+
+def test_no_debug_prints_no_traceback(capsys: pytest.CaptureFixture[str]):
+    generate("tests/errors/corpus/E-CODE-001/prog.pdl", None, empty_scope, None)
+    err = capsys.readouterr().err
+    assert _DEBUG_HEADER not in err
+    assert "Traceback" not in err

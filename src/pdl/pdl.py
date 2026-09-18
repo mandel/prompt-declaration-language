@@ -383,6 +383,12 @@ def main():
         default=False,
     )
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="after a runtime error, also print the Python traceback behind it",
+        default=False,
+    )
+    parser.add_argument(
         "--version",
         action="store_true",
         help="print the version number and exit",
@@ -479,6 +485,7 @@ def main():
         InterpreterState(**config),  # pyright: ignore
         ScopeType(initial_scope),
         trace_file,
+        debug=args.debug,
     )
     return exit_code
 

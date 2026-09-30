@@ -1,0 +1,16 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+--data - malformed `pdl_model_default_parameters`
+  in pdl_model_default_parameters[0]
+
+  Each entry maps a model-name pattern to a table of parameters. Here the
+  pattern `*` is mapped to `3`, which is not a table.
+
+  note: this value comes from the `--data` command-line argument, not from
+        `prog.pdl`.
+  help: wrap the parameters in a table, e.g.
+        -d '{pdl_model_default_parameters: [{"*": {temperature: 3}}]}'

@@ -1,0 +1,13 @@
+{
+  "id": "E-CODE-005",
+  "title": "a `lang: pdl` block whose program does not parse",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "The inner diagnostic now arrives intact under a one-line header (`the PDL program in this `code:` block is not valid`), with a note that `<program:...#code>:N` counts lines of the block's code. Every newline that the `repr` used to escape is a real line again, so the inner excerpt, carets, rule and help all render. Location 2: the outer header has the block's file:line:col and path, the inner one is in the nested program's own coordinates."
+}

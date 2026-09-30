@@ -1,0 +1,5 @@
+text: "hello"
+parser:
+  regex: "(?P<first>\\w+)"
+  spec:
+    second: str

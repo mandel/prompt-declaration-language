@@ -1,0 +1,18 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:4:1 - `parser: jsonl` could not parse line 2 of the block's output
+  in parser
+
+output:2 | oops
+         | ^ Expecting value
+
+  `parser: jsonl` reads the block's output as one JSON value per line; every
+  non-empty line must be a complete JSON value on its own.
+
+  note: `output:N` counts lines of the block's output, not of the PDL file.
+  help: make every non-empty line a complete JSON value, or remove the parser
+        to keep the output as text.

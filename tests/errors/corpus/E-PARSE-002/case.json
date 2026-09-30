@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSE-002",
+  "title": "tab used for indentation",
+  "severity": "S0",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Fixed. PyYAML's own text was already good; all it needed was to not be the 58th line of a traceback. The tab is rendered as one space in the excerpt so the caret column equals the source column with no tab-stop arithmetic, which makes the tab invisible by construction -- hence the headline and the caret label both name it in words."
+}

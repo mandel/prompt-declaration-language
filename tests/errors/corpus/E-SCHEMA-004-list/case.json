@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-004-list",
+  "title": "a list where a string is expected",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Was `['user'] should be of type <class 'str'>`. The base-type arm renders through `wrong_type_diagnostic` like E-SCHEMA-004 itself; this pins the list-valued branch, where the found value is a list rather than a scalar."
+}

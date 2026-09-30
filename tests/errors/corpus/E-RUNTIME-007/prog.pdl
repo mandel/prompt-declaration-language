@@ -1,0 +1,7 @@
+text:
+  - "x"
+contribute:
+  - stdout:
+      value: "to stdout"
+    stderr:
+      value: "to stderr"

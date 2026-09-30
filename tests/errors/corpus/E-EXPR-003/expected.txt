@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1:1 - Error during the evaluation of ${ {}['x'] }: the mapping has no key `x`
+  in text

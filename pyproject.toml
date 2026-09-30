@@ -97,6 +97,9 @@ include = ["src", "tests", "examples", "docs"]
 
 [tool.pdl-lint]
 ignore = [
+  # Deliberately-invalid reproducers for the error-reporting corpus; each is
+  # pinned by a golden transcript. See tests/errors/README.md.
+  "tests/errors/corpus",
   "tests/data/line/hello.pdl",
   "tests/data/line/hello1.pdl",
   "tests/data/line/hello10.pdl",

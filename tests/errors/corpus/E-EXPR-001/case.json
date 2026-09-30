@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-001",
+  "title": "undefined variable in an expression",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Jinja's wording. Does not list what IS in scope, which is the natural next question. Location 1 -> 2 (phase-3 item 7): `  in text[1]` names the block, and `prog.pdl:3` is that list item's own mark. Not 3: no column, and no offset inside the expression."
+}

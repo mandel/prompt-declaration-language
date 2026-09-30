@@ -1,0 +1,5 @@
+text: one
+defs: {}
+text: two
+defs: {x: 1, x: 2}
+text: three

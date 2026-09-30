@@ -1,0 +1,7 @@
+$ exit: 0
+
+--- stdout ---
+[["id", "name"], ["1", "Ada Lovelace"], ["2", "Grace "]]
+
+--- stderr ---
+(empty)

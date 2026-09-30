@@ -15,16 +15,30 @@ from ._version import version
 from .pdl_ast import (
     BlockType,
     PdlBlock,
+    PDLException,
     PdlLocationType,
+    PDLScopeError,
     PdlUsage,
     Program,
     RoleType,
     empty_block_location,
     get_default_model_parameters,
 )
+from .pdl_diagnostics import (
+    ORIGIN_ARGUMENT,
+    ORIGIN_DATA_FILE,
+    model_defaults_diagnostic,
+)
 from .pdl_interpreter import InterpreterState, process_prog
 from .pdl_interpreter_state import ScopeType
-from .pdl_parser import parse_dict, parse_file, parse_str
+from .pdl_parser import (
+    PDLParseError,
+    parse_dict,
+    parse_file,
+    parse_str,
+    source_read_error,
+    yaml_error,
+)
 from .pdl_runner import exec_docker
 from .pdl_utils import (  # pylint: disable=unused-import # noqa: F401
     Ref,
@@ -210,6 +224,127 @@ def pdl(func):
     return pdl_wrapper
 
 
+MODEL_DEFAULTS_KEY = "pdl_model_default_parameters"
+
+
+def _load_initial_scope(
+    data_file: str | None,
+    data: str | None,
+    program: str | None = None,
+) -> tuple[dict[str, Any], str, str]:
+    """Build the CLI's initial scope out of the built-in defaults, `-f` and `-d`.
+
+    Shared by `pdl` and `pdl-infer`, which carried byte-for-byte copies of this
+    sequence: without the sharing, `pdl-infer` keeps every traceback the `pdl`
+    entry point loses.
+
+    Returns the scope along with the origin of `pdl_model_default_parameters`.
+    The origin is not guessed -- the three sources are merged in a known order,
+    so a membership test on each dict as it is merged names the last one to
+    supply the key exactly.
+    """
+    initial_scope: dict[str, Any] = {MODEL_DEFAULTS_KEY: get_default_model_parameters()}
+    origin, origin_file = "builtin", ""
+
+    if data_file is not None:
+        path = Path(data_file)
+        try:
+            with open(path, "r", encoding="utf-8") as scope_fp:
+                raw = scope_fp.read()
+        except (FileNotFoundError, IsADirectoryError, PermissionError) as exc:
+            raise source_read_error(path, exc, data_file=True) from exc
+        try:
+            # Loaded from a string rather than the stream so that a syntax error
+            # gets the whole file as its excerpt: PyYAML truncates `mark.buffer`
+            # on the stream path.
+            loaded = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            raise yaml_error(
+                exc,
+                raw,
+                str(path),
+                origin=ORIGIN_DATA_FILE,
+                program=program,
+                code="E-CLI-003",
+            ) from exc
+        loaded = _require_scope_mapping(loaded, f"`-f {data_file}`", "the file")
+        if MODEL_DEFAULTS_KEY in loaded:
+            origin, origin_file = ORIGIN_DATA_FILE, str(path)
+        initial_scope = initial_scope | loaded
+
+    if data is not None:
+        try:
+            loaded = yaml.safe_load(data)
+        except yaml.YAMLError as exc:
+            raise yaml_error(
+                exc,
+                data,
+                "--data",
+                origin=ORIGIN_ARGUMENT,
+                program=program,
+                code="E-CLI-003",
+            ) from exc
+        loaded = _require_scope_mapping(loaded, "`--data` (`-d`)", "the argument")
+        if MODEL_DEFAULTS_KEY in loaded:
+            origin, origin_file = ORIGIN_ARGUMENT, "--data"
+        initial_scope = initial_scope | loaded
+
+    return initial_scope, origin, origin_file
+
+
+def _require_scope_mapping(loaded: Any, option: str, what: str) -> dict:
+    """The parsed `-d`/`-f` value as a mapping, or a diagnostic about its shape.
+
+    `-d foo` and a data file holding a YAML list both parsed, then crashed on
+    `initial_scope | loaded` with a `TypeError` traceback. Nothing that is not
+    a mapping can name variables, so the shape is checked here.
+    """
+    if loaded is None:
+        return {}
+    if isinstance(loaded, dict):
+        return loaded
+    shape = _PDL_SHAPES.get(type(loaded), type(loaded).__name__)
+    shown = json.dumps(loaded)
+    if len(shown) > 40:
+        shown = shown[:40] + "..."
+    raise PDLParseError(
+        [
+            f"{option} must be a YAML mapping of variable names to values, but "
+            f"{what} is {shape}\n\n"
+            f"  It parsed as `{shown}`. Each top-level key becomes a variable the "
+            "program\n  can read, so a bare value or a list has nothing to bind "
+            "it to.\n\n"
+            "  help: write it as a mapping, e.g. -d '{name: value}'"
+        ]
+    )
+
+
+_PDL_SHAPES: dict[type, str] = {
+    bool: "a boolean",
+    int: "an integer",
+    float: "a number",
+    str: "a string",
+    list: "a list",
+}
+
+
+def _scope_error_text(
+    exc: PDLScopeError, origin: str, origin_file: str, program: str | None
+) -> str:
+    """Render a scope-validation failure, naming the input that supplied it."""
+    if exc.path[:1] == [MODEL_DEFAULTS_KEY]:
+        return model_defaults_diagnostic(
+            path=exc.path,
+            pattern=exc.pattern,
+            value=exc.value,
+            reason=exc.reason,
+            origin=origin,
+            origin_file=origin_file,
+            program=program,
+        ).text
+    return exc.text
+
+
 def main():
     parser = argparse.ArgumentParser("")
     parser.add_argument(
@@ -245,6 +380,12 @@ def main():
         "--schema",
         action="store_true",
         help="generate PDL JSON Schema and exit",
+        default=False,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="after a runtime error, also print the Python traceback behind it",
         default=False,
     )
     parser.add_argument(
@@ -286,13 +427,24 @@ def main():
         exec_docker(*args)
         assert False  # unreachable: exec_docker terminate the execution
 
-    initial_scope = {"pdl_model_default_parameters": get_default_model_parameters()}
-    if args.data_file is not None:
-        with open(args.data_file, "r", encoding="utf-8") as scope_fp:
-            initial_scope = initial_scope | yaml.safe_load(scope_fp)
-    if args.data is not None:
-        initial_scope = initial_scope | yaml.safe_load(args.data)
-    validate_scope(initial_scope)
+    # `-f`, `-d` and `validate_scope` all run before `generate`, so `generate`
+    # cannot see them and their failures need their own handler. A failure here
+    # is never about the program: it has not been read yet.
+    defaults_origin, defaults_file = "builtin", ""
+    try:
+        initial_scope, defaults_origin, defaults_file = _load_initial_scope(
+            args.data_file, args.data, program=args.pdl
+        )
+        validate_scope(initial_scope)
+    except PDLScopeError as exc:
+        print(
+            _scope_error_text(exc, defaults_origin, defaults_file, args.pdl),
+            file=sys.stderr,
+        )
+        return 1
+    except PDLException as exc:
+        print(exc.text, file=sys.stderr)
+        return 1
 
     match args.stream:
         case "result":
@@ -333,9 +485,10 @@ def main():
         InterpreterState(**config),  # pyright: ignore
         ScopeType(initial_scope),
         trace_file,
+        debug=args.debug,
     )
     return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

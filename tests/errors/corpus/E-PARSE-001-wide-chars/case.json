@@ -1,0 +1,13 @@
+{
+  "id": "E-PARSE-001-wide-chars",
+  "title": "caret after East Asian wide characters",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "E-PARSE-001 with six CJK characters before the caret. Each occupies two terminal columns, and a caret padded by code points sat six cells left of the quote it labelled. `_excerpt` pads by `display_width` now, so the caret is under the quote in a monospace terminal; in this file the caret line is longer than the column by the same six cells."
+}

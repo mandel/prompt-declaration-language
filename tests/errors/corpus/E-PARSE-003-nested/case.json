@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSE-003-nested",
+  "title": "duplicate mapping key inside a block",
+  "severity": "S0",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "The shape a real program is far likelier to have than the document-root repeat of `E-PARSE-003`: a block field written twice, here a `code:` whose first body is thrown away. Pinned separately for two reasons the root entry cannot show. First, the rule applies at every depth -- the check walks the whole composed graph, not just the top-level mapping -- and a version that only looked at the document root would pass the root entry and miss this one entirely. Second, this is the entry that carries the `  in text[0]` line: the mapping has a block path, so the diagnostic names the block as well as the two lines, which is the half of Location 3 the root repeat has nothing to fill. Before the change this printed `9` at exit 0, having silently run `result = 3 + 3` and dropped `result = 2 + 2`. Note the elided `...` row between the two excerpt lines: they are three apart because the first `code:` owns a block scalar, and the renderer already elides non-adjacent excerpt rows rather than quoting the span between them."
+}

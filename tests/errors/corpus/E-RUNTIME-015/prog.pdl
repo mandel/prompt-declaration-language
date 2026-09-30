@@ -1,0 +1,11 @@
+defs:
+  f:
+    function:
+      n: integer
+    return:
+      call: ${ f }
+      args:
+        n: ${ n + 1 }
+call: ${ f }
+args:
+  n: 0

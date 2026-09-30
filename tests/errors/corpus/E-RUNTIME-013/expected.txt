@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `maxIterations:` must be an integer, but `${ "3" }` gave a string
+  in maxIterations

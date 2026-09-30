@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-008",
+  "title": "contribute value fails its union",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "`result` and `context` written as mapping keys are recognised as the union's own bare values, and the message says so with the edit to make. The union wall is gone from this path: a mapping that matches no member by field name is checked against the member with free keys, and a value that is not a bare value of the union is reported per key."
+}

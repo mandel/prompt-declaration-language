@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:9:7 - `name:` should be a string, but `42` is an integer
+  in text[0].args.name
+
+9 |       name: 42
+  |       ^

@@ -128,6 +128,12 @@ The interpreter can be made to output the background context:
 pdl --stream context <my-example>
 ```
 
+When a program fails, PDL prints a diagnostic and hides the Python exception behind it. To see that exception and its stack trace as well, for example when a `code:` block raises or when reporting a bug in PDL itself, add `--debug`:
+
+```
+pdl --debug <my-example>
+```
+
 For more information:
 ```
 pdl --help
@@ -394,6 +400,9 @@ When using Granite models, we use the following defaults for model parameters:
   - `top_k`: 50
 
 For a complete list of issues see [here](https://github.com/IBM/prompt-declaration-language/issues).
+
+Changes that need an action from you, such as an exception type an SDK caller
+catches, are listed in the [Release Notes](release-notes.md).
 
 
 ## Contributing to the Project

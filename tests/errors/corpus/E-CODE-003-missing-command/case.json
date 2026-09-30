@@ -1,0 +1,13 @@
+{
+  "id": "E-CODE-003-missing-command",
+  "title": "lang: command names a program that does not exist",
+  "severity": "S3",
+  "rubric": {
+    "location": 1,
+    "what": 3,
+    "why": 3,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "Was `Shell Code error: FileNotFoundError(2, 'No such file or directory')`, which never named the command. `_command_error_text` reads the name off the exception and says what `lang: command` does with it."
+}

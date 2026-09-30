@@ -1,0 +1,15 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:5 - `fallback:` should be one block, but `[{text: recovering}]` is a list
+  in fallback
+
+3 |   - text: recovering
+  |     ^
+
+  `fallback:` is one block, not a list of blocks.
+
+  help: write the one block on its own: fallback: {text: recovering}

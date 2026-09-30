@@ -52,8 +52,12 @@ Features:
 - Detailed error reporting with file locations
 
 The linter will:
-- Skip files not ending in .pdl
-- Ignore files and directories specified in the configuration
+- Lint every path named on the command line, whatever its suffix and wherever it
+  sits. A path you typed is never skipped; the rules below describe which files a
+  *directory* is walked for.
+- Skip files not ending in .pdl when walking a directory
+- Ignore files and directories specified in the configuration when walking a
+  directory
 - Report syntax errors and other issues in PDL files
 - Provide detailed logging of the linting process
 
@@ -68,6 +72,7 @@ import ast
 import logging
 import sys
 import tomllib
+from enum import Enum
 from pathlib import Path
 from typing import Any, List, Literal, Self
 
@@ -75,7 +80,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from pdl.pdl_ast import BlockType, CodeBlock
 from pdl.pdl_ast_utils import iter_block_children
-from pdl.pdl_interpreter import EXPR_START_STRING
+
+# The `code:` gutter, its wrapping and its closing caveat are `pdl_interpreter`'s,
+# and they are imported rather than reimplemented on purpose: a `code:` block that
+# fails to compile at lint time and one that fails to compile at run time are the
+# same failure seen from two tools, and E-CODE-001 already chose how to render it.
+# A second, near-identical renderer here would drift -- the caveat's wording most
+# of all, which is the one sentence a reader may have already seen from `pdl`.
+# Private names, because the interpreter's diagnostic vocabulary is not public API.
+# `_wrap` came from here until it acquired this third caller and moved to
+# `pdl_diagnostics`, which is where the rest of these belong if they gain one.
+from pdl.pdl_diagnostics import _wrap
+from pdl.pdl_interpreter import (
+    _RAISED_GUTTER_CAVEAT,
+    EXPR_START_STRING,
+    _gutter,
+    _safe_text,
+    _syntax_error_rows,
+)
 from pdl.pdl_parser import PDLParseError
 from pdl.pdl_parser import parse_file as parse_pdl_file
 
@@ -137,6 +159,39 @@ def _guess_project_root_dir(start_path: Path = Path.cwd()) -> Path | None:
 
     # If no strong indicator is found, return the last candidate.
     return project_root_candidates[-1] if project_root_candidates else None
+
+
+class IgnoreReason(Enum):
+    """Why a path was left out of a directory walk.
+
+    `should_ignore` used to collapse four distinct conditions into `True`, and
+    the single skip message named the third of them for all four: a file outside
+    the project root, or one with a suffix other than `.pdl`, was reported as
+    `(in ignore list)` when nothing was in any ignore list. A user who went
+    looking for that entry found no such entry, which is the worst shape a
+    diagnostic can take -- confidently wrong rather than merely thin.
+
+    The wording of each member is the wording of the `logger.debug` line its
+    branch already emitted. Those four strings were correct all along; they were
+    just not the ones the user was shown.
+    """
+
+    OUTSIDE_PROJECT_ROOT = "not within the project root"
+    NOT_A_PDL_FILE = "not a *.pdl file"
+    IN_IGNORE_LIST = "in the ignore list"
+    IN_IGNORED_DIRECTORY = "in a directory marked to be ignored"
+
+    def describe(self, project_root: Path) -> str:
+        """The reason as it is shown to the user.
+
+        Only the first reason needs a parameter, and it needs it badly: "not
+        within the project root" invites the question "which root?", and the
+        linter's answer is a guess (`_guess_project_root_dir`) that the user has
+        no other way to see.
+        """
+        if self is IgnoreReason.OUTSIDE_PROJECT_ROOT:
+            return f"{self.value} {project_root}"
+        return self.value
 
 
 LogLevelLiteral = Literal[
@@ -241,33 +296,43 @@ class LinterConfig(BaseModel):
 
         self.ignore = valid_paths_to_ignore
 
-    def should_ignore(self, path: Path) -> bool:
+    def should_ignore(self, path: Path) -> IgnoreReason | None:
         """
-        Check if a path should be ignored.
+        Check if a path should be ignored, and say why.
+
+        Returns the reason, or `None` when the path is good to lint. Every
+        `IgnoreReason` is truthy and `None` is falsy, so `if config.should_ignore(p)`
+        reads exactly as it did when this returned a `bool`; the caller that
+        prints a skip line now has the one piece of information it was missing.
+
+        These four conditions are all about the *scope of a directory walk*. None
+        of them says a file is unlintable: a `.pdl` outside the project root parses
+        exactly as well as one inside it. That is why a path named explicitly on
+        the command line does not consult this at all -- see `_lint_pdl_file`.
         """
         logger.debug("Checking if %s should be ignored.", path)
         match path:
             case path if not path.absolute().is_relative_to(self.project_root):
                 logger.debug(" ⏩  Not within the project root %s.", self.project_root)
-                return True
+                return IgnoreReason.OUTSIDE_PROJECT_ROOT
 
             case path if path.is_file() and path.suffix != ".pdl":
                 logger.debug(" ⏩  Not a *.pdl file.")
-                return True
+                return IgnoreReason.NOT_A_PDL_FILE
 
             case path if path in self.ignore:
                 logger.debug(" ⏩  In the ignore list.")
-                return True
+                return IgnoreReason.IN_IGNORE_LIST
 
             case path if any(
                 path.is_relative_to(d) for d in self.directories_to_ignore
             ):
                 logger.debug(" ⏩  In a directory marked to be ignored.")
-                return True
+                return IgnoreReason.IN_IGNORED_DIRECTORY
 
             case _:
                 logger.debug(" ✅  Good to lint.")
-                return False
+                return None
 
     @classmethod
     def load(cls) -> Self:
@@ -359,13 +424,84 @@ class LinterConfig(BaseModel):
         return linter_config
 
 
-def _lint_pdl_file(file_path: Path, config: LinterConfig) -> bool:
+# The linter lists one line per file (` - ✅  x.pdl`, ` - ❌  y.pdl`), and a
+# diagnostic sits *under* the file it is about. Five spaces is the gutter the
+# first line of a diagnostic has always been printed at; what was missing is that
+# the rest of the diagnostic was printed at zero, so the second line of one error
+# did not line up with its first.
+_DIAGNOSTIC_INDENT = " " * 5
+
+
+def _indent_diagnostic(text: str) -> str:
+    """Put a whole rendered diagnostic under the linter's five-space gutter.
+
+    Uniform, and deliberately dumb: the continuation lines are the rendered text's
+    own structure -- the `  in <path>` line, the `N | ...` excerpt gutter and its
+    caret, the wrapped rule paragraph, the closing `note:` -- and every one of them
+    is positioned relative to the others by the renderer that produced it. Shifting
+    the block as a whole preserves all of that; re-wrapping it would not, and would
+    desync the linter from `pdl_diagnostics.render` and `pdl_interpreter._wrap`,
+    which are what a reader sees when the *same* diagnostic reaches them from
+    `pdl`. The two tools must spell one error the same way.
+
+    The cost is measured rather than assumed: the widest line of a diagnostic grows
+    by five, so E-LINT-003's rule paragraph reaches 81 columns. That is inside the
+    envelope the linter already has -- E-LINT-002's header is 89 columns today and
+    is unchanged by this -- and narrowing it means changing the width the
+    interpreter wraps to, for both tools at once.
+
+    Blank lines stay blank. Indenting them would make five spaces of trailing
+    whitespace on every paragraph break, which the `trailing-whitespace` hook
+    would then rewrite out of the goldens underneath this.
+    """
+    return "\n".join(
+        _DIAGNOSTIC_INDENT + line if line.strip() else "" for line in text.split("\n")
+    )
+
+
+class _CodeBlockSyntaxError(Exception):
+    """A `code:` block that Python's parser rejected.
+
+    Module-private, and carrying the `SyntaxError` rather than a rendered string:
+    the file name belongs in the diagnostic and `_lint_python_code_blocks` does
+    not know it, so rendering happens in `_lint_pdl_file`, which does.
+    """
+
+    def __init__(self, exc: SyntaxError, code: str):
+        super().__init__(exc.msg)
+        self.exc = exc
+        self.code = code
+
+
+def _lint_pdl_file(
+    file_path: Path, config: LinterConfig, *, explicit: bool = False
+) -> bool:
     """
     Lint a PDL file.
+
+    `explicit` means the user named this path on the command line. Such a path is
+    always linted: the ignore rules describe which files a *directory walk* picks
+    up, and a user who typed a path has already answered that question. This is
+    the settled convention elsewhere -- ruff checks files passed directly on the
+    command line even when they would normally be excluded, and eslint has
+    `--no-ignore` for the same reason.
+
+    It is also the only way to stop the false green. A skipped file used to
+    `return True`, so `pdl-lint <path>` reported "All files linted successfully"
+    and exited 0 for a file it had never opened; CI that names a path believed it
+    was checked. An explicit path can now fail, which means an invocation that
+    exits 0 today can exit 1 -- knowingly, because the 0 was false. See
+    `docs/release-notes.md`.
     """
-    if config.should_ignore(file_path):
-        logger.info(" - ℹ️  SKIPPING %s (in ignore list)", file_path)
-        return True
+    if not explicit:
+        reason = config.should_ignore(file_path)
+        if reason is not None:
+            logger.info(
+                " - ℹ️  SKIPPING %s (%s)",
+                file_path,
+                reason.describe(config.project_root),
+            )
+            return True
 
     try:
         prog, _ = parse_pdl_file(file_path)
@@ -374,11 +510,52 @@ def _lint_pdl_file(file_path: Path, config: LinterConfig) -> bool:
         return True
     except PDLParseError as e:
         logger.error(" - ❌  %s", file_path)
-        logger.error("     %s: %s", type(e).__name__, e.message)
+        # `e.text` is already a rendered diagnostic with its own `file:line:col`
+        # header. The class name in front of it was PDL's internal vocabulary
+        # leaking into the linter's output -- the `pdl` interpreter prints the
+        # same diagnostic without it -- so the two tools now spell one error the
+        # same way.
+        logger.error("%s", _indent_diagnostic(e.text))
+        return False
+    except _CodeBlockSyntaxError as e:
+        logger.error(" - ❌  %s", file_path)
+        logger.error("%s", _indent_diagnostic(_code_syntax_diagnostic(file_path, e)))
         return False
     except Exception:
         logger.exception(" - ❌  %s", file_path)
         return False
+
+
+_CODE_SYNTAX_RULE = (
+    "`pdl-lint` parses every `code:` block with Python's own parser. The block "
+    "must be syntactically valid Python even though the linter never runs it."
+)
+
+
+def _code_syntax_diagnostic(file_path: Path, failure: _CodeBlockSyntaxError) -> str:
+    """Render a `code:` block's syntax error the way `pdl` renders one.
+
+    The header names the file and no line, which is the whole truth available
+    here: `SyntaxError.lineno` counts lines of the *block's code*, and the
+    `CodeBlock`'s `pdl__location` -- the only thing that could translate that into
+    a `.pdl` line -- is `None` after `parse_file`, because the interpreter is what
+    populates it (`process_block_body`). Inventing a `.pdl` line from the code
+    line would be a confidently-stated wrong location, which the rubric ranks
+    below no location at all. The gutter says where the error is inside the block,
+    and the closing note says what those numbers mean.
+    """
+    lines = [
+        f"{file_path} - `code:` block is not valid Python: "
+        f"{_safe_text(failure.exc.msg)}",
+        "",
+    ]
+    gutter = _gutter(_syntax_error_rows(failure.exc, failure.code))
+    if gutter:
+        lines += gutter + [""]
+    lines += _wrap(_CODE_SYNTAX_RULE)
+    if gutter:
+        lines += ["", *_wrap(f"note: {_RAISED_GUTTER_CAVEAT}", subsequent=" " * 8)]
+    return "\n".join(lines)
 
 
 def _lint_python_code_blocks(block: BlockType):
@@ -387,7 +564,16 @@ def _lint_python_code_blocks(block: BlockType):
             if isinstance(code, str) and EXPR_START_STRING not in code:
                 # Try to parse the Python code if the code block is
                 # a string that does not contains a jinja expression
-                ast.parse(code)
+                try:
+                    ast.parse(code)
+                except SyntaxError as exc:
+                    # Caught here and nowhere wider: a `SyntaxError` from
+                    # `ast.parse` is the *expected* outcome of linting a broken
+                    # block, and it used to reach `except Exception` and print a
+                    # traceback ending in `File "<unknown>", line 1`. Every other
+                    # failure still goes to that handler, which stays as the
+                    # catch-all for genuinely unexpected ones.
+                    raise _CodeBlockSyntaxError(exc, code) from exc
     iter_block_children(_lint_python_code_blocks, block)
 
 
@@ -415,10 +601,12 @@ def _lint_pdl_files_in_directory(
     # NOTE: The directory is made absolute to avoid issues with resolving relative paths.
     absolute_path = directory.absolute()
     relative_path = absolute_path.relative_to(config.project_root)
-    if config.should_ignore(relative_path):
+    reason = config.should_ignore(relative_path)
+    if reason is not None:
         logger.info(
-            " - ℹ️  SKIPPING all files in %s because it is in the ignore list.",
+            " - ℹ️  SKIPPING all files in %s because it is %s.",
             absolute_path,
+            reason.describe(config.project_root),
         )
         return []
 
@@ -550,7 +738,7 @@ def run_linter() -> int:
     for path in args.paths:
         match path:
             case Path() as file if file.is_file():
-                if not _lint_pdl_file(file, config):
+                if not _lint_pdl_file(file, config, explicit=True):
                     files_that_failed_linting.append(file)
             case Path() as directory if directory.is_dir():
                 files_that_failed_linting.extend(

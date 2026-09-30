@@ -1,0 +1,7 @@
+defs:
+  greet:
+    function:
+      name: string
+    return: "Hello ${ name }"
+text:
+  - call: ${ greet }

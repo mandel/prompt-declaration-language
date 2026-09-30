@@ -1,0 +1,12 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+cannot read `sub`: it is a directory, not a PDL program file
+
+  `pdl` takes the path of one PDL program file, usually with a `.pdl` suffix.
+  `sub` contains no `.pdl` files.
+
+  help: give the path of a program file, e.g. `pdl path/to/program.pdl`.

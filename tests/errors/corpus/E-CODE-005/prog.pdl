@@ -1,0 +1,7 @@
+description: a program that builds and runs a program
+text:
+- lang: pdl
+  code: |
+    text:
+    - "hello
+    - world

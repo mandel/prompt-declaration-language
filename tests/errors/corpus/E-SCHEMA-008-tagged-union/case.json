@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-008-tagged-union",
+  "title": "a join: whose as: selects the branch",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Was `array should be: text` at `join.as` -- a claim against the field the user had right, and one which, followed, silently turns the array into text. `const_tagged_branch` selects `JoinArray` from `as: array`, so the complaint lands on `with:`, the field that branch does not take. No near miss is offered because `with` is not close to `as`; Fix 0 and Why 1 record that the message does not yet say that `with:` belongs to `as: text` joins."
+}

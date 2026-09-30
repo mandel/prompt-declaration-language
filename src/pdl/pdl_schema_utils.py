@@ -44,6 +44,9 @@ OLD_PDLTYPE_TO_JSONSCHEMA_NAME = {
 }
 
 
+_DEPRECATION_WARNED: set[str] = set()
+
+
 def pdltype_to_jsonschema(
     pdl_type: PdlTypeType, additional_properties: bool
 ) -> dict[str, Any]:
@@ -54,10 +57,16 @@ def pdltype_to_jsonschema(
         case "null" | "boolean" | "string" | "number" | "integer" | "array" | "object":
             schema = {"type": pdl_type}
         case "bool" | "str" | "float" | "int" | "list" | "obj":
-            print(
-                f"Deprecated type syntax: use {OLD_PDLTYPE_TO_JSONSCHEMA_NAME[pdl_type]} instead of {pdl_type}.",
-                file=sys.stderr,
-            )
+            if pdl_type not in _DEPRECATION_WARNED:
+                # Once per spelling: a function's signature is converted on
+                # every call, and E-TYPE-006 printed each warning twice for
+                # one program.
+                _DEPRECATION_WARNED.add(pdl_type)
+                print(
+                    f"warning: `{pdl_type}` is a deprecated type name; write "
+                    f"`{OLD_PDLTYPE_TO_JSONSCHEMA_NAME[pdl_type]}` instead.",
+                    file=sys.stderr,
+                )
             schema = {"type": OLD_PDLTYPE_TO_JSONSCHEMA_NAME[pdl_type]}
         case EnumPdlType(enum=choices):
             if pdl_type.__pydantic_extra__ is None:

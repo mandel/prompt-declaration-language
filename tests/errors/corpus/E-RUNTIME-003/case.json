@@ -1,0 +1,14 @@
+{
+  "id": "E-RUNTIME-003",
+  "title": "include: prefixes a schema error with \"invalid yaml\"",
+  "severity": "S3",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 1,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "The wrapper line now says what happened -- `cannot include `sub/included.pdl`: it is not a valid PDL program` -- and the included file's own diagnostic follows it unchanged. `Attempting to include invalid yaml` is gone."
+}

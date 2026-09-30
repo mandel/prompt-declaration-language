@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-004",
+  "title": "error inside an imported file",
+  "severity": "S1",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Reports sub/imported.pdl:4:5, the line and column of the expression, and now a `note: called from prog.pdl:5:5 (in text[0].call)` naming the call site that reached it -- the chain the rubric's Location 3 asks for, though without an excerpt or caret it stays at 2."
+}

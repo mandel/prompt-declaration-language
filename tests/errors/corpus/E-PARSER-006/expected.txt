@@ -1,0 +1,17 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:5:5 - the `regex:` pattern has no group named `second`
+  in parser.spec.second
+
+5 |     second: str
+  |     ^
+
+  For a `regex:` parser, each key of `spec:` names a capture group to take
+  from the match. The pattern `(?P<first>\w+)` defines one group, `first`, so
+  no output could have supplied `second`.
+
+  help: rename the key to `first`, the only group this pattern defines.

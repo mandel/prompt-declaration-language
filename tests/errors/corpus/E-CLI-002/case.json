@@ -1,0 +1,18 @@
+{
+  "id": "E-CLI-002",
+  "title": "PDL path is a directory",
+  "severity": "S0",
+  "argv": [
+    "--stream",
+    "none",
+    "sub"
+  ],
+  "rubric": {
+    "location": 1,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Fixed. `PDLIsADirectoryError` is also an `IsADirectoryError`. Classification is on `Path.is_dir()` rather than errno, because Windows raises `PermissionError` for `open()` on a directory. `sub/` holds no `.pdl` file here, so the reply is the shape of the fix rather than a name; with one program inside it becomes `did you mean `pdl sub/main.pdl`?` and scores 3."
+}

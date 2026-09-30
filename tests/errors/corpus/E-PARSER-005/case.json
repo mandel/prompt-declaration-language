@@ -1,0 +1,14 @@
+{
+  "id": "E-PARSER-005",
+  "title": "invalid regex in a parser",
+  "severity": "S1",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Fixed. One of the two entries whose location is deeper than `parser:`: the fault is entirely static and lives at `parser.regex`, so the header names line 3 and the path reads `  in parser.regex`. `_walk` records a mark for every nested mapping key with a scalar name, so the mark exists; `_marked_path` descends to it only when it does, and otherwise stays where it is. The pattern is shown in a `regex:N` gutter with a caret from `re.error.lineno`/`.colno`, which is the same information as the old `at position 0` plus the ability to see what is at position 0. It is deliberately *not* a caret on file line 3: the mark for `[\"parser\",\"regex\"]` is the key's start and the value's end, so PDL knows where `regex` begins but not where `(` begins inside the quoted scalar, and finding it would mean re-scanning the line through YAML's quoting -- the class of heuristic E-CODE-001 rejected. Recording the value node's start mark in `_walk` would remove that obstacle for every scalar in PDL at once and is listed as adjacent work. The `help:` fires only for `missing )` / `unbalanced parenthesis`, and the single quotes in it are load-bearing: `\\(` is not a valid escape in a double-quoted YAML scalar, so ``regex: \"\\(\"`` would trade a regex error for a YAML error -- the trap E-PARSE-001 fell into. In a single-quoted scalar the backslash is literal and reaches `re` intact; verified by running it. The clause is conditional (`or write ... to match a literal `(``) because `\\(` matches a literal `(` and nothing else, which on this reproducer's own `text: \"Hello\"` would not match at all and print `null` at exit 0. Every other `re.error` gets `check the pattern at position N.` and would score Fix 1. Same fix, wider reach: `_compiled_regex` makes compilation an explicit step for **all five** modes, so `mode: split` and `mode: findall` -- which compiled inside `re.split`/`re.findall` with no handler at all and reached the user as a raw traceback -- now get this diagnostic too. That crash has no corpus entry of its own; see INVENTORY."
+}

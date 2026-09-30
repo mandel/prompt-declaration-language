@@ -1,0 +1,23 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:3 - the PDL program in this `code:` block is not valid
+  in text[0]
+
+<program:prog.pdl#text[0].code>:4:1 - not valid YAML: a quoted string is never closed
+
+2 | - "hello
+  |   ^ this quote is never closed
+...
+4 |
+  | ^ the input ends here, with the string still open
+
+  A PDL program is a YAML document: it must parse as YAML before any PDL rule
+  is checked.
+
+  help: close the quote opened on line 2.
+  note: line numbers after `#code>` count lines of the block's code, not of
+        the PDL file.

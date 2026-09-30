@@ -1,0 +1,10 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:5:5 - Field not allowed: parameterss
+  in text[1].parameterss
+
+  help: did you mean `parameters:` instead of `parameterss:`?

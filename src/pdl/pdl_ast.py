@@ -30,6 +30,7 @@ from pydantic import (
 from typing_extensions import TypeAliasType
 
 from .pdl_context import PDLContext
+from .pdl_diagnostics import Diagnostic
 from .pdl_lazy import PdlLazy
 
 
@@ -99,12 +100,23 @@ class BlockKind(StrEnum):
 
 
 class PdlLocationType(BaseModel):
-    """Internal data structure to keep track of the source location information."""
+    """Internal data structure to keep track of the source location information.
+
+    `path` is the block path inside the file, e.g. `["text", "[2]", "model"]`.
+    `line` and `col` are 1-based positions of that block in `file`, taken from
+    the YAML parser's own marks; `0` means unknown.
+
+    The per-file line data that used to sit here as `table` now lives in
+    `pdl_location_utils.SOURCES`, keyed by `file`. A location that carried its
+    file's line table could be -- and was -- built with one file's `path` and
+    another file's table; see DROP #6 in `docs/error-reporting/INVENTORY.md`.
+    """
 
     model_config = ConfigDict(extra="forbid")
     path: list[str]
     file: str
-    table: dict[str, int]
+    line: int = 0
+    col: int = 0
 
 
 OptionalPdlLocationType = TypeAliasType(
@@ -114,7 +126,7 @@ OptionalPdlLocationType = TypeAliasType(
 
 
 # Value for blocks without source location information
-empty_block_location = PdlLocationType(file="", path=[], table={})
+empty_block_location = PdlLocationType(file="", path=[], line=0, col=0)
 
 
 LocalizedExpressionT = TypeVar("LocalizedExpressionT")
@@ -1632,6 +1644,68 @@ class PDLException(Exception):
     def __init__(self, message):
         super().__init__(message)
         self.message = message
+
+    @property
+    def text(self) -> str:
+        """The message as text, whether it is one string or a list of them.
+
+        `PDLParseError.message` is a `list[str]`, one element per schema
+        complaint, while every other subclass carries a plain string. Sites that
+        interpolate `.message` directly therefore print a Python list repr for
+        one kind of error and prose for another (E-LINT-001). Reading `.text`
+        instead is correct for both.
+        """
+        if isinstance(self.message, (list, tuple)):
+            return "\n".join(str(m) for m in self.message)
+        return str(self.message)
+
+
+class PDLImportError(PDLException):
+    """Carries a fully rendered diagnostic out through the runtime-error path.
+
+    `generate` gives a `PDLRuntimeError` a header from `located_message`, which
+    would give an already-rendered diagnostic a second one. Passing `loc=None`
+    does not avoid it: every re-wrap site substitutes the enclosing block's
+    location (`exc.loc or loc`), so a nested import gets the prefix back on the
+    way up. `PDLRuntimeError.__init__` collapses `source_exception` to the
+    innermost one, so an instance of this class reaches `generate` intact however
+    many times the error is re-wrapped, and that is the channel used instead.
+
+    `message` is the rendered text, so `str(exc)` and `.text` are both the
+    diagnostic; `.diagnostic` is the structured record behind it.
+
+    Not raised on its own: it travels as the `source_exception` of a
+    `PDLRuntimeError`, and the failure that produced it -- the `OSError` from
+    the read -- stays reachable on that error's exception chain.
+    """
+
+    def __init__(self, diagnostic: Diagnostic):
+        super().__init__(diagnostic.text)
+        self.diagnostic = diagnostic
+
+
+class PDLScopeError(PDLException, ValueError):
+    """A value supplied to the interpreter's initial scope is malformed.
+
+    Raised by `validate_scope`, which is re-exported from `pdl.pdl` and so is
+    informally public. Inheriting `ValueError` as well as `PDLException` keeps
+    every existing `except ValueError` around `validate_scope` matching; the
+    added fields are what let the CLI say *which* input supplied the value.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments, too-many-positional-arguments
+        self,
+        message: str,
+        path: list[str] | None = None,
+        pattern: OptionalAny = None,
+        value: OptionalAny = None,
+        reason: str = "",
+    ):
+        super().__init__(message)
+        self.path = list(path or [])
+        self.pattern = pattern
+        self.value = value
+        self.reason = reason
 
 
 class PDLRuntimeError(PDLException):

@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-001-nested",
+  "title": "include inside an included file names a missing file",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "An `include:` inside an included file. The path is resolved from the top-level program's directory, not from `sub/`, and the note says so -- the same note E-RUNTIME-002 carries for a nested `import:`. The trailing `note: included by prog.pdl:2:5` is the chain back to the include that ran `sub/a.pdl`."
+}

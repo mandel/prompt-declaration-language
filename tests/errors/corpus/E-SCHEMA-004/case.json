@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-004",
+  "title": "scalar type mismatch",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "``role:` should be a string, but `42` is an integer`, with an excerpt and caret. The base-type arm of `analyze_errors` renders through `wrong_type_diagnostic` now, the same shape as the list and mapping messages, and never a Python type repr."
+}

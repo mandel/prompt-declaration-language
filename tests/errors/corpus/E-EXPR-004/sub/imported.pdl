@@ -1,0 +1,5 @@
+defs:
+  f:
+    function: {}
+    return: ${ kaboom }
+text: ""

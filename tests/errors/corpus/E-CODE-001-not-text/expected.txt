@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `code:` must be text, but this block's `code:` is a number
+  in code

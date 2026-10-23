@@ -10,7 +10,7 @@ text:
   input: 
     text:
     - for: 
-        question: "Hello"
+        question: ["H", "e", "l", "l", "o"]
         answer: ${ data.answers }
       repeat:
         text:

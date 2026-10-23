@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-001",
+  "title": "unknown field in a model block",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 1,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Best-in-class today. Accurate line, PDL vocabulary. Location 1 -> 2 with phase-3 item 7: the previous note recorded 'No column, no block path', and `  in text[1].parameterss` supplies the path. The leading segments are the value -- they say the offending key is on the second block of `text:`, which `prog.pdl:5` alone does not. Still no column and no list of valid fields. **Fix 0 -> 3.** `did you mean `parameters:` instead of `parameterss:`?`, from `LitellmModelBlock`'s own properties -- and the per-branch candidate set is the whole of why it is worth having: `parameters` is not a field of `TextBlock`, so the same key tested against the wrong branch of the block union would answer nothing at all. The branch here is not a guess. `model:` selects `ModelBlockType` through the discriminator decision 5.3 introduced, and an absent `platform:` selects `LitellmModelBlock` through the second, so the properties really are the ones this key would have been read against. Where no discriminator exists -- `JoinType`, `ParserType`, `PatternType`, `PdlTypeType` -- `analyze_errors` picks a branch by counting shared field names, and `_correction_pool` returns nothing there rather than correcting a key towards a branch the program is not; `E-SCHEMA-002-no-suggestion` pins that. Why stays 1: still no list of the fields a model block does take."
+}

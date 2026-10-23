@@ -1,0 +1,13 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:4:5 - contribute entry has 2 keys, expected exactly 1
+  in contribute[0]
+
+  A `contribute` entry is either `result` or `context`, or a mapping with a
+  single key naming where to contribute. This one maps `stdout`, `stderr`.
+
+  help: give each key its own entry in the list: `- stdout:` then `- stderr:`

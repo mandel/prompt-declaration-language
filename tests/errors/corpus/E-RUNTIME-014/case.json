@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-014",
+  "title": "object: list item that does not produce a mapping",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Was a `TypeError: unsupported operand type(s) for |: 'dict' and 'str'` traceback from `PdlDict.__or__`. `combine_results` checks each item of an `object:` list before merging it and names the offending value."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-007-known-field",
+  "title": "a misspelt block kind beside a field the block would take",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "The E-SCHEMA-007 note used to say `modle` and `input` are not fields any block accepts -- false for `input`, the model block's main field, and the opposite of what the `help:` under it implies. `block_fields_by_kind` tells the two apart: `modle` is unknown, `input` is a field of `model` blocks."
+}

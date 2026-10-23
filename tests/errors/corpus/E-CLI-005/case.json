@@ -1,0 +1,20 @@
+{
+  "id": "E-CLI-005",
+  "title": "python -m pdl.pdl exit code on failure",
+  "severity": "S2",
+  "entry": "python-m-pdl",
+  "argv": [
+    "--stream",
+    "none",
+    "prog.pdl"
+  ],
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Fixed: `pdl.py` now ends in `sys.exit(main())`, so `python -m pdl.pdl` exits 1 on failure like the console script does. The diagnostic itself is E-EXPR-001's and scores as that entry does; this entry pins the exit code of the module entry point."
+}

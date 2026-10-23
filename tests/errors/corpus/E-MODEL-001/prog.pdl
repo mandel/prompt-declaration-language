@@ -1,0 +1,3 @@
+text:
+  - model: not_a_provider/nope
+    input: hi

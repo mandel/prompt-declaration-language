@@ -11,7 +11,7 @@ from pdl.pdl_ast import Program
 from pdl.pdl_interpreter import PDLRuntimeError
 from pdl.pdl_interpreter_state import ScopeType
 from pdl.pdl_lazy import PdlDict
-from pdl.pdl_location_utils import get_loc_string
+from pdl.pdl_location_utils import located_message
 from pdl.pdl_parser import PDLParseError
 
 
@@ -125,7 +125,7 @@ class OptimizerEvaluator(Thread):
                 if exc.loc is None:
                     message = exc.message
                 else:
-                    message = get_loc_string(exc.loc) + exc.message
+                    message = located_message(exc.loc, exc.message)
                 console.log(message)
                 retry = True
                 if tries >= RETRY_COUNT:

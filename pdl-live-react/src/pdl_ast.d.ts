@@ -130,6 +130,8 @@ export type Retry = OptionalInt | RetryConfiguration
 export type OptionalInt = number | null
 export type Path = string[]
 export type File = string
+export type Line = number
+export type Col = number
 export type ExpressionFloat = LocalizedExpression | number | string
 export type Feedback = LocalizedExpression | FunctionBlock | string | null
 /**
@@ -1435,14 +1437,21 @@ export interface PdlExpr {
 }
 /**
  * Internal data structure to keep track of the source location information.
+ *
+ * `path` is the block path inside the file, e.g. `["text", "[2]", "model"]`.
+ * `line` and `col` are 1-based positions of that block in `file`, taken from
+ * the YAML parser's own marks; `0` means unknown.
+ *
+ * The per-file line data that used to sit here as `table` now lives in
+ * `pdl_location_utils.SOURCES`, keyed by `file`. A location that carried its
+ * file's line table could be -- and was -- built with one file's `path` and
+ * another file's table; see DROP #6 in `docs/error-reporting/INVENTORY.md`.
  */
 export interface PdlLocationType {
   path: Path
   file: File
-  table: Table
-}
-export interface Table {
-  [k: string]: number
+  line?: Line
+  col?: Col
 }
 /**
  * Single expectation definition.

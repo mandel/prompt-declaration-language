@@ -1,0 +1,16 @@
+{
+  "id": "E-MODEL-005",
+  "title": "model input: that is not text or messages",
+  "severity": "S3",
+  "env": {
+    "PDL_TEST_MODEL": "connect_error"
+  },
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Issue #383. Was `Error during 'ollama/granite' model call: TypeError(\"'<class 'int'>' object is not a valid context\")`, blaming the model call for the block's own `input:`. `ensure_context`'s `TypeError` is caught where `input:` is evaluated and reported at `input`."
+}

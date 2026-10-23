@@ -1,0 +1,13 @@
+{
+  "id": "E-TYPE-001",
+  "title": "block result violates its spec",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "One header: the type error keeps its own location and the `Type errors during spec checking:` wrapper above it is gone. `the block's result should be an integer, but `hello` is a string`. Location 2: the line and path name the `spec:` key, which is the rule rather than the value."
+}

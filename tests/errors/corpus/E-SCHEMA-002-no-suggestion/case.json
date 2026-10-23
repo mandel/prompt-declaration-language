@@ -1,0 +1,14 @@
+{
+  "id": "E-SCHEMA-002-no-suggestion",
+  "title": "unknown fields the near miss must stay silent about",
+  "severity": "S3",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "The negative half of E-SCHEMA-002: three unknown fields, none of which may be corrected. The fourth line the golden used to carry -- `array should be: text`, a claim against the `as: array` the user had right -- is gone: `JoinType` is now selected by its `as:` const, as blocks are by their kind, so `wth` is checked against `JoinArray` and nothing false is said about `as:`."
+}

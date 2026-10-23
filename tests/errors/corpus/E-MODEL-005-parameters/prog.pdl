@@ -1,0 +1,3 @@
+model: ollama/granite
+input: hi
+parameters: "temperature=0"

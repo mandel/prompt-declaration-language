@@ -1,0 +1,16 @@
+{
+  "id": "E-MODEL-001",
+  "title": "unrecognised model provider",
+  "severity": "S0",
+  "env": {
+    "PDL_TEST_MODEL": "bad_request"
+  },
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "Provider text is out of scope for What/Why. It is now the exception's message rather than its repr, and when longer than a header line it is wrapped as a paragraph under the header instead of clipped at the header bound, so the part naming the model survives."
+}

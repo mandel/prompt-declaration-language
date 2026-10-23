@@ -1,0 +1,13 @@
+{
+  "id": "E-TYPE-003",
+  "title": "missing function argument",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 1,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "`the arguments lack the required `name`` -- the subject the type checker passes is used in the sentence, so a missing function argument is no longer a missing \"field\". One header. Fix stays 1: the function's signature is not shown."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-001",
+  "title": "include names a missing file",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 3,
+    "why": 3,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Fixed. `process_include` catches the read failure before parsing and builds the same diagnostic an `import:` of a missing file gets (`import_read_diagnostic`, keyword `include`), so the header says `cannot include`, the rule is about `include:`, and the help names the directory the path is resolved from. The command line's text (`pdl` takes the path ... run `pdl --help`) is gone from this path."
+}

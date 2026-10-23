@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - `role:` should be a string, but `[user]` is a list
+  in role
+
+2 | role: [user]
+  | ^

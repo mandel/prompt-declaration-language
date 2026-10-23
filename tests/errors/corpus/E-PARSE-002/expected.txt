@@ -1,0 +1,14 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - not valid YAML: tab character used for indentation
+
+2 |  - hello
+  | ^ tab character
+
+  YAML allows only spaces for indentation.
+
+  help: replace the leading tab on line 2 with spaces.

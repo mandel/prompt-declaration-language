@@ -1,0 +1,13 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:4:1 - `parser: json` needs text, but this block produced an integer
+  in parser
+
+  A `parser:` reads the text a block produced. This block's result is the
+  integer `3`, which is not text, so there is nothing to parse.
+
+  help: remove `parser: json`; the block's result is already an integer.

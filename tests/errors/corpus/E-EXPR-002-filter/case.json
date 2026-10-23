@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-002-filter",
+  "title": "unknown Jinja filter",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "E-EXPR-002's other route. `str(TemplateSyntaxError)` appends `File \"<introspection>\", line 1` when Jinja knows a source name, and that frame reached the user as a third line; `exc.message` is used instead."
+}

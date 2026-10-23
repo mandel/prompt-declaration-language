@@ -1,0 +1,20 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:5 - this is not a PDL block: nothing here says what it does
+  in text[1]
+
+3 |   - foo: bar
+  |     ^ `foo` does not name a block kind
+
+  Every block is named by the one field that says what it does. This mapping
+  has none of them: `model`, `code`, `text`, `data`, `call`, `if`, `repeat`,
+  `read`, `get`, `function`, `include`, `import`, `array`, `object`, `lastOf`,
+  `sequence`, `match`, `map`, `content`, `args`, `factor`, `aggregator`,
+  `platform` or `processor`.
+
+  help: if this item is meant to produce the value `{foo: bar}`, write it as
+        - data: {foo: bar}

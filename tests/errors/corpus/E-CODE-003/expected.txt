@@ -1,0 +1,11 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+boom
+
+prog.pdl:1:1 - command `/bin/sh` exited with status 7
+
+  Its standard error is printed above.

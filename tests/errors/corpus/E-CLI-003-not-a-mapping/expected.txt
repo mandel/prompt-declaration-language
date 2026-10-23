@@ -1,0 +1,12 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+`--data` (`-d`) must be a YAML mapping of variable names to values, but the argument is a string
+
+  It parsed as `"foo"`. Each top-level key becomes a variable the program
+  can read, so a bare value or a list has nothing to bind it to.
+
+  help: write it as a mapping, e.g. -d '{name: value}'

@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-006-fallback",
+  "title": "validator rejected the program and the analyzer could not localise it",
+  "severity": "S2",
+  "rubric": {
+    "location": 3,
+    "what": 2,
+    "why": 2,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "Located. When the JSON-Schema walk finds nothing -- the schema is looser than the model at a few `TypeVar` fields -- `parse_dict` now reads pydantic's own errors, walks their paths against the data (skipping the union branch names interleaved in them), and reports the deepest path reached with the validator's reasons quoted. `retry: {exceptions: 5}` is answered at `retry.exceptions`, line 3, with an excerpt. What is 2 because the rule is stated in the validator's words rather than PDL's; Fix 1 because the accepted forms are not listed."
+}

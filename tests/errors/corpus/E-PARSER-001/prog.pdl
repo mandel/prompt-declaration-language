@@ -1,0 +1,4 @@
+lang: python
+code: |
+  result = 3
+parser: json

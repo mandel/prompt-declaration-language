@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-005",
+  "title": "error inside a called function has no call stack",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 1,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Correct line inside the function body, and now a `note: called from prog.pdl:7:5 (in text[0].call)` naming the call site, so with recursion or a shared helper the reader knows which call this was. Not 3: no excerpt, no caret."
+}

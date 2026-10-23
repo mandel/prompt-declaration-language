@@ -1,0 +1,5 @@
+text: "name: Ada"
+parser:
+  pdl:
+    object:
+      name: string

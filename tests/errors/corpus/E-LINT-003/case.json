@@ -1,0 +1,17 @@
+{
+  "id": "E-LINT-003",
+  "title": "pdl-lint never names the file for a Python syntax error",
+  "severity": "S0",
+  "entry": "pdl-lint",
+  "argv": [
+    "prog.pdl"
+  ],
+  "rubric": {
+    "location": 1,
+    "what": 3,
+    "why": 3,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Traceback gone. `_lint_python_code_blocks` catches `SyntaxError` from its `ast.parse` specifically -- the expected outcome of linting a broken block -- and raises a module-private `_CodeBlockSyntaxError` carrying the exception and the code, which `_lint_pdl_file` renders where the file name is known. The bare `except Exception: logger.exception(...)` stays for genuinely unexpected failures; this is not a blanket swallow. The gutter, its wrapping and its closing `note:` are imported from `pdl_interpreter` rather than reimplemented: a `code:` block that will not compile is the same failure whether `pdl-lint` or `pdl` finds it, E-CODE-001 already chose how to render it, and a second near-identical renderer would drift on the one sentence a reader may have already seen from the other tool. The diagnostic is now indented as a block to the linter's five-space gutter (`_indent_diagnostic`), so the second line of one error lines up with its first. This was recorded against E-LINT-001, -002 and -003 as a shared unfixed defect and was briefly mistaken for the group's convention; it was not one, and the entry notes that penalised it were right. The block is shifted, never re-wrapped: the continuation lines are the rendered text's own structure and are positioned relative to each other by `pdl_diagnostics.render` and `pdl_interpreter._wrap`, which are also what a reader sees when the same diagnostic reaches them from `pdl`. Blank lines stay blank rather than becoming five spaces of trailing whitespace. Measured cost: the widest *body* line grows by five, reaching 82 columns here and 81 in E-LINT-003 -- inside the envelope the tool already had, since E-LINT-002's header is 89 columns and is unchanged. **Location is 1, not the 2 the spec hoped for, and the reason is worth recording:** the spec flagged the `.pdl` line:col as unconfirmed, and it is unavailable -- `CodeBlock.pdl__location` is `None` after `parse_file`, because `process_block_body` is what populates it and the linter never interprets. So the header names the file and no line. `SyntaxError.lineno` counts lines of the *block's code*, and rendering it as a `.pdl` line would be a confidently-stated wrong location, which the rubric ranks below no location at all. What is left is exact within the block -- `code:1` with a caret on the offending token -- and the closing note says so. That gap is scored under location and deliberately not a second time under hygiene. Lifting it to 2 means giving the linter a way to thread `PdlLocationType` down the block tree, which is location-tracker's ground. What/why are 3 for the same reasons as E-CODE-001: the rule paragraph names the PDL construct and the rule, and the gutter shows the offending text with Python's own diagnosis beside it. Fix is 0 deliberately: `invalid syntax` has no true and useful next action beyond the caret, and the rubric ranks a vacuous `help:` below none."
+}

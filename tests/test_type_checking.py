@@ -603,5 +603,7 @@ def test_deprecated(capsys: pytest.CaptureFixture[str]):
         spec: int
     """
     do_test_stderr(
-        capsys, prog, ["Deprecated type syntax: use integer instead of int.", ""]
+        capsys,
+        prog,
+        ["warning: `int` is a deprecated type name; write `integer` instead.", ""],
     )

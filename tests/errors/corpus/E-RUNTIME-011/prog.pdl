@@ -1,0 +1,8 @@
+lang: python
+retry: 1
+code: |
+  n = getattr(PDL_SESSION, "attempt", 0) + 1
+  PDL_SESSION.attempt = n
+  if n == 1:
+      raise ValueError("transient failure")
+  result = f"ok on attempt {n}"

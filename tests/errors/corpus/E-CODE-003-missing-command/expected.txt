@@ -1,0 +1,10 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:1:1 - command not found: `nosuchcommand_xyz`
+
+  `lang: command` runs the program named by the first word of `code:`, and no
+  such program is on the `PATH`.

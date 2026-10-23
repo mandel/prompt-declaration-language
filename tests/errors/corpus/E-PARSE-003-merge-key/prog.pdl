@@ -1,0 +1,13 @@
+description: merge keys and aliases are not repeated keys
+defs:
+  shared:
+    data: &shared
+      role: helper
+      tone: plain
+lastOf:
+  - data:
+      <<: *shared
+      tone: brisk
+  - data:
+      <<: *shared
+      <<: {extra: true}

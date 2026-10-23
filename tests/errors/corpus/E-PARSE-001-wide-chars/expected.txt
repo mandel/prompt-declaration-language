@@ -1,0 +1,17 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:2:1 - not valid YAML: a quoted string is never closed
+
+1 | text: ["日本語日本語", "abc]
+  |                        ^ this quote is never closed
+2 |
+  | ^ the input ends here, with the string still open
+
+  A PDL program is a YAML document: it must parse as YAML before any PDL rule
+  is checked.
+
+  help: close the quote opened on line 1.

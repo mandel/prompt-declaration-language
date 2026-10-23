@@ -1,0 +1,8 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:5:5 - Error during the evaluation of ${ nope }: 'nope' is undefined
+  in text[1]

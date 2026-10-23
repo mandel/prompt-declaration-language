@@ -1,0 +1,4 @@
+text:
+  - hi
+  - modle: ollama/granite
+    input: hello

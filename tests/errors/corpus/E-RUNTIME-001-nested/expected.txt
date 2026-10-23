@@ -1,0 +1,19 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+sub/a.pdl:2 - cannot include `b.pdl`: no such file
+  in text[0]
+
+  `include:` reads a PDL program from the file it names. The directory
+  contains `prog.pdl`.
+
+  note: include paths are resolved from the current directory, the directory
+        of the program `pdl` was started with, not from the file that contains
+        this `include:`.
+  help: check the path; it is resolved relative to the current directory (the
+        directory of the program `pdl` was started with).
+
+  note: included by prog.pdl:2:5 (in text[0].include)

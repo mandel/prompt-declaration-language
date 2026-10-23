@@ -47,6 +47,7 @@ nav:
   - AutoPDL: autopdl.md
   - PPDL: ppdl.md
   - API Reference: api_reference.md
+  - Release Notes: release-notes.md
   - Contribute: contrib.md
   - Viewer: viewer.md
 

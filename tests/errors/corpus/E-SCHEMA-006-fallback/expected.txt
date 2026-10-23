@@ -1,0 +1,18 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+prog.pdl:3:3 - `exceptions:` has a value PDL does not accept: `5`
+  in retry.exceptions
+
+3 |   exceptions: 5
+  |   ^
+
+  PDL's validator rejected the value written here, although the analyzer that
+  explains a rejection had no more precise rule to name.
+
+  note: the validator said: Input should be a valid string
+  note: the validator said: Input should be a subclass of Exception
+  note: the validator said: Input should be a valid list

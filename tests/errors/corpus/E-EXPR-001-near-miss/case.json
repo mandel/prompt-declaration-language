@@ -1,0 +1,13 @@
+{
+  "id": "E-EXPR-001-near-miss",
+  "title": "undefined variable one edit from a defined one",
+  "severity": "S3",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 2,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "E-EXPR-001 with a variable one edit away in scope. `_expression_failure` matches Jinja's `'X' is undefined` and offers the closest scope name; without a near miss the message is E-EXPR-001's, unchanged."
+}

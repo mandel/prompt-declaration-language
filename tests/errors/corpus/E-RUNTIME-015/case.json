@@ -1,0 +1,13 @@
+{
+  "id": "E-RUNTIME-015",
+  "title": "a function that recurses without end",
+  "severity": "S3",
+  "rubric": {
+    "location": 1,
+    "what": 3,
+    "why": 2,
+    "fix": 2,
+    "hygiene": 3
+  },
+  "notes": "Was Python's `RecursionError` traceback, ending in pydantic's advice about recursive type aliases. `generate` catches it. Location 1: the recursion has no single line; the program is named."
+}

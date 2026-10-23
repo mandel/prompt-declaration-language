@@ -1,0 +1,12 @@
+$ exit: 1
+
+--- stdout ---
+(empty)
+
+--- stderr ---
+cannot read `no_such_file.pdl`: no such file
+
+  `pdl` takes the path of a PDL program file. Nothing exists at that path, and
+  the current directory contains no `.pdl` files.
+
+  help: check the path, or run `pdl --help` for the expected arguments.

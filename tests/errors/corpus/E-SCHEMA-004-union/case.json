@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-004-union",
+  "title": "scalar of the wrong type for a union field",
+  "severity": "S3",
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 1,
+    "hygiene": 3
+  },
+  "notes": "Was the JSON-Schema dump `three should be of type {'anyOf': [{'$ref': '#/$defs/OptionalInt'}, ...], 'description': ...}` -- the field's docstring included. `admitted_shapes` reads the union into PDL's words and names the mapping's keys. Fix 1: the keys are listed but no edit is offered."
+}

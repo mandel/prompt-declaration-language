@@ -1,0 +1,13 @@
+{
+  "id": "E-SCHEMA-010",
+  "title": "several schema faults report in unstable order",
+  "severity": "S2",
+  "rubric": {
+    "location": 2,
+    "what": 2,
+    "why": 1,
+    "fix": 0,
+    "hygiene": 3
+  },
+  "notes": "Fixed: `analyze_errors` builds its missing-field and unknown-field lists in document order rather than from set differences, so the three unknown keys report top to bottom and the output no longer depends on `PYTHONHASHSEED`. The `hygiene_unstable_order` flag is gone with the instability. Fix stays 0: none of the three keys is a near miss of anything."
+}

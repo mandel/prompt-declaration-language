@@ -1,0 +1,14 @@
+{
+  "id": "E-RUNTIME-003-duplicate-key",
+  "title": "include: says \"invalid yaml\" over a diagnostic written not to say it",
+  "severity": "S3",
+  "expect_exit": 1,
+  "rubric": {
+    "location": 3,
+    "what": 3,
+    "why": 3,
+    "fix": 3,
+    "hygiene": 3
+  },
+  "notes": "Same wrapper fix as E-RUNTIME-003: the outer line no longer claims invalid YAML over a diagnostic written to say the opposite."
+}

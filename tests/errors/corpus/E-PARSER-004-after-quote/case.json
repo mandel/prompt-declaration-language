@@ -1,0 +1,15 @@
+{
+  "id": "E-PARSER-004-after-quote",
+  "title": "text after a quoted field's closing quote is silently tolerated",
+  "severity": "S0",
+  "expect_exit": 0,
+  "rubric": {
+    "location": 0,
+    "what": 0,
+    "why": 0,
+    "fix": 0,
+    "hygiene": 0,
+    "hygiene_silent_failure": true
+  },
+  "notes": "**A deliberately accepted silent failure, pinned so that it cannot change unnoticed.** Python's `csv` reader in `strict` mode rejects two shapes, and the decision-5.5 sign-off for INVENTORY 7.10 finding 1 covers only one of them: a quoted field that is never closed, where the rest of the output is swallowed and the answer is wrong (`E-PARSER-004-unterminated-quote`). This is the other shape -- text after a closing `\"` -- and an earlier version of the change made it an error too, because `strict` is one flag on `csv.reader` and not two. The owner ruled that back out on the measurements: `1,\"Ada\" Lovelace` returns `Ada Lovelace`, which is very plausibly what the author meant, and `strict` rejects `1,\"Ada\" ` as well, so **a trailing space alone** would have turned a working program into a hard failure. Both shapes are in the reproducer, and the second one is why the ruling went the way it did. The narrowing is in the handler, not in the reader: the strict reader is used as a detector, everything it rejects other than the unclosed-quote class is parsed again with a default reader, and that result is returned (`_csv_rows_lenient`, `pdl_interpreter.py`). The cost is real and is not glossed -- PDL returns a parse the standard library flagged, and says nothing -- and it is stated at the code site, in INVENTORY 7.10 and in the release note as well as here. `hygiene_silent_failure` **is** set, and the choice was not automatic: the returned value is defensible, so the case for leaving the flag off is that nothing is really broken. It is set because the flag's definition in `RUBRIC.md` is about the *diagnostic*, not the value -- a broken input that exits 0 and says nothing at all -- and because 7.10's other two findings, a non-matching `regex:` returning `null` and `json_repair` returning `''`, are counted as silent failures on exactly those terms while also returning plausible values. Leaving it off would have undercounted PDL's silence in `BASELINE.md` by one to make a deliberate decision look tidier. Severity S0 for the same mechanical reason -- the legend reads `error is silently swallowed` -- with the difference from the other S0s being that this one is accepted rather than open. All five scores are 0 because there is no diagnostic to score, which is the convention the two other `hygiene_silent_failure` entries follow. The count self-heals if a later decision makes this class an error. The field-size limit reaches the same `except` and must keep raising; it does, because it is a resource limit rather than a strictness rule, so the lenient re-parse hits it too and `E-PARSER-004` is unchanged."
+}
